@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mycoswarm"
+version = "0.1.0"
+description = "Distributed AI framework — grow your own cluster from whatever hardware you've got"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.11"
+dependencies = [
+    "zeroconf>=0.131.0",
+    "psutil>=5.9.0",
+    "httpx>=0.27.0",
+    "uvicorn>=0.30.0",
+    "fastapi>=0.111.0",
+]
+
+[project.scripts]
+mycoswarm = "mycoswarm.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

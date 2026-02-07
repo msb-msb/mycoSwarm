@@ -1,0 +1,2 @@
+[console_scripts]
+mycoswarm = mycoswarm.cli:main
