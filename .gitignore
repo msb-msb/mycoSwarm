@@ -3,3 +3,7 @@ __pycache__/
 *.pyc
 src/mycoswarm.egg-info/
 
+__pycache__/
+*.pyc
+src/mycoswarm.egg-info/
+
