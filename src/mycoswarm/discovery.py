@@ -280,7 +280,7 @@ class Discovery:
     async def stop(self):
         """Stop discovery and unregister from the network."""
         if self._browser:
-            self._browser.cancel()
+            await self._browser.async_cancel()
             self._browser = None
 
         if self._service_info and self._zeroconf:
