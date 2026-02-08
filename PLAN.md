@@ -57,6 +57,17 @@
 - [x] Multi-turn memory verified: model remembers context across turns
 - [x] Shows node_id, tokens/sec, duration in response footer
 
+### Phase 9b: Streaming Inference (2026-02-08)
+- [x] TaskQueue stream management: create_stream/get_stream/remove_stream per task
+- [x] Worker streaming: _inference_stream uses httpx streaming + Ollama NDJSON, pushes tokens to asyncio.Queue
+- [x] Worker refactored: _build_ollama_request, _metrics_from_ollama, _inference_batch, _inference_stream
+- [x] SSE endpoint: GET /task/{id}/stream — async generator yields tokens from queue
+- [x] Edge cases: replay if worker finishes before SSE connects, timeout, error propagation, sentinel cleanup
+- [x] Remote tasks: _route_remote pushes full response as single-shot SSE events
+- [x] CLI _stream_response: sync httpx stream consumer, prints tokens as they arrive
+- [x] cmd_chat uses streaming: POST /task → SSE stream → live token display
+- [x] cmd_ask unchanged (still uses _submit_and_poll)
+
 ## Next
 
 ### Phase 5b: Cross-Node Inference (remaining)
@@ -78,7 +89,6 @@
 - [ ] Load balancing: distribute tasks based on real-time utilization
 
 ### Phase 9: Advanced Features (remaining)
-- [ ] Streaming inference (SSE from Ollama through to client)
 - [ ] Embedding handler (for RAG pipelines)
 - [ ] Web fetch handler (download + parse URLs)
 - [ ] File processing handler (read, transform, summarize documents)

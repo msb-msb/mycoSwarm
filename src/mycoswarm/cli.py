@@ -253,6 +253,60 @@ def _discover_model(url: str, prefer: str | None = None) -> str:
         sys.exit(1)
 
 
+def _stream_response(
+    url: str, task_id: str, timeout: int = 300
+) -> tuple[str, dict]:
+    """Consume SSE stream from /task/{id}/stream.
+
+    Returns (full_text, metrics_dict).  metrics_dict may be empty on error.
+    """
+    import json
+
+    tokens: list[str] = []
+    metrics: dict = {}
+
+    try:
+        with httpx.Client(timeout=httpx.Timeout(5.0, read=timeout)) as client:
+            with client.stream("GET", f"{url}/task/{task_id}/stream") as resp:
+                for line in resp.iter_lines():
+                    if not line or not line.startswith("data: "):
+                        continue
+                    payload = line[6:]  # strip "data: "
+                    try:
+                        event = json.loads(payload)
+                    except json.JSONDecodeError:
+                        continue
+
+                    if event.get("error"):
+                        print(f"\n❌ {event['error']}")
+                        return "".join(tokens), metrics
+
+                    token = event.get("token", "")
+                    if token and not event.get("done"):
+                        print(token, end="", flush=True)
+                        tokens.append(token)
+
+                    if event.get("done"):
+                        metrics = {
+                            k: event[k]
+                            for k in (
+                                "model",
+                                "tokens_per_second",
+                                "duration_seconds",
+                                "node_id",
+                            )
+                            if k in event
+                        }
+
+    except httpx.ConnectError:
+        print("❌ Daemon not running. Start it with: mycoswarm daemon")
+        sys.exit(1)
+    except httpx.ReadTimeout:
+        print("\n❌ Stream timed out.")
+
+    return "".join(tokens), metrics
+
+
 def _submit_and_poll(url: str, task_payload: dict, timeout: int = 300) -> dict | None:
     """Submit a task and poll until completion. Returns result dict or None."""
     import time
@@ -436,28 +490,31 @@ def cmd_chat(args):
             "timeout_seconds": 300,
         }
 
-        data = _submit_and_poll(url, task_payload)
-
-        if data is None:
-            print("❌ Timed out.")
-            messages.pop()  # Remove unanswered user message
-            continue
-
-        if data.get("status") == "failed":
-            print(f"❌ {data.get('error', 'unknown error')}")
+        # Submit task
+        try:
+            with httpx.Client(timeout=5) as client:
+                resp = client.post(f"{url}/task", json=task_payload)
+                resp.raise_for_status()
+        except httpx.ConnectError:
+            print("❌ Daemon not running. Start it with: mycoswarm daemon")
             messages.pop()
             continue
 
-        result = data.get("result", {})
-        response_text = result.get("response", "")
-        messages.append({"role": "assistant", "content": response_text})
+        # Stream tokens live
+        print()  # newline before response
+        full_text, metrics = _stream_response(url, task_id)
 
-        print(f"\n{response_text}")
-        node_id = data.get("node_id", "")
-        tps = result.get("tokens_per_second", 0)
-        duration = data.get("duration_seconds", 0)
+        if not full_text:
+            messages.pop()
+            continue
+
+        messages.append({"role": "assistant", "content": full_text})
+
+        tps = metrics.get("tokens_per_second", 0)
+        duration = metrics.get("duration_seconds", 0)
+        node_id = metrics.get("node_id", "")
         print(
-            f"\n{'─' * 50}\n"
+            f"\n\n{'─' * 50}\n"
             f"  ⏱  {duration:.1f}s | {tps:.1f} tok/s | "
             f"{model} | node: {node_id}"
         )

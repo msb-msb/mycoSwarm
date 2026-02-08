@@ -13,6 +13,7 @@ Future handlers:
 """
 
 import asyncio
+import json
 import logging
 import time
 from typing import Callable, Awaitable
@@ -31,60 +32,76 @@ OLLAMA_TIMEOUT = 300.0  # 5 min max for inference
 # --- Task Handlers ---
 
 
-async def handle_inference(task: TaskRequest) -> TaskResult:
-    """Run inference via local Ollama.
+def _push_safe(queue: asyncio.Queue, event: dict | None) -> None:
+    """Non-blocking push to stream queue; silently drops if consumer gone."""
+    try:
+        queue.put_nowait(event)
+    except asyncio.QueueFull:
+        pass
 
-    Supports two modes:
-      - prompt mode: payload has "prompt" → uses /api/generate
-      - chat mode:   payload has "messages" → uses /api/chat
 
-    Expected payload:
-        model: str          — Ollama model name (e.g. "qwen2.5:14b-instruct-q4_K_M")
-        prompt: str         — The prompt text (generate mode)
-        messages: list      — Chat messages [{role, content}] (chat mode)
-        system: str         — Optional system prompt
-        temperature: float  — Optional, default 0.7
-        max_tokens: int     — Optional, default 2048
+def _build_ollama_request(
+    payload: dict,
+) -> tuple[str, dict, bool]:
+    """Build Ollama endpoint + payload from task payload.
+
+    Returns (endpoint, ollama_payload, is_chat).
     """
-    payload = task.payload
-    model = payload.get("model")
+    model = payload["model"]
     messages = payload.get("messages")
     prompt = payload.get("prompt")
 
-    if not model or (not prompt and not messages):
-        return TaskResult(
-            task_id=task.task_id,
-            status=TaskStatus.FAILED,
-            error="Missing required fields: 'model' and ('prompt' or 'messages')",
-        )
-
-    # Build Ollama request — chat mode vs generate mode
     if messages:
         endpoint = f"{OLLAMA_BASE}/api/chat"
-        ollama_payload = {
+        ollama_payload: dict = {
             "model": model,
             "messages": messages,
-            "stream": False,
             "options": {
                 "temperature": payload.get("temperature", 0.7),
                 "num_predict": payload.get("max_tokens", 2048),
             },
         }
+        is_chat = True
     else:
         endpoint = f"{OLLAMA_BASE}/api/generate"
         ollama_payload = {
             "model": model,
             "prompt": prompt,
-            "stream": False,
             "options": {
                 "temperature": payload.get("temperature", 0.7),
                 "num_predict": payload.get("max_tokens", 2048),
             },
         }
+        is_chat = False
 
     if payload.get("system"):
         ollama_payload["system"] = payload["system"]
 
+    return endpoint, ollama_payload, is_chat
+
+
+def _metrics_from_ollama(data: dict, model: str) -> dict:
+    """Extract standard metrics from Ollama response JSON."""
+    return {
+        "model": model,
+        "total_duration_ms": data.get("total_duration", 0) / 1_000_000,
+        "eval_count": data.get("eval_count", 0),
+        "eval_duration_ms": data.get("eval_duration", 0) / 1_000_000,
+        "tokens_per_second": (
+            data.get("eval_count", 0)
+            / (data.get("eval_duration", 1) / 1_000_000_000)
+            if data.get("eval_duration")
+            else 0
+        ),
+    }
+
+
+async def _inference_batch(
+    task: TaskRequest, endpoint: str, ollama_payload: dict, is_chat: bool
+) -> TaskResult:
+    """Non-streaming (batch) Ollama inference."""
+    model = task.payload["model"]
+    ollama_payload["stream"] = False
     start = time.time()
 
     try:
@@ -95,28 +112,18 @@ async def handle_inference(task: TaskRequest) -> TaskResult:
 
         duration = time.time() - start
 
-        # /api/chat returns response in message.content, /api/generate in response
-        if messages:
+        if is_chat:
             response_text = data.get("message", {}).get("content", "")
         else:
             response_text = data.get("response", "")
 
+        metrics = _metrics_from_ollama(data, model)
+        metrics["response"] = response_text
+
         return TaskResult(
             task_id=task.task_id,
             status=TaskStatus.COMPLETED,
-            result={
-                "response": response_text,
-                "model": model,
-                "total_duration_ms": data.get("total_duration", 0) / 1_000_000,
-                "eval_count": data.get("eval_count", 0),
-                "eval_duration_ms": data.get("eval_duration", 0) / 1_000_000,
-                "tokens_per_second": (
-                    data.get("eval_count", 0)
-                    / (data.get("eval_duration", 1) / 1_000_000_000)
-                    if data.get("eval_duration")
-                    else 0
-                ),
-            },
+            result=metrics,
             duration_seconds=round(duration, 2),
         )
 
@@ -140,6 +147,160 @@ async def handle_inference(task: TaskRequest) -> TaskResult:
             error=f"Ollama error: {e}",
             duration_seconds=round(time.time() - start, 2),
         )
+
+
+async def _inference_stream(
+    task: TaskRequest,
+    endpoint: str,
+    ollama_payload: dict,
+    is_chat: bool,
+    stream_queue: asyncio.Queue,
+) -> TaskResult:
+    """Streaming Ollama inference — pushes tokens to queue as they arrive."""
+    model = task.payload["model"]
+    ollama_payload["stream"] = True
+    start = time.time()
+    collected_tokens: list[str] = []
+    final_data: dict = {}
+
+    try:
+        async with httpx.AsyncClient(timeout=OLLAMA_TIMEOUT) as client:
+            async with client.stream(
+                "POST", endpoint, json=ollama_payload
+            ) as response:
+                response.raise_for_status()
+                async for line in response.aiter_lines():
+                    if not line:
+                        continue
+                    try:
+                        chunk = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+
+                    # Extract token from chunk
+                    if is_chat:
+                        token = chunk.get("message", {}).get("content", "")
+                    else:
+                        token = chunk.get("response", "")
+
+                    if token:
+                        collected_tokens.append(token)
+                        _push_safe(
+                            stream_queue,
+                            {"token": token, "done": False},
+                        )
+
+                    if chunk.get("done"):
+                        final_data = chunk
+                        break
+
+        duration = time.time() - start
+        full_response = "".join(collected_tokens)
+        metrics = _metrics_from_ollama(final_data, model)
+        metrics["response"] = full_response
+
+        # Push final done event with metrics
+        _push_safe(
+            stream_queue,
+            {
+                "done": True,
+                "model": model,
+                "tokens_per_second": metrics["tokens_per_second"],
+                "duration_seconds": round(duration, 2),
+            },
+        )
+        # Sentinel — tells SSE generator to stop
+        _push_safe(stream_queue, None)
+
+        return TaskResult(
+            task_id=task.task_id,
+            status=TaskStatus.COMPLETED,
+            result=metrics,
+            duration_seconds=round(duration, 2),
+        )
+
+    except httpx.TimeoutException:
+        _push_safe(
+            stream_queue,
+            {"error": f"Ollama timed out after {OLLAMA_TIMEOUT}s", "done": True},
+        )
+        _push_safe(stream_queue, None)
+        return TaskResult(
+            task_id=task.task_id,
+            status=TaskStatus.FAILED,
+            error=f"Ollama inference timed out after {OLLAMA_TIMEOUT}s",
+            duration_seconds=round(time.time() - start, 2),
+        )
+    except httpx.ConnectError:
+        _push_safe(
+            stream_queue,
+            {"error": "Cannot connect to Ollama — is it running?", "done": True},
+        )
+        _push_safe(stream_queue, None)
+        return TaskResult(
+            task_id=task.task_id,
+            status=TaskStatus.FAILED,
+            error="Cannot connect to Ollama — is it running?",
+        )
+    except httpx.HTTPError as e:
+        _push_safe(
+            stream_queue,
+            {"error": f"Ollama error: {e}", "done": True},
+        )
+        _push_safe(stream_queue, None)
+        return TaskResult(
+            task_id=task.task_id,
+            status=TaskStatus.FAILED,
+            error=f"Ollama error: {e}",
+            duration_seconds=round(time.time() - start, 2),
+        )
+
+
+async def handle_inference(
+    task: TaskRequest, stream_queue: asyncio.Queue | None = None
+) -> TaskResult:
+    """Run inference via local Ollama.
+
+    Supports two modes:
+      - prompt mode: payload has "prompt" → uses /api/generate
+      - chat mode:   payload has "messages" → uses /api/chat
+
+    When stream_queue is provided, tokens are pushed in real-time.
+
+    Expected payload:
+        model: str          — Ollama model name (e.g. "qwen2.5:14b-instruct-q4_K_M")
+        prompt: str         — The prompt text (generate mode)
+        messages: list      — Chat messages [{role, content}] (chat mode)
+        system: str         — Optional system prompt
+        temperature: float  — Optional, default 0.7
+        max_tokens: int     — Optional, default 2048
+    """
+    payload = task.payload
+    model = payload.get("model")
+    messages = payload.get("messages")
+    prompt = payload.get("prompt")
+
+    if not model or (not prompt and not messages):
+        if stream_queue:
+            _push_safe(
+                stream_queue,
+                {"error": "Missing 'model' and ('prompt' or 'messages')", "done": True},
+            )
+            _push_safe(stream_queue, None)
+        return TaskResult(
+            task_id=task.task_id,
+            status=TaskStatus.FAILED,
+            error="Missing required fields: 'model' and ('prompt' or 'messages')",
+        )
+
+    endpoint, ollama_payload, is_chat = _build_ollama_request(payload)
+
+    if stream_queue is not None:
+        return await _inference_stream(
+            task, endpoint, ollama_payload, is_chat, stream_queue
+        )
+    else:
+        return await _inference_batch(task, endpoint, ollama_payload, is_chat)
 
 
 async def handle_ping(task: TaskRequest) -> TaskResult:
@@ -187,8 +348,12 @@ class TaskWorker:
         """Execute a single task with concurrency control."""
         async with self._semaphore:
             handler = HANDLERS.get(task.task_type)
+            stream_queue = self.task_queue.get_stream(task.task_id)
 
             if not handler:
+                if stream_queue:
+                    _push_safe(stream_queue, {"error": f"Unknown task type: {task.task_type}", "done": True})
+                    _push_safe(stream_queue, None)
                 result = TaskResult(
                     task_id=task.task_id,
                     status=TaskStatus.FAILED,
@@ -205,9 +370,15 @@ class TaskWorker:
             start = time.time()
 
             try:
-                result = await asyncio.wait_for(
-                    handler(task), timeout=task.timeout_seconds
-                )
+                if stream_queue is not None and task.task_type == "inference":
+                    result = await asyncio.wait_for(
+                        handler(task, stream_queue=stream_queue),
+                        timeout=task.timeout_seconds,
+                    )
+                else:
+                    result = await asyncio.wait_for(
+                        handler(task), timeout=task.timeout_seconds
+                    )
                 result.node_id = self.node_id
                 await self.task_queue.store_result(result)
 
@@ -225,6 +396,9 @@ class TaskWorker:
 
             except asyncio.TimeoutError:
                 elapsed = round(time.time() - start, 2)
+                if stream_queue:
+                    _push_safe(stream_queue, {"error": f"Task timed out after {task.timeout_seconds}s", "done": True})
+                    _push_safe(stream_queue, None)
                 result = TaskResult(
                     task_id=task.task_id,
                     status=TaskStatus.FAILED,
@@ -239,6 +413,9 @@ class TaskWorker:
                 )
 
             except Exception as e:
+                if stream_queue:
+                    _push_safe(stream_queue, {"error": f"Unhandled error: {e}", "done": True})
+                    _push_safe(stream_queue, None)
                 result = TaskResult(
                     task_id=task.task_id,
                     status=TaskStatus.FAILED,

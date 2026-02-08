@@ -12,12 +12,14 @@ All endpoints are LAN-only by default (bound to the LAN IP, not 0.0.0.0).
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import time
 from enum import Enum
 from typing import TYPE_CHECKING
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from mycoswarm.node import NodeIdentity, build_identity
@@ -100,6 +102,7 @@ class TaskQueue:
         self._queue: asyncio.Queue[TaskRequest] = asyncio.Queue(maxsize=max_size)
         self._results: dict[str, TaskResult] = {}
         self._active: dict[str, TaskRequest] = {}
+        self._streams: dict[str, asyncio.Queue] = {}
         self._lock = asyncio.Lock()
 
     async def submit(self, task: TaskRequest) -> TaskResponse:
@@ -136,6 +139,18 @@ class TaskQueue:
     async def get_result(self, task_id: str) -> TaskResult | None:
         async with self._lock:
             return self._results.get(task_id)
+
+    def create_stream(self, task_id: str) -> asyncio.Queue:
+        """Create a token stream queue for a task."""
+        q: asyncio.Queue = asyncio.Queue()
+        self._streams[task_id] = q
+        return q
+
+    def get_stream(self, task_id: str) -> asyncio.Queue | None:
+        return self._streams.get(task_id)
+
+    def remove_stream(self, task_id: str) -> None:
+        self._streams.pop(task_id, None)
 
     @property
     def pending_count(self) -> int:
@@ -212,12 +227,17 @@ def create_api(
         )
 
         if can_local:
+            # Create stream queue so worker can push tokens (inference only)
+            if task.task_type == "inference":
+                task_queue.create_stream(task.task_id)
             return await task_queue.submit(task)
 
         # Can't handle locally — route to best peer
         logger.info(
             f"🔀 Can't handle {task.task_type} locally, routing to peer..."
         )
+
+        stream_queue = task_queue.create_stream(task.task_id)
 
         async def _route_remote():
             try:
@@ -235,7 +255,26 @@ def create_api(
                     status=TaskStatus.FAILED,
                     error=f"Routing failed: {e}",
                 )
+
             await task_queue.store_result(result)
+
+            # Push full response as single-shot events for remote tasks
+            sq = task_queue.get_stream(task.task_id)
+            if sq is not None:
+                if result.status == TaskStatus.COMPLETED and result.result:
+                    response_text = result.result.get("response", "")
+                    if response_text:
+                        sq.put_nowait({"token": response_text, "done": False})
+                    sq.put_nowait({
+                        "done": True,
+                        "model": result.result.get("model", ""),
+                        "tokens_per_second": result.result.get("tokens_per_second", 0),
+                        "duration_seconds": result.duration_seconds,
+                        "node_id": result.node_id,
+                    })
+                elif result.error:
+                    sq.put_nowait({"error": result.error, "done": True})
+                sq.put_nowait(None)
 
         asyncio.create_task(_route_remote())
 
@@ -254,6 +293,55 @@ def create_api(
             task_id=task_id,
             status=TaskStatus.PENDING,
             message="Task is queued or in progress",
+        )
+
+    @app.get("/task/{task_id}/stream")
+    async def stream_task(task_id: str):
+        """SSE endpoint — streams tokens as they are generated."""
+
+        async def _event_generator():
+            # If result already exists, replay as single event
+            result = await task_queue.get_result(task_id)
+            if result is not None:
+                if result.status == TaskStatus.COMPLETED and result.result:
+                    response_text = result.result.get("response", "")
+                    if response_text:
+                        yield f"data: {json.dumps({'token': response_text, 'done': False})}\n\n"
+                    yield f"data: {json.dumps({'done': True, 'model': result.result.get('model', ''), 'tokens_per_second': result.result.get('tokens_per_second', 0), 'duration_seconds': result.duration_seconds, 'node_id': result.node_id})}\n\n"
+                elif result.error:
+                    yield f"data: {json.dumps({'error': result.error, 'done': True})}\n\n"
+                return
+
+            stream_queue = task_queue.get_stream(task_id)
+            if stream_queue is None:
+                yield f"data: {json.dumps({'error': 'No stream for this task', 'done': True})}\n\n"
+                return
+
+            try:
+                while True:
+                    try:
+                        event = await asyncio.wait_for(
+                            stream_queue.get(), timeout=300
+                        )
+                    except asyncio.TimeoutError:
+                        yield f"data: {json.dumps({'error': 'Stream timeout', 'done': True})}\n\n"
+                        break
+
+                    if event is None:
+                        # Sentinel — stream complete
+                        break
+
+                    yield f"data: {json.dumps(event)}\n\n"
+            finally:
+                task_queue.remove_stream(task_id)
+
+        return StreamingResponse(
+            _event_generator(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+            },
         )
 
     @app.get("/status")
