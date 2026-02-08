@@ -53,6 +53,9 @@ class Peer:
         return self.age_seconds > 60
 
 
+UNHEALTHY_THRESHOLD = 3  # consecutive failures before marking unhealthy
+
+
 class PeerRegistry:
     """Thread-safe registry of discovered peers."""
 
@@ -60,6 +63,7 @@ class PeerRegistry:
         self._peers: dict[str, Peer] = {}  # node_id -> Peer
         self._lock = asyncio.Lock()
         self._callbacks: list[callable] = []
+        self._failure_counts: dict[str, int] = {}  # node_id -> consecutive failures
 
     def on_change(self, callback: callable):
         """Register a callback for peer changes. callback(event, peer)."""
@@ -77,6 +81,8 @@ class PeerRegistry:
 
     async def add_or_update(self, peer: Peer):
         async with self._lock:
+            # Peer responded via mDNS — it's alive, reset failures
+            self._failure_counts.pop(peer.node_id, None)
             existing = self._peers.get(peer.node_id)
             if existing:
                 peer.first_seen = existing.first_seen
@@ -111,6 +117,30 @@ class PeerRegistry:
     async def get_by_tier(self, tier: str) -> list[Peer]:
         async with self._lock:
             return [p for p in self._peers.values() if p.node_tier == tier]
+
+    def record_failure(self, node_id: str):
+        """Record a failed request to a peer."""
+        count = self._failure_counts.get(node_id, 0) + 1
+        self._failure_counts[node_id] = count
+        if count >= UNHEALTHY_THRESHOLD:
+            peer = self._peers.get(node_id)
+            name = peer.hostname if peer else node_id
+            logger.warning(
+                f"🏥 Peer {name} marked unhealthy "
+                f"({count} consecutive failures)"
+            )
+
+    def record_success(self, node_id: str):
+        """Record a successful request to a peer, clearing failure count."""
+        if node_id in self._failure_counts:
+            peer = self._peers.get(node_id)
+            name = peer.hostname if peer else node_id
+            logger.info(f"💚 Peer {name} is healthy again")
+            del self._failure_counts[node_id]
+
+    def is_healthy(self, node_id: str) -> bool:
+        """Check if a peer is considered healthy (< UNHEALTHY_THRESHOLD failures)."""
+        return self._failure_counts.get(node_id, 0) < UNHEALTHY_THRESHOLD
 
     @property
     def count(self) -> int:

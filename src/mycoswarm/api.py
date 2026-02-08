@@ -220,12 +220,20 @@ def create_api(
         )
 
         async def _route_remote():
-            result = await orchestrator.route_task(task)
-            if result is None:
+            try:
+                result = await orchestrator.route_task(task)
+                if result is None:
+                    result = TaskResult(
+                        task_id=task.task_id,
+                        status=TaskStatus.FAILED,
+                        error=f"No peer in swarm can handle: {task.task_type}",
+                    )
+            except Exception as e:
+                logger.error(f"💥 Orchestrator error for {task.task_id}: {e}")
                 result = TaskResult(
                     task_id=task.task_id,
                     status=TaskStatus.FAILED,
-                    error=f"No peer in swarm can handle: {task.task_type}",
+                    error=f"Routing failed: {e}",
                 )
             await task_queue.store_result(result)
 

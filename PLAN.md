@@ -45,16 +45,14 @@
 - [x] Handle Ollama not running gracefully — strip gpu_inference/cpu_inference caps when Ollama unreachable
 - [x] Add `allow_name_change=True` to zeroconf registration (prevent NonUniqueNameException on restart)
 - [x] Task timeout enforcement in worker — asyncio.wait_for cancels tasks exceeding timeout_seconds
+- [x] Retry failed dispatches — orchestrator tries up to 3 peers in score order, only retries on dispatch errors
+- [x] Peer health monitoring — PeerRegistry tracks consecutive failures per peer, marks unhealthy after 3, resets on success or mDNS update
+- [x] Graceful degradation — _route_remote wrapped in try/except, orchestrator errors fail the task gracefully; local tasks always work independently
 
 ## Next
 
 ### Phase 5b: Cross-Node Inference (remaining)
 - [ ] Add `--remote` flag to `mycoswarm ask` to force remote execution
-
-### Phase 6b: Robustness (remaining)
-- [ ] Retry failed dispatches to next-best node
-- [ ] Peer health monitoring (mark unhealthy after N failed pings)
-- [ ] Graceful degradation when orchestrator node goes down
 
 ### Phase 7: Testing
 - [ ] Unit tests for hardware detection (mock subprocess/psutil)

@@ -37,6 +37,7 @@ TASK_ROUTING = {
 }
 
 PEER_TIMEOUT = 10.0
+MAX_DISPATCH_ATTEMPTS = 3  # first try + 2 retries
 
 
 @dataclass
@@ -98,7 +99,8 @@ class Orchestrator:
             score -= 2000
         return score
 
-    async def _select_node(self, task_type: str) -> Peer | None:
+    async def _select_nodes(self, task_type: str) -> list[Peer]:
+        """Return eligible peers ranked by score, filtering stale/unhealthy."""
         required_caps = TASK_ROUTING.get(task_type, ["cpu_worker"])
         peers = await self.registry.get_all()
 
@@ -106,25 +108,24 @@ class Orchestrator:
             p for p in peers
             if any(cap in p.capabilities for cap in required_caps)
             and not p.is_stale
+            and self.registry.is_healthy(p.node_id)
         ]
-
-        if not eligible:
-            return None
 
         if task_type in ("inference", "embedding"):
             eligible.sort(key=self._score_peer_for_inference, reverse=True)
         else:
             eligible.sort(key=self._score_peer_for_cpu_work, reverse=True)
 
-        selected = eligible[0]
-        logger.info(
-            f"🎯 Routing {task_type} → {selected.hostname} "
-            f"({selected.ip}) [{selected.node_tier}]"
-        )
-        return selected
+        return eligible
 
-    async def _dispatch_to_peer(self, peer: Peer, task: TaskRequest) -> TaskResult:
-        """Dispatch a task to a peer and poll until completion."""
+    async def _dispatch_to_peer(
+        self, peer: Peer, task: TaskRequest
+    ) -> tuple[TaskResult, bool]:
+        """Dispatch a task to a peer and poll until completion.
+
+        Returns (result, is_dispatch_error). Dispatch errors (can't reach
+        the peer at all) are retryable; task-level failures are not.
+        """
         base_url = f"http://{peer.ip}:{peer.port}"
 
         try:
@@ -135,6 +136,7 @@ class Orchestrator:
                 timeout=PEER_TIMEOUT,
             )
             response.raise_for_status()
+            self.registry.record_success(peer.node_id)
             logger.info(
                 f"📤 Dispatched {task.task_id} to {peer.hostname} "
                 f"({peer.ip}:{peer.port})"
@@ -163,7 +165,7 @@ class Orchestrator:
                             result=data.get("result"),
                             duration_seconds=data.get("duration_seconds", 0),
                             node_id=data.get("node_id", peer.node_id),
-                        )
+                        ), False
                     elif status == "failed":
                         logger.error(
                             f"❌ Remote task {task.task_id} failed on "
@@ -175,9 +177,9 @@ class Orchestrator:
                             error=data.get("error", "Remote task failed"),
                             duration_seconds=data.get("duration_seconds", 0),
                             node_id=data.get("node_id", peer.node_id),
-                        )
+                        ), False  # Task failed, but peer was reachable
                 except httpx.HTTPError:
-                    pass  # Transient error, keep polling
+                    pass  # Transient poll error, keep trying
 
             logger.error(f"⏱️ Remote task {task.task_id} timed out on {peer.hostname}")
             return TaskResult(
@@ -185,24 +187,26 @@ class Orchestrator:
                 status=TaskStatus.FAILED,
                 error=f"Timed out waiting for {peer.hostname} after {task.timeout_seconds}s",
                 node_id=peer.node_id,
-            )
+            ), False  # Peer was reachable, just slow
 
-        except httpx.TimeoutException:
-            logger.error(f"Timeout dispatching to {peer.hostname}")
+        except (httpx.TimeoutException, httpx.ConnectError) as e:
+            self.registry.record_failure(peer.node_id)
+            logger.error(f"🔌 Can't reach {peer.hostname}: {e}")
             return TaskResult(
                 task_id=task.task_id,
                 status=TaskStatus.FAILED,
-                error=f"Timeout contacting {peer.hostname}",
+                error=f"Can't reach {peer.hostname}: {e}",
                 node_id=peer.node_id,
-            )
+            ), True  # Dispatch error — retryable
         except httpx.HTTPError as e:
+            self.registry.record_failure(peer.node_id)
             logger.error(f"HTTP error dispatching to {peer.hostname}: {e}")
             return TaskResult(
                 task_id=task.task_id,
                 status=TaskStatus.FAILED,
                 error=str(e),
                 node_id=peer.node_id,
-            )
+            ), True  # Dispatch error — retryable
 
     def can_handle_locally(self, task_type: str) -> bool:
         """Check if this node can actually handle the given task type.
@@ -219,35 +223,55 @@ class Orchestrator:
         return True
 
     async def route_task(self, task: TaskRequest) -> TaskResult | None:
-        """Route a task to the best peer. Returns None if no peer available.
+        """Route a task to the best peer, retrying on dispatch failures.
 
-        This is the main entry point used by the API when the local node
-        can't handle a task. It dispatches to the best peer and polls
-        until the result is ready.
+        Tries up to MAX_DISPATCH_ATTEMPTS peers in score order. Only retries
+        on dispatch errors (peer unreachable); task-level failures (e.g.
+        Ollama error on the remote side) are returned immediately.
         """
-        target = await self._select_node(task.task_type)
-        if not target:
+        candidates = await self._select_nodes(task.task_type)
+        if not candidates:
             logger.warning(
                 f"❌ No peer available for {task.task_type} "
                 f"(task {task.task_id})"
             )
             return None
 
-        record = TaskRecord(
-            task_id=task.task_id,
-            task_type=task.task_type,
-            target_node=target.node_id,
-            target_ip=target.ip,
-            target_port=target.port,
-        )
-        self._records[task.task_id] = record
+        last_result = None
+        for i, target in enumerate(candidates[:MAX_DISPATCH_ATTEMPTS]):
+            if i > 0:
+                logger.info(
+                    f"🔄 Retry {i}/{MAX_DISPATCH_ATTEMPTS - 1}: "
+                    f"{task.task_id} → {target.hostname}"
+                )
+            else:
+                logger.info(
+                    f"🎯 Routing {task.task_type} → {target.hostname} "
+                    f"({target.ip}) [{target.node_tier}]"
+                )
 
-        result = await self._dispatch_to_peer(target, task)
-        record.status = result.status
-        record.result = result.result
-        record.error = result.error
-        record.completed_at = time.time()
-        return result
+            record = TaskRecord(
+                task_id=task.task_id,
+                task_type=task.task_type,
+                target_node=target.node_id,
+                target_ip=target.ip,
+                target_port=target.port,
+            )
+            self._records[task.task_id] = record
+
+            result, is_dispatch_error = await self._dispatch_to_peer(target, task)
+            record.status = result.status
+            record.result = result.result
+            record.error = result.error
+            record.completed_at = time.time()
+            last_result = result
+
+            if not is_dispatch_error:
+                return result  # Task reached the peer — done (success or fail)
+
+            # Dispatch error — try next candidate
+
+        return last_result  # All attempts exhausted
 
     async def submit(
         self,
@@ -269,23 +293,10 @@ class Orchestrator:
             timeout_seconds=timeout,
         )
 
-        target = await self._select_node(task_type) if prefer_remote else None
-
-        if target:
-            record = TaskRecord(
-                task_id=task_id,
-                task_type=task_type,
-                target_node=target.node_id,
-                target_ip=target.ip,
-                target_port=target.port,
-            )
-            self._records[task_id] = record
-            result = await self._dispatch_to_peer(target, task)
-            record.status = result.status
-            record.result = result.result
-            record.error = result.error
-            record.completed_at = time.time()
-            return result
+        if prefer_remote:
+            result = await self.route_task(task)
+            if result:
+                return result
 
         # No peer — handle locally
         if self.can_handle_locally(task_type):
