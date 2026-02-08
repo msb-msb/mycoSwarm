@@ -440,6 +440,21 @@ def cmd_search(args):
     print(f"  ⏱  {duration:.1f}s | {len(results)} results | node: {node_id}")
 
 
+def _resolve_node_name(url: str, node_id: str) -> str:
+    """Map a node_id to a hostname via /status and /peers."""
+    try:
+        with httpx.Client(timeout=3) as client:
+            status = client.get(f"{url}/status").json()
+            if status.get("node_id") == node_id:
+                return status.get("hostname", node_id)
+            for p in client.get(f"{url}/peers").json():
+                if p.get("node_id") == node_id:
+                    return p.get("hostname", node_id)
+    except Exception:
+        pass
+    return node_id
+
+
 def _do_search(url: str, query: str, task_id: str, max_results: int) -> dict:
     """Submit a web_search task and poll to completion. Thread-safe."""
     import time as _t
@@ -475,14 +490,17 @@ def _do_search(url: str, query: str, task_id: str, max_results: int) -> dict:
                 pass
 
     elapsed = round(_t.time() - start, 1)
-    node = data.get("node_id", "") if data else ""
-    # Use hostname from routing message if available
-    routed_host = ""
+    node_id = data.get("node_id", "") if data else ""
+    # Use hostname from routing message, else resolve node_id → hostname
     if "Routed to" in routed_to:
-        routed_host = routed_to.replace("Routed to ", "")
+        node_name = routed_to.replace("Routed to ", "")
+    elif node_id:
+        node_name = _resolve_node_name(url, node_id)
+    else:
+        node_name = ""
     return {
         "query": query, "task_id": task_id, "data": data,
-        "node": routed_host or node, "elapsed": elapsed,
+        "node": node_name, "elapsed": elapsed,
     }
 
 
