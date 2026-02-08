@@ -28,12 +28,14 @@ logger = logging.getLogger(__name__)
 # Task types and which capabilities they need
 TASK_ROUTING = {
     "inference": ["gpu_inference", "cpu_inference"],
+    "embedding": ["gpu_inference", "cpu_inference"],
+    "translate": ["gpu_inference", "cpu_inference"],
+    "file_summarize": ["gpu_inference", "cpu_inference"],
     "web_fetch": ["cpu_worker"],
     "web_search": ["cpu_worker"],
+    "file_read": ["file_processing", "cpu_worker"],
+    "code_run": ["code_execution", "cpu_worker"],
     "file_process": ["cpu_worker"],
-    "file_read": ["storage", "cpu_worker"],
-    "file_write": ["storage", "cpu_worker"],
-    "embedding": ["gpu_inference", "cpu_inference"],
 }
 
 PEER_TIMEOUT = 10.0

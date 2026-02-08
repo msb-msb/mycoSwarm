@@ -17,6 +17,8 @@ class Capability(str, Enum):
     GPU_INFERENCE = "gpu_inference"  # Can run LLM models on GPU
     CPU_INFERENCE = "cpu_inference"  # Can run tiny models on CPU
     CPU_WORKER = "cpu_worker"  # Web scraping, doc processing, parsing
+    FILE_PROCESSING = "file_processing"  # Read/extract text from documents
+    CODE_EXECUTION = "code_execution"  # Run sandboxed code
     STORAGE = "storage"  # File serving, vector DB, artifacts
     COORDINATOR = "coordinator"  # Discovery, routing, orchestration
     EDGE = "edge"  # Audio, sensors, mobile (detected differently)
@@ -170,6 +172,8 @@ def classify_node(profile: HardwareProfile) -> NodeCapabilities:
     # --- CPU worker (almost every node) ---
     if profile.cpu and profile.cpu.cores_logical >= 2:
         caps.capabilities.append(Capability.CPU_WORKER)
+        caps.capabilities.append(Capability.FILE_PROCESSING)
+        caps.capabilities.append(Capability.CODE_EXECUTION)
 
     # --- Storage ---
     if profile.disks:

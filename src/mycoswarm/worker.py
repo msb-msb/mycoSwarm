@@ -1,16 +1,17 @@
 """mycoSwarm task worker.
 
 Pulls tasks from the node's queue and executes them.
-Each task type has a handler function. Currently supports:
+Each task type has a handler function. Supports:
 
   - inference: Send prompt to Ollama and return response
+  - embedding: Generate embeddings via Ollama /api/embeddings
   - web_search: Search the web via DuckDuckGo (no API key)
   - web_fetch: Fetch a URL and extract readable text
+  - file_read: Extract text from PDF, markdown, txt, html, csv, json
+  - file_summarize: Read a file then summarize via inference
+  - translate: Translate text using inference with a translation prompt
+  - code_run: Run Python code in a sandboxed subprocess
   - ping: Simple health check task (for testing)
-
-Future handlers:
-  - file_process: Read/transform files
-  - embedding: Generate embeddings via Ollama
 """
 
 import asyncio
@@ -469,12 +470,501 @@ async def handle_web_fetch(task: TaskRequest) -> TaskResult:
         )
 
 
+# --- File Processing Helpers ---
+
+
+def _extract_pdf(raw: bytes) -> str:
+    """Extract text from PDF bytes using pymupdf."""
+    import pymupdf
+
+    doc = pymupdf.open(stream=raw, filetype="pdf")
+    pages = []
+    for page in doc:
+        pages.append(page.get_text())
+    doc.close()
+    return "\n\n".join(pages)
+
+
+def _extract_text(raw: bytes, filetype: str) -> str:
+    """Extract readable text from raw file bytes based on filetype."""
+    if filetype == "pdf":
+        return _extract_pdf(raw)
+    elif filetype in ("html", "htm"):
+        return _strip_html(raw.decode("utf-8", errors="replace"))
+    elif filetype == "json":
+        try:
+            return json.dumps(json.loads(raw), indent=2)
+        except json.JSONDecodeError:
+            return raw.decode("utf-8", errors="replace")
+    else:
+        # md, txt, csv, and anything else — just decode
+        return raw.decode("utf-8", errors="replace")
+
+
+async def _get_default_model() -> str | None:
+    """Query Ollama for the first available model."""
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            resp = await client.get(f"{OLLAMA_BASE}/api/tags")
+            resp.raise_for_status()
+            models = resp.json().get("models", [])
+            if models:
+                return models[0]["name"]
+    except (httpx.ConnectError, httpx.HTTPError):
+        pass
+    return None
+
+
+# --- Embedding Handler ---
+
+
+async def handle_embedding(task: TaskRequest) -> TaskResult:
+    """Generate embeddings via Ollama /api/embeddings.
+
+    Expected payload:
+        model: str   — Ollama model name (e.g. "nomic-embed-text")
+        text: str    — Text to embed
+    """
+    payload = task.payload
+    model = payload.get("model")
+    text = payload.get("text")
+
+    if not model or not text:
+        return TaskResult(
+            task_id=task.task_id,
+            status=TaskStatus.FAILED,
+            error="Missing required fields: 'model' and 'text'",
+        )
+
+    start = time.time()
+
+    try:
+        async with httpx.AsyncClient(timeout=OLLAMA_TIMEOUT) as client:
+            resp = await client.post(
+                f"{OLLAMA_BASE}/api/embeddings",
+                json={"model": model, "prompt": text},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+
+        embedding = data.get("embedding", [])
+
+        return TaskResult(
+            task_id=task.task_id,
+            status=TaskStatus.COMPLETED,
+            result={
+                "embedding": embedding,
+                "model": model,
+                "dimensions": len(embedding),
+            },
+            duration_seconds=round(time.time() - start, 2),
+        )
+    except httpx.ConnectError:
+        return TaskResult(
+            task_id=task.task_id,
+            status=TaskStatus.FAILED,
+            error="Cannot connect to Ollama — is it running?",
+        )
+    except httpx.HTTPError as e:
+        return TaskResult(
+            task_id=task.task_id,
+            status=TaskStatus.FAILED,
+            error=f"Ollama embedding error: {e}",
+            duration_seconds=round(time.time() - start, 2),
+        )
+
+
+# --- File Processing Handlers ---
+
+
+async def handle_file_read(task: TaskRequest) -> TaskResult:
+    """Read text from various file formats.
+
+    Expected payload:
+        path: str       — File path on this node (optional if content given)
+        content: str    — Base64-encoded file content (optional if path given)
+        filetype: str   — File type hint: pdf, md, txt, html, csv, json
+    """
+    import base64
+    from pathlib import Path
+
+    payload = task.payload
+    content_b64 = payload.get("content")
+    file_path = payload.get("path")
+    filetype = payload.get("filetype", "").lower()
+
+    if not content_b64 and not file_path:
+        return TaskResult(
+            task_id=task.task_id,
+            status=TaskStatus.FAILED,
+            error="Missing required field: 'path' or 'content'",
+        )
+
+    start = time.time()
+
+    try:
+        if content_b64:
+            raw = base64.b64decode(content_b64)
+        else:
+            p = Path(file_path)
+            if not p.exists():
+                return TaskResult(
+                    task_id=task.task_id,
+                    status=TaskStatus.FAILED,
+                    error=f"File not found: {file_path}",
+                )
+            raw = p.read_bytes()
+            if not filetype:
+                filetype = p.suffix.lstrip(".").lower()
+
+        if not filetype:
+            filetype = "txt"
+
+        text = _extract_text(raw, filetype)
+
+        if len(text) > 500_000:
+            text = text[:500_000] + "\n\n... [truncated at 500KB]"
+
+        return TaskResult(
+            task_id=task.task_id,
+            status=TaskStatus.COMPLETED,
+            result={
+                "text": text,
+                "length": len(text),
+                "filetype": filetype,
+            },
+            duration_seconds=round(time.time() - start, 2),
+        )
+    except Exception as e:
+        return TaskResult(
+            task_id=task.task_id,
+            status=TaskStatus.FAILED,
+            error=f"File read failed: {e}",
+            duration_seconds=round(time.time() - start, 2),
+        )
+
+
+async def handle_file_summarize(task: TaskRequest) -> TaskResult:
+    """Read a file and summarize it via inference.
+
+    Extracts text locally then runs Ollama inference to produce a summary.
+    Routes to inference-capable nodes so both steps happen on one node.
+
+    Expected payload:
+        path: str        — File path (optional if content given)
+        content: str     — Base64-encoded content (optional if path given)
+        filetype: str    — File type hint
+        model: str       — Ollama model (optional, auto-detected)
+        max_length: int  — Max chars to send to inference (default 32000)
+    """
+    import base64
+    from pathlib import Path
+
+    payload = task.payload
+    content_b64 = payload.get("content")
+    file_path = payload.get("path")
+    filetype = payload.get("filetype", "").lower()
+    model = payload.get("model")
+    max_length = payload.get("max_length", 32_000)
+
+    if not content_b64 and not file_path:
+        return TaskResult(
+            task_id=task.task_id,
+            status=TaskStatus.FAILED,
+            error="Missing required field: 'path' or 'content'",
+        )
+
+    start = time.time()
+
+    # Step 1: Extract text
+    try:
+        if content_b64:
+            raw = base64.b64decode(content_b64)
+        else:
+            p = Path(file_path)
+            if not p.exists():
+                return TaskResult(
+                    task_id=task.task_id,
+                    status=TaskStatus.FAILED,
+                    error=f"File not found: {file_path}",
+                )
+            raw = p.read_bytes()
+            if not filetype:
+                filetype = p.suffix.lstrip(".").lower()
+
+        if not filetype:
+            filetype = "txt"
+
+        text = _extract_text(raw, filetype)
+    except Exception as e:
+        return TaskResult(
+            task_id=task.task_id,
+            status=TaskStatus.FAILED,
+            error=f"File read failed: {e}",
+            duration_seconds=round(time.time() - start, 2),
+        )
+
+    if len(text) > max_length:
+        text = text[:max_length] + "\n\n[truncated]"
+
+    # Step 2: Auto-detect model if not specified
+    if not model:
+        model = await _get_default_model()
+    if not model:
+        return TaskResult(
+            task_id=task.task_id,
+            status=TaskStatus.FAILED,
+            error="No model specified and no Ollama models available",
+        )
+
+    # Step 3: Summarize via inference
+    summary_task = TaskRequest(
+        task_id=task.task_id,
+        task_type="inference",
+        payload={
+            "model": model,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a document summarizer. Read the provided document "
+                        "and produce a clear, concise summary. Include key points, "
+                        "main arguments, and important details. Be thorough but brief."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": f"Summarize this document:\n\n{text}",
+                },
+            ],
+            "temperature": 0.3,
+            "max_tokens": 2048,
+        },
+        source_node=task.source_node,
+        priority=task.priority,
+        timeout_seconds=task.timeout_seconds,
+    )
+
+    result = await handle_inference(summary_task)
+
+    if result.status == TaskStatus.COMPLETED and result.result:
+        result.result = {
+            "summary": result.result.get("response", ""),
+            "source_length": len(text),
+            "filetype": filetype,
+            "model": model,
+            "tokens_per_second": result.result.get("tokens_per_second", 0),
+        }
+    result.duration_seconds = round(time.time() - start, 2)
+    return result
+
+
+# --- Translation Handler ---
+
+
+async def handle_translate(task: TaskRequest) -> TaskResult:
+    """Translate text using inference with a translation system prompt.
+
+    Expected payload:
+        text: str             — Text to translate
+        target_language: str  — Target language (e.g. "Spanish", "Japanese")
+        model: str            — Ollama model (optional, auto-detected)
+    """
+    payload = task.payload
+    text = payload.get("text")
+    target_language = payload.get("target_language")
+    model = payload.get("model")
+
+    if not text or not target_language:
+        return TaskResult(
+            task_id=task.task_id,
+            status=TaskStatus.FAILED,
+            error="Missing required fields: 'text' and 'target_language'",
+        )
+
+    if not model:
+        model = await _get_default_model()
+    if not model:
+        return TaskResult(
+            task_id=task.task_id,
+            status=TaskStatus.FAILED,
+            error="No model specified and no Ollama models available",
+        )
+
+    start = time.time()
+
+    translate_task = TaskRequest(
+        task_id=task.task_id,
+        task_type="inference",
+        payload={
+            "model": model,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        f"You are a translator. Translate the following text to "
+                        f"{target_language}. Output ONLY the translation, nothing "
+                        f"else. Preserve formatting, paragraph breaks, and tone."
+                    ),
+                },
+                {"role": "user", "content": text},
+            ],
+            "temperature": 0.3,
+            "max_tokens": 4096,
+        },
+        source_node=task.source_node,
+        priority=task.priority,
+        timeout_seconds=task.timeout_seconds,
+    )
+
+    result = await handle_inference(translate_task)
+
+    if result.status == TaskStatus.COMPLETED and result.result:
+        result.result = {
+            "translation": result.result.get("response", ""),
+            "source_text": text,
+            "target_language": target_language,
+            "model": model,
+            "tokens_per_second": result.result.get("tokens_per_second", 0),
+        }
+    result.duration_seconds = round(time.time() - start, 2)
+    return result
+
+
+# --- Code Execution Handler ---
+
+
+_UNSHARE_AVAILABLE: bool | None = None
+
+
+async def _check_unshare() -> bool:
+    """Check if Linux unshare -rn is available for network isolation."""
+    global _UNSHARE_AVAILABLE
+    if _UNSHARE_AVAILABLE is not None:
+        return _UNSHARE_AVAILABLE
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "unshare", "-rn", "true",
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        await asyncio.wait_for(proc.wait(), timeout=3)
+        _UNSHARE_AVAILABLE = proc.returncode == 0
+    except (FileNotFoundError, asyncio.TimeoutError):
+        _UNSHARE_AVAILABLE = False
+    return _UNSHARE_AVAILABLE
+
+
+async def handle_code_run(task: TaskRequest) -> TaskResult:
+    """Run Python code in a sandboxed subprocess.
+
+    Sandbox: runs in a temp directory under /tmp, minimal env variables,
+    network isolated via Linux unshare when available. Code is written to
+    a file and executed directly (no shell injection).
+
+    Expected payload:
+        code: str      — Python code to execute
+        timeout: int   — Max execution time in seconds (default 30, max 60)
+    """
+    import sys
+    import tempfile
+    from pathlib import Path
+
+    payload = task.payload
+    code = payload.get("code")
+    timeout = min(payload.get("timeout", 30), 60)
+
+    if not code:
+        return TaskResult(
+            task_id=task.task_id,
+            status=TaskStatus.FAILED,
+            error="Missing required field: 'code'",
+        )
+
+    start = time.time()
+
+    try:
+        with tempfile.TemporaryDirectory(prefix="myco_sandbox_") as tmpdir:
+            code_path = Path(tmpdir) / "run.py"
+            code_path.write_text(code)
+
+            # Minimal environment — no credentials, restricted paths
+            env = {
+                "PATH": "/usr/bin:/bin:/usr/local/bin",
+                "HOME": tmpdir,
+                "TMPDIR": tmpdir,
+                "PYTHONDONTWRITEBYTECODE": "1",
+            }
+
+            # Try network-isolated execution via Linux user namespaces
+            net_isolated = await _check_unshare()
+            if net_isolated:
+                cmd = ["unshare", "-rn", sys.executable, str(code_path)]
+            else:
+                cmd = [sys.executable, str(code_path)]
+
+            logger.info(
+                f"🔒 Running code (timeout={timeout}s, "
+                f"net_isolated={net_isolated})"
+            )
+
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                cwd=tmpdir,
+                env=env,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+
+            try:
+                stdout_raw, stderr_raw = await asyncio.wait_for(
+                    proc.communicate(), timeout=timeout
+                )
+            except asyncio.TimeoutError:
+                proc.kill()
+                await proc.wait()
+                return TaskResult(
+                    task_id=task.task_id,
+                    status=TaskStatus.FAILED,
+                    error=f"Code execution timed out after {timeout}s",
+                    duration_seconds=round(time.time() - start, 2),
+                )
+
+            stdout = stdout_raw.decode(errors="replace")[:50_000]
+            stderr = stderr_raw.decode(errors="replace")[:50_000]
+
+            return TaskResult(
+                task_id=task.task_id,
+                status=TaskStatus.COMPLETED,
+                result={
+                    "stdout": stdout,
+                    "stderr": stderr,
+                    "return_code": proc.returncode,
+                    "network_isolated": net_isolated,
+                    "timeout": timeout,
+                },
+                duration_seconds=round(time.time() - start, 2),
+            )
+    except Exception as e:
+        return TaskResult(
+            task_id=task.task_id,
+            status=TaskStatus.FAILED,
+            error=f"Code execution failed: {e}",
+            duration_seconds=round(time.time() - start, 2),
+        )
+
+
 # --- Handler Registry ---
 
 HANDLERS: dict[str, Callable[[TaskRequest], Awaitable[TaskResult]]] = {
     "inference": handle_inference,
+    "embedding": handle_embedding,
     "web_search": handle_web_search,
     "web_fetch": handle_web_fetch,
+    "file_read": handle_file_read,
+    "file_summarize": handle_file_summarize,
+    "translate": handle_translate,
+    "code_run": handle_code_run,
     "ping": handle_ping,
 }
 

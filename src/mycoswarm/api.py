@@ -218,7 +218,7 @@ def create_api(
 
     # Task types that should be distributed across the swarm
     # even when the local node could handle them.
-    DISTRIBUTABLE_TASKS = {"web_search", "web_fetch"}
+    DISTRIBUTABLE_TASKS = {"web_search", "web_fetch", "file_read", "code_run"}
 
     async def _route_to_peer(task: TaskRequest, target):
         """Forward task to a peer and poll for result in background."""

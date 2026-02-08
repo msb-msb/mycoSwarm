@@ -113,6 +113,17 @@
 - [x] Auto-save on /quit and Ctrl+C, /save slash command for manual save
 - [x] Session metadata: name, model, created/updated timestamps, message count
 
+### Phase 11: Skill Library — Core Handlers (2026-02-08)
+- [x] Embedding handler: POST to Ollama /api/embeddings, returns vector + dimensions
+- [x] File read handler: extract text from PDF (pymupdf), markdown, txt, html, csv, json
+- [x] File summarize handler: read file inline then summarize via inference (routes to GPU nodes)
+- [x] Translate handler: inference with translation system prompt, auto-detects model
+- [x] Code run handler: sandboxed Python subprocess, network isolated via unshare -rn, temp dir, timeout
+- [x] New capabilities: FILE_PROCESSING, CODE_EXECUTION advertised by all cpu_worker nodes
+- [x] TASK_ROUTING updated: embedding/translate/file_summarize → inference nodes, file_read/code_run → CPU workers
+- [x] file_read and code_run added to DISTRIBUTABLE_TASKS for swarm-wide distribution
+- [x] pymupdf dependency added to pyproject.toml
+
 ## Next
 
 ### Phase 5b: Cross-Node Inference (remaining)
