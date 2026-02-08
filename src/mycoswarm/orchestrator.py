@@ -124,21 +124,69 @@ class Orchestrator:
         return selected
 
     async def _dispatch_to_peer(self, peer: Peer, task: TaskRequest) -> TaskResult:
-        url = f"http://{peer.ip}:{peer.port}/task"
+        """Dispatch a task to a peer and poll until completion."""
+        base_url = f"http://{peer.ip}:{peer.port}"
 
         try:
+            # Submit the task
             response = await self._client.post(
-                url, json=task.model_dump(), timeout=task.timeout_seconds
+                f"{base_url}/task",
+                json=task.model_dump(),
+                timeout=PEER_TIMEOUT,
             )
             response.raise_for_status()
-            data = response.json()
+            logger.info(
+                f"📤 Dispatched {task.task_id} to {peer.hostname} "
+                f"({peer.ip}:{peer.port})"
+            )
 
+            # Poll for the result
+            deadline = time.time() + task.timeout_seconds
+            while time.time() < deadline:
+                await asyncio.sleep(0.5)
+                try:
+                    poll_resp = await self._client.get(
+                        f"{base_url}/task/{task.task_id}",
+                        timeout=PEER_TIMEOUT,
+                    )
+                    data = poll_resp.json()
+                    status = data.get("status", "pending")
+
+                    if status == "completed":
+                        logger.info(
+                            f"✅ Remote task {task.task_id} completed on "
+                            f"{peer.hostname}"
+                        )
+                        return TaskResult(
+                            task_id=task.task_id,
+                            status=TaskStatus.COMPLETED,
+                            result=data.get("result"),
+                            duration_seconds=data.get("duration_seconds", 0),
+                            node_id=data.get("node_id", peer.node_id),
+                        )
+                    elif status == "failed":
+                        logger.error(
+                            f"❌ Remote task {task.task_id} failed on "
+                            f"{peer.hostname}: {data.get('error')}"
+                        )
+                        return TaskResult(
+                            task_id=task.task_id,
+                            status=TaskStatus.FAILED,
+                            error=data.get("error", "Remote task failed"),
+                            duration_seconds=data.get("duration_seconds", 0),
+                            node_id=data.get("node_id", peer.node_id),
+                        )
+                except httpx.HTTPError:
+                    pass  # Transient error, keep polling
+
+            logger.error(f"⏱️ Remote task {task.task_id} timed out on {peer.hostname}")
             return TaskResult(
                 task_id=task.task_id,
-                status=TaskStatus(data.get("status", "pending")),
-                result=data,
+                status=TaskStatus.FAILED,
+                error=f"Timed out waiting for {peer.hostname} after {task.timeout_seconds}s",
                 node_id=peer.node_id,
             )
+
         except httpx.TimeoutException:
             logger.error(f"Timeout dispatching to {peer.hostname}")
             return TaskResult(
@@ -155,6 +203,42 @@ class Orchestrator:
                 error=str(e),
                 node_id=peer.node_id,
             )
+
+    def can_handle_locally(self, task_type: str) -> bool:
+        """Check if this node has capabilities for the given task type."""
+        required_caps = TASK_ROUTING.get(task_type, ["cpu_worker"])
+        return any(cap in self.identity.capabilities for cap in required_caps)
+
+    async def route_task(self, task: TaskRequest) -> TaskResult | None:
+        """Route a task to the best peer. Returns None if no peer available.
+
+        This is the main entry point used by the API when the local node
+        can't handle a task. It dispatches to the best peer and polls
+        until the result is ready.
+        """
+        target = await self._select_node(task.task_type)
+        if not target:
+            logger.warning(
+                f"❌ No peer available for {task.task_type} "
+                f"(task {task.task_id})"
+            )
+            return None
+
+        record = TaskRecord(
+            task_id=task.task_id,
+            task_type=task.task_type,
+            target_node=target.node_id,
+            target_ip=target.ip,
+            target_port=target.port,
+        )
+        self._records[task.task_id] = record
+
+        result = await self._dispatch_to_peer(target, task)
+        record.status = result.status
+        record.result = result.result
+        record.error = result.error
+        record.completed_at = time.time()
+        return result
 
     async def submit(
         self,
@@ -195,10 +279,7 @@ class Orchestrator:
             return result
 
         # No peer — handle locally
-        if any(
-            cap in self.identity.capabilities
-            for cap in TASK_ROUTING.get(task_type, ["cpu_worker"])
-        ):
+        if self.can_handle_locally(task_type):
             logger.info(f"📍 No peers for {task_type} — handling locally")
             return TaskResult(
                 task_id=task_id,

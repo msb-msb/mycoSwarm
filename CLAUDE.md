@@ -20,6 +20,17 @@ src/mycoswarm/
 └── cli.py            # CLI entry point (detect, daemon, swarm, ping, ask)
 ```
 
+## Project Philosophy
+See MANIFESTO.md for the full argument. The short version: "open source" in AI
+often means weights you can download but can't run without renting a datacenter.
+mycoSwarm exists to prove that coordinated cheap hardware — the GPUs and mini PCs
+people already own — can deliver real AI capability without cloud dependencies.
+
+The key test: **if a student with two old laptops can't participate, the framework
+has failed.** Every design decision filters through this. No heavy dependencies,
+no mandatory GPU, no configuration that assumes you know networking. A ThinkCentre
+from eBay and a borrowed gaming PC should be a working swarm.
+
 ## Key Design Principles
 - **No center**: Any node can be orchestrator. Roles migrate.
 - **Adapt to what you have**: Works from Raspberry Pi to RTX 4090.

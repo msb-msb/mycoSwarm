@@ -9,16 +9,22 @@ Each node runs a lightweight FastAPI server that exposes:
 All endpoints are LAN-only by default (bound to the LAN IP, not 0.0.0.0).
 """
 
+from __future__ import annotations
+
 import asyncio
 import logging
 import time
 from enum import Enum
+from typing import TYPE_CHECKING
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 from mycoswarm.node import NodeIdentity, build_identity
 from mycoswarm.discovery import PeerRegistry
+
+if TYPE_CHECKING:
+    from mycoswarm.orchestrator import Orchestrator
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +86,7 @@ class PeerResponse(BaseModel):
     capabilities: list[str]
     gpu_name: str | None
     vram_total_mb: int
+    available_models: list[str]
     last_seen: float
 
 
@@ -147,6 +154,7 @@ def create_api(
     registry: PeerRegistry,
     task_queue: TaskQueue,
     start_time: float,
+    orchestrator: Orchestrator | None = None,
 ) -> FastAPI:
     """Create the FastAPI application for this node."""
 
@@ -184,6 +192,7 @@ def create_api(
                 capabilities=p.capabilities,
                 gpu_name=p.gpu_name,
                 vram_total_mb=p.vram_total_mb,
+                available_models=p.available_models,
                 last_seen=p.last_seen,
             )
             for p in peers
@@ -195,7 +204,38 @@ def create_api(
             f"📥 Task received: {task.task_id} ({task.task_type}) "
             f"from {task.source_node}"
         )
-        return await task_queue.submit(task)
+
+        # Check if we can handle this locally
+        can_local = (
+            orchestrator is None
+            or orchestrator.can_handle_locally(task.task_type)
+        )
+
+        if can_local:
+            return await task_queue.submit(task)
+
+        # Can't handle locally — route to best peer
+        logger.info(
+            f"🔀 Can't handle {task.task_type} locally, routing to peer..."
+        )
+
+        async def _route_remote():
+            result = await orchestrator.route_task(task)
+            if result is None:
+                result = TaskResult(
+                    task_id=task.task_id,
+                    status=TaskStatus.FAILED,
+                    error=f"No peer in swarm can handle: {task.task_type}",
+                )
+            await task_queue.store_result(result)
+
+        asyncio.create_task(_route_remote())
+
+        return TaskResponse(
+            task_id=task.task_id,
+            status=TaskStatus.PENDING,
+            message="Routed to remote peer",
+        )
 
     @app.get("/task/{task_id}")
     async def get_task_result(task_id: str):

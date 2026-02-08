@@ -223,13 +223,23 @@ def cmd_ask(args):
     url = f"http://{ip}:{args.port}"
     prompt = " ".join(args.prompt)
 
-    # If no model specified, pick the best one from the daemon
+    # If no model specified, pick the best one from the daemon (or peers)
     model = args.model
     if not model:
         try:
             with httpx.Client(timeout=5) as client:
                 status = client.get(f"{url}/status").json()
                 models = status.get("ollama_models", [])
+
+                # If local node has no models, check peers
+                if not models:
+                    peers_data = client.get(f"{url}/peers").json()
+                    for p in peers_data:
+                        peer_models = p.get("available_models", [])
+                        if peer_models:
+                            models = peer_models
+                            break
+
                 if models:
                     # Prefer a 14b+ model, fall back to first available
                     model = models[0]
@@ -238,7 +248,7 @@ def cmd_ask(args):
                             model = m
                             break
                 else:
-                    print("❌ No Ollama models available on this node.")
+                    print("❌ No Ollama models available in the swarm.")
                     sys.exit(1)
         except httpx.ConnectError:
             print("❌ Daemon not running. Start it with: mycoswarm daemon")

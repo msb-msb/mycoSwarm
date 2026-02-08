@@ -32,13 +32,18 @@
 - [x] Daemon updated: runs worker alongside API + discovery
 - [x] CLI: `mycoswarm ask "prompt"` — submit inference to swarm
 
+### Phase 5: Cross-Node Inference (2026-02-08)
+- [x] Test `mycoswarm ask` end-to-end on Miu (local inference via worker) — works, gemma3:27b @ 34 tok/s
+- [x] Add orchestrator to daemon (Orchestrator instance created in daemon, passed to API)
+- [x] Wire up /task endpoint to route to best node when local can't handle it
+- [x] Orchestrator dispatches to peer and polls for result (replaces fire-and-forget POST)
+- [x] CLI discovers models from peers when local node has none (for naru → Miu flow)
+- [x] /peers endpoint now includes available_models for model discovery
+
 ## Next
 
-### Phase 5: Cross-Node Inference
-- [ ] Test `mycoswarm ask` end-to-end on Miu (local inference via worker)
+### Phase 5b: Cross-Node Inference (remaining)
 - [ ] Test submitting inference from naru → Miu (remote dispatch via orchestrator)
-- [ ] Add orchestrator to daemon (currently standalone module)
-- [ ] Wire up /task endpoint to route to best node when local can't handle it
 - [ ] Add `--remote` flag to `mycoswarm ask` to force remote execution
 
 ### Phase 6: Robustness

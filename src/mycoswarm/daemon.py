@@ -23,6 +23,7 @@ from mycoswarm.node import build_identity, NodeIdentity
 from mycoswarm.discovery import Discovery, PeerRegistry, DEFAULT_PORT
 from mycoswarm.api import create_api, TaskQueue
 from mycoswarm.worker import TaskWorker
+from mycoswarm.orchestrator import Orchestrator
 
 logger = logging.getLogger(__name__)
 
@@ -123,9 +124,10 @@ async def run_daemon(port: int = DEFAULT_PORT, verbose: bool = False):
     task_queue = TaskQueue()
     discovery = Discovery(identity, registry, port=port)
     worker = TaskWorker(task_queue, identity.node_id)
+    orchestrator = Orchestrator(identity, registry)
 
     # Create FastAPI app
-    app = create_api(identity, registry, task_queue, start_time)
+    app = create_api(identity, registry, task_queue, start_time, orchestrator)
 
     # Handle shutdown
     stop_event = asyncio.Event()
@@ -161,6 +163,7 @@ async def run_daemon(port: int = DEFAULT_PORT, verbose: bool = False):
 
     logger.info(f"🌐 API listening on http://{identity.lan_ip}:{port}")
     logger.info("👷 Task worker running")
+    logger.info("🎯 Orchestrator active — tasks route to best node")
 
     # Wait for shutdown
     await stop_event.wait()
@@ -181,6 +184,7 @@ async def run_daemon(port: int = DEFAULT_PORT, verbose: bool = False):
 
     server.should_exit = True
     await server_task
+    await orchestrator.close()
     await discovery.stop()
 
     stats = worker.stats
