@@ -205,9 +205,18 @@ class Orchestrator:
             )
 
     def can_handle_locally(self, task_type: str) -> bool:
-        """Check if this node has capabilities for the given task type."""
+        """Check if this node can actually handle the given task type.
+
+        For inference/embedding, having the capability isn't enough —
+        Ollama must be running too.
+        """
         required_caps = TASK_ROUTING.get(task_type, ["cpu_worker"])
-        return any(cap in self.identity.capabilities for cap in required_caps)
+        has_caps = any(cap in self.identity.capabilities for cap in required_caps)
+        if not has_caps:
+            return False
+        if task_type in ("inference", "embedding") and not self.identity.ollama_running:
+            return False
+        return True
 
     async def route_task(self, task: TaskRequest) -> TaskResult | None:
         """Route a task to the best peer. Returns None if no peer available.
