@@ -231,14 +231,19 @@ def cmd_ask(args):
                 status = client.get(f"{url}/status").json()
                 models = status.get("ollama_models", [])
 
-                # If local node has no models, check peers
+                # If local node has no models, check peers (best VRAM first)
                 if not models:
                     peers_data = client.get(f"{url}/peers").json()
-                    for p in peers_data:
-                        peer_models = p.get("available_models", [])
-                        if peer_models:
-                            models = peer_models
-                            break
+                    peers_with_models = [
+                        p for p in peers_data
+                        if p.get("available_models")
+                    ]
+                    if peers_with_models:
+                        best_peer = max(
+                            peers_with_models,
+                            key=lambda p: p.get("vram_total_mb", 0),
+                        )
+                        models = best_peer["available_models"]
 
                 if models:
                     # Prefer a 14b+ model, fall back to first available
