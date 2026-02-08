@@ -104,12 +104,26 @@ class Orchestrator:
         required_caps = TASK_ROUTING.get(task_type, ["cpu_worker"])
         peers = await self.registry.get_all()
 
-        eligible = [
-            p for p in peers
-            if any(cap in p.capabilities for cap in required_caps)
-            and not p.is_stale
-            and self.registry.is_healthy(p.node_id)
-        ]
+        eligible = []
+        for p in peers:
+            has_caps = any(cap in p.capabilities for cap in required_caps)
+            stale = p.is_stale
+            healthy = self.registry.is_healthy(p.node_id)
+
+            if has_caps and not stale and healthy:
+                eligible.append(p)
+            else:
+                logger.debug(
+                    f"🔍 Filtered out {p.hostname}: "
+                    f"caps={has_caps} stale={stale} "
+                    f"(age={p.age_seconds:.0f}s) healthy={healthy}"
+                )
+
+        if not eligible and peers:
+            logger.warning(
+                f"⚠️ {len(peers)} peer(s) known but none eligible for "
+                f"{task_type} (need: {required_caps})"
+            )
 
         if task_type in ("inference", "embedding"):
             eligible.sort(key=self._score_peer_for_inference, reverse=True)

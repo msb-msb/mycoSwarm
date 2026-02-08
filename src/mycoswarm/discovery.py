@@ -131,12 +131,21 @@ class PeerRegistry:
             )
 
     def record_success(self, node_id: str):
-        """Record a successful request to a peer, clearing failure count."""
+        """Record a successful request to a peer.
+
+        Clears failure count AND refreshes last_seen — successful HTTP
+        communication is proof the peer is alive, independent of mDNS.
+        """
         if node_id in self._failure_counts:
             peer = self._peers.get(node_id)
             name = peer.hostname if peer else node_id
             logger.info(f"💚 Peer {name} is healthy again")
             del self._failure_counts[node_id]
+        # Update last_seen — prevents stale-marking when mDNS updates
+        # don't arrive (identical TXT records = no zeroconf Updated event)
+        peer = self._peers.get(node_id)
+        if peer:
+            peer.last_seen = time.time()
 
     def is_healthy(self, node_id: str) -> bool:
         """Check if a peer is considered healthy (< UNHEALTHY_THRESHOLD failures)."""
