@@ -15,6 +15,9 @@ Usage:
     mycoswarm models              Show all models available across the swarm
     mycoswarm plugins             List installed plugins and their status
     mycoswarm chat                Interactive chat with the swarm
+    mycoswarm chat --resume       Resume the most recent chat session
+    mycoswarm chat --session NAME Resume a named session
+    mycoswarm chat --list         List saved chat sessions
 """
 
 import argparse
@@ -820,26 +823,157 @@ def cmd_plugins(args):
     print(f"  {loaded}/{len(plugins)} plugin(s) loaded")
 
 
+SESSIONS_DIR = "~/.config/mycoswarm/sessions"
+
+
+def _sessions_path() -> "Path":
+    from pathlib import Path
+    p = Path(SESSIONS_DIR).expanduser()
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def _save_session(
+    name: str, messages: list[dict], model: str,
+) -> str:
+    """Save chat session to disk. Returns the file path."""
+    import json
+    from datetime import datetime
+
+    path = _sessions_path() / f"{name}.json"
+    data = {
+        "name": name,
+        "model": model,
+        "created": datetime.now().isoformat(),
+        "updated": datetime.now().isoformat(),
+        "message_count": len(messages),
+        "messages": messages,
+    }
+    # Update timestamps if file already exists
+    if path.exists():
+        try:
+            existing = json.loads(path.read_text())
+            data["created"] = existing.get("created", data["created"])
+        except (json.JSONDecodeError, KeyError):
+            pass
+
+    path.write_text(json.dumps(data, indent=2))
+    return str(path)
+
+
+def _load_session(name: str) -> tuple[list[dict], str] | None:
+    """Load a session by name. Returns (messages, model) or None."""
+    import json
+
+    path = _sessions_path() / f"{name}.json"
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text())
+        return data.get("messages", []), data.get("model", "")
+    except (json.JSONDecodeError, KeyError):
+        return None
+
+
+def _list_sessions() -> list[dict]:
+    """List all saved sessions with metadata."""
+    import json
+
+    sessions = []
+    for f in sorted(_sessions_path().glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True):
+        try:
+            data = json.loads(f.read_text())
+            sessions.append({
+                "name": f.stem,
+                "model": data.get("model", ""),
+                "updated": data.get("updated", ""),
+                "message_count": data.get("message_count", 0),
+            })
+        except (json.JSONDecodeError, KeyError):
+            pass
+    return sessions
+
+
+def _latest_session_name() -> str | None:
+    """Return the name of the most recently updated session."""
+    sessions = _list_sessions()
+    return sessions[0]["name"] if sessions else None
+
+
 def cmd_chat(args):
     """Interactive chat with the swarm."""
     import uuid
+    from datetime import datetime
+
+    # Handle --list
+    if args.list_sessions:
+        sessions = _list_sessions()
+        if not sessions:
+            print("No saved sessions.")
+            return
+        print("🍄 Saved Chat Sessions")
+        print("=" * 60)
+        for s in sessions:
+            updated = s["updated"][:16].replace("T", " ") if s["updated"] else ""
+            print(
+                f"  {s['name']}  ({s['message_count']} msgs, "
+                f"{s['model']}, {updated})"
+            )
+        return
 
     profile = detect_all()
     ip = profile.lan_ip or "localhost"
     url = f"http://{ip}:{args.port}"
-    model = _discover_model(url, args.model)
+
+    # Session loading
+    session_name = None
     messages: list[dict[str, str]] = []
+
+    if args.resume:
+        session_name = _latest_session_name()
+        if session_name:
+            loaded = _load_session(session_name)
+            if loaded:
+                messages, saved_model = loaded
+                if not args.model and saved_model:
+                    args.model = saved_model
+        else:
+            print("No previous session to resume.")
+
+    elif args.session:
+        session_name = args.session
+        loaded = _load_session(session_name)
+        if loaded:
+            messages, saved_model = loaded
+            if not args.model and saved_model:
+                args.model = saved_model
+        else:
+            print(f"Session '{session_name}' not found, starting new.")
+
+    if not session_name:
+        session_name = f"chat-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+
+    model = _discover_model(url, args.model)
 
     print("🍄 mycoSwarm Chat")
     print(f"   Model: {model}")
+    print(f"   Session: {session_name}")
+    if messages:
+        print(f"   Resumed: {len(messages)} messages")
     print("   /model to switch, /peers to show swarm, /clear to reset, /quit to exit")
     print(f"{'─' * 50}")
+
+    def _save():
+        path = _save_session(session_name, messages, model)
+        print(f"   Session saved: {session_name}")
 
     while True:
         try:
             user_input = input("\n🍄> ").strip()
         except (EOFError, KeyboardInterrupt):
-            print("\nBye. 🍄")
+            print()
+            _save()
+            print("Bye. 🍄")
             break
 
         if not user_input:
@@ -850,12 +984,17 @@ def cmd_chat(args):
             cmd = user_input.split()[0].lower()
 
             if cmd in ("/quit", "/exit", "/q"):
+                _save()
                 print("Bye. 🍄")
                 break
 
             elif cmd == "/clear":
                 messages.clear()
                 print("   Conversation cleared.")
+                continue
+
+            elif cmd == "/save":
+                _save()
                 continue
 
             elif cmd == "/model":
@@ -1073,6 +1212,18 @@ def main():
     )
     chat_parser.add_argument(
         "--port", type=int, default=7890, help="Local daemon port"
+    )
+    chat_parser.add_argument(
+        "--resume", action="store_true", default=False,
+        help="Resume the most recent chat session",
+    )
+    chat_parser.add_argument(
+        "--session", type=str, default=None,
+        help="Resume a named session (or start new with that name)",
+    )
+    chat_parser.add_argument(
+        "--list", dest="list_sessions", action="store_true", default=False,
+        help="List saved chat sessions",
     )
     chat_parser.set_defaults(func=cmd_chat)
 

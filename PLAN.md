@@ -105,6 +105,14 @@
 - [x] CLI: `mycoswarm plugins` — list installed plugins with status
 - [x] Example plugin: plugins/example_summarize/ (sentence extraction)
 
+### Phase 10b: Datetime Awareness & Persistent Sessions (2026-02-08)
+- [x] Datetime awareness: _datetime_string() injects current date/time into all inference system prompts
+- [x] _build_ollama_request() handles both chat (messages array) and generate (prompt) modes
+- [x] Persistent chat sessions: saved to ~/.config/mycoswarm/sessions/ as JSON
+- [x] Session flags: --resume (latest session), --session NAME, --list (show saved sessions)
+- [x] Auto-save on /quit and Ctrl+C, /save slash command for manual save
+- [x] Session metadata: name, model, created/updated timestamps, message count
+
 ## Next
 
 ### Phase 5b: Cross-Node Inference (remaining)

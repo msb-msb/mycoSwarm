@@ -42,22 +42,41 @@ def _push_safe(queue: asyncio.Queue, event: dict | None) -> None:
         pass
 
 
+def _datetime_string() -> str:
+    """Current date/time formatted for system prompt injection."""
+    from datetime import datetime, timezone
+
+    now = datetime.now().astimezone()
+    return now.strftime("Current date and time: %A, %B %-d, %Y at %-I:%M %p %Z")
+
+
 def _build_ollama_request(
     payload: dict,
 ) -> tuple[str, dict, bool]:
     """Build Ollama endpoint + payload from task payload.
 
     Returns (endpoint, ollama_payload, is_chat).
+    Automatically injects current date/time into the system context.
     """
     model = payload["model"]
     messages = payload.get("messages")
     prompt = payload.get("prompt")
+    datetime_line = _datetime_string()
 
     if messages:
         endpoint = f"{OLLAMA_BASE}/api/chat"
+        # Inject datetime into existing system message or prepend one
+        msgs = list(messages)
+        if msgs and msgs[0].get("role") == "system":
+            msgs[0] = {
+                **msgs[0],
+                "content": f"{datetime_line}\n\n{msgs[0]['content']}",
+            }
+        else:
+            msgs.insert(0, {"role": "system", "content": datetime_line})
         ollama_payload: dict = {
             "model": model,
-            "messages": messages,
+            "messages": msgs,
             "options": {
                 "temperature": payload.get("temperature", 0.7),
                 "num_predict": payload.get("max_tokens", 2048),
@@ -76,8 +95,13 @@ def _build_ollama_request(
         }
         is_chat = False
 
-    if payload.get("system"):
-        ollama_payload["system"] = payload["system"]
+    # System prompt: prepend datetime
+    existing_system = payload.get("system", "")
+    if existing_system:
+        ollama_payload["system"] = f"{datetime_line}\n\n{existing_system}"
+    elif not is_chat:
+        # Generate mode with no system — inject datetime
+        ollama_payload["system"] = datetime_line
 
     return endpoint, ollama_payload, is_chat
 
