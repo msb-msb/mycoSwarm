@@ -105,12 +105,41 @@ class Orchestrator:
         if peer.node_tier == "light":
             score += 50
         elif peer.node_tier == "executive":
-            score -= 20
+            score -= 500  # Reserve GPU nodes for inference
         if peer.is_stale:
             score -= 2000
         # Penalise busy peers — distributes tasks round-robin style
         score -= self._inflight.get(peer.node_id, 0) * 100
         return score
+
+    def _local_cpu_score(self) -> float:
+        """Score the local node as a CPU work candidate."""
+        score = 0.0
+        if "cpu_worker" in self.identity.capabilities:
+            score += 100
+        if self.identity.node_tier == "light":
+            score += 50
+        elif self.identity.node_tier == "executive":
+            score -= 500
+        score -= self._inflight.get(self.identity.node_id, 0) * 100
+        return score
+
+    def pick_for_distribution(self, candidates: list[Peer]) -> Peer | None:
+        """Pick the best node for a distributable task, including local.
+
+        Returns a Peer to route to, or None if local should handle it.
+        """
+        local_score = self._local_cpu_score()
+
+        if not candidates:
+            return None  # Local only option
+
+        best = candidates[0]  # Already sorted by score
+        best_score = self._score_peer_for_cpu_work(best)
+
+        if best_score > local_score:
+            return best
+        return None  # Local wins
 
     async def _select_nodes(self, task_type: str) -> list[Peer]:
         """Return eligible peers ranked by score, filtering stale/unhealthy."""

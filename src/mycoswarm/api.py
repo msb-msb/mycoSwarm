@@ -313,15 +313,34 @@ def create_api(
             or orchestrator.can_handle_locally(task.task_type)
         )
 
-        # Distributable tasks: route to least-loaded peer when possible
+        # Distributable tasks: pick least-loaded node (peers + local)
         if (
             orchestrator is not None
             and task.task_type in DISTRIBUTABLE_TASKS
         ):
             candidates = await orchestrator._select_nodes(task.task_type)
-            if candidates:
-                return await _route_to_peer(task, candidates[0])
-            # No peers — fall through to local
+            target = orchestrator.pick_for_distribution(candidates)
+            if target is not None:
+                return await _route_to_peer(task, target)
+            # Local wins — track inflight and handle here
+            if can_local:
+                orchestrator.record_dispatch(identity.node_id)
+
+                async def _track_local_completion(tid: str):
+                    """Decrement local inflight when task completes."""
+                    deadline = time.time() + task.timeout_seconds
+                    while time.time() < deadline:
+                        await asyncio.sleep(0.5)
+                        result = await task_queue.get_result(tid)
+                        if result:
+                            orchestrator.record_completion(identity.node_id)
+                            return
+                    orchestrator.record_completion(identity.node_id)
+
+                asyncio.create_task(
+                    _track_local_completion(task.task_id)
+                )
+                return await task_queue.submit(task)
 
         if can_local:
             if task.task_type == "inference":
