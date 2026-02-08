@@ -113,10 +113,11 @@ class Orchestrator:
             if has_caps and not stale and healthy:
                 eligible.append(p)
             else:
-                logger.debug(
+                logger.warning(
                     f"🔍 Filtered out {p.hostname}: "
-                    f"caps={has_caps} stale={stale} "
-                    f"(age={p.age_seconds:.0f}s) healthy={healthy}"
+                    f"caps={p.capabilities} (need {required_caps}, match={has_caps}) "
+                    f"stale={stale} (age={p.age_seconds:.0f}s) "
+                    f"healthy={healthy}"
                 )
 
         if not eligible and peers:

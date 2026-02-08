@@ -49,8 +49,8 @@ class Peer:
 
     @property
     def is_stale(self) -> bool:
-        """Peer hasn't been seen in over 60 seconds."""
-        return self.age_seconds > 60
+        """Peer hasn't been seen in over 300 seconds."""
+        return self.age_seconds > 300
 
 
 UNHEALTHY_THRESHOLD = 3  # consecutive failures before marking unhealthy

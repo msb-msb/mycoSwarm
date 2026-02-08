@@ -15,6 +15,7 @@ import signal
 import sys
 import time
 
+import httpx
 import uvicorn
 
 from mycoswarm.hardware import detect_all
@@ -69,7 +70,7 @@ async def _status_refresh_loop(
     registry: PeerRegistry,
     interval: int = STATUS_REFRESH_INTERVAL,
 ):
-    """Periodically refresh hardware status and update announcement."""
+    """Periodically refresh hardware status, ping peers, and update announcement."""
     while True:
         await asyncio.sleep(interval)
         try:
@@ -78,7 +79,19 @@ async def _status_refresh_loop(
             identity = build_identity(profile, caps)
             await discovery.update_identity(identity)
 
+            # Ping all known peers — keeps last_seen fresh between mDNS events
             peers = await registry.get_all()
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                for peer in peers:
+                    try:
+                        resp = await client.get(
+                            f"http://{peer.ip}:{peer.port}/health"
+                        )
+                        if resp.status_code == 200:
+                            registry.record_success(peer.node_id)
+                    except (httpx.ConnectError, httpx.TimeoutException):
+                        registry.record_failure(peer.node_id)
+
             active = [p for p in peers if not p.is_stale]
             logger.debug(
                 f"Status refresh: {len(active)} active peer(s), "
