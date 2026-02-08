@@ -1,0 +1,12 @@
+# Example mycoSwarm plugin — summarize text
+#
+# To install, copy this directory to:
+#   ~/.config/mycoswarm/plugins/example_summarize/
+#
+# The daemon will auto-discover it on next startup.
+
+name: example_summarize
+task_type: summarize
+description: Summarize text by extracting the first N sentences
+capabilities:
+  - cpu_worker

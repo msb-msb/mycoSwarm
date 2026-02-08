@@ -23,8 +23,9 @@ from mycoswarm.capabilities import classify_node
 from mycoswarm.node import build_identity, NodeIdentity
 from mycoswarm.discovery import Discovery, PeerRegistry, DEFAULT_PORT
 from mycoswarm.api import create_api, TaskQueue
-from mycoswarm.worker import TaskWorker
+from mycoswarm.worker import TaskWorker, HANDLERS
 from mycoswarm.orchestrator import Orchestrator
+from mycoswarm.plugins import discover_plugins, register_plugins
 
 logger = logging.getLogger(__name__)
 
@@ -128,6 +129,12 @@ async def run_daemon(port: int = DEFAULT_PORT, verbose: bool = False):
     if not identity.lan_ip:
         print("❌ No LAN IP detected. Is your network connected?")
         sys.exit(1)
+
+    # Load plugins before announcing capabilities
+    plugins = discover_plugins()
+    registered = register_plugins(plugins, HANDLERS, identity.capabilities)
+    if registered:
+        logger.info(f"🔌 {len(registered)} plugin(s) loaded")
 
     _print_banner(identity, port)
 

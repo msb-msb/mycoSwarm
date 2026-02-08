@@ -96,6 +96,15 @@
 - [x] `mycoswarm models` — unified view of every model across the swarm, grouped by model name with node/GPU info
 - [x] Systemd service file: scripts/mycoswarm.service — auto-start daemon on boot, works on all nodes
 
+### Phase 10a: Plugin System (2026-02-08)
+- [x] Plugin loader (plugins.py): scans ~/.config/mycoswarm/plugins/ on daemon startup
+- [x] plugin.yaml defines: name, task_type, description, capabilities
+- [x] handler.py exports: async def handle(task) → TaskResult
+- [x] Daemon auto-registers plugins into HANDLERS dict + node capabilities
+- [x] Minimal YAML parser (no PyYAML dependency)
+- [x] CLI: `mycoswarm plugins` — list installed plugins with status
+- [x] Example plugin: plugins/example_summarize/ (sentence extraction)
+
 ## Next
 
 ### Phase 5b: Cross-Node Inference (remaining)
@@ -127,7 +136,7 @@
 - [x] Systemd service file for daemon auto-start
 - [ ] Log rotation
 - [ ] Config file support (~/.config/mycoswarm/config.toml)
-- [ ] Plugin system for custom task handlers
+- [x] Plugin system for custom task handlers
 - [ ] Documentation site
 
 ## Hardware Roadmap

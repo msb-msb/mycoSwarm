@@ -13,6 +13,7 @@ Usage:
     mycoswarm search "query"      Search the web via the swarm
     mycoswarm research "query"    Search + synthesize (CPU search → GPU think)
     mycoswarm models              Show all models available across the swarm
+    mycoswarm plugins             List installed plugins and their status
     mycoswarm chat                Interactive chat with the swarm
 """
 
@@ -787,6 +788,38 @@ def cmd_models(args):
     print(f"  {total} model(s) across {node_count} node(s)")
 
 
+def cmd_plugins(args):
+    """List installed plugins and their status."""
+    from mycoswarm.plugins import discover_plugins, PLUGIN_DIR
+
+    plugins = discover_plugins()
+
+    print("🔌 mycoSwarm — Installed Plugins")
+    print(f"   Directory: {PLUGIN_DIR}")
+    print("=" * 60)
+
+    if not plugins:
+        print("\n  No plugins found.")
+        print(f"\n  To install a plugin, create a subdirectory in:")
+        print(f"    {PLUGIN_DIR}/")
+        print(f"  with plugin.yaml + handler.py")
+        return
+
+    for p in plugins:
+        status = "✅ loaded" if p.loaded else f"❌ {p.error}"
+        print(f"\n  {p.name}")
+        print(f"    Task type:    {p.task_type or '(none)'}")
+        print(f"    Description:  {p.description or '(none)'}")
+        if p.capabilities:
+            print(f"    Capabilities: {', '.join(p.capabilities)}")
+        print(f"    Path:         {p.path}")
+        print(f"    Status:       {status}")
+
+    loaded = sum(1 for p in plugins if p.loaded)
+    print(f"\n{'=' * 60}")
+    print(f"  {loaded}/{len(plugins)} plugin(s) loaded")
+
+
 def cmd_chat(args):
     """Interactive chat with the swarm."""
     import uuid
@@ -1024,6 +1057,12 @@ def main():
         "--port", type=int, default=7890, help="Local daemon port"
     )
     models_parser.set_defaults(func=cmd_models)
+
+    # plugins
+    plugins_parser = subparsers.add_parser(
+        "plugins", help="List installed plugins and their status"
+    )
+    plugins_parser.set_defaults(func=cmd_plugins)
 
     # chat
     chat_parser = subparsers.add_parser(
