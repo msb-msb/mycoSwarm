@@ -2,7 +2,7 @@
 
 Runs on every machine in the swarm. Detects hardware, announces
 capabilities via mDNS, listens for peers, serves the node API,
-and periodically refreshes status.
+executes tasks from the queue, and periodically refreshes status.
 
 Usage:
     mycoswarm daemon              Start the daemon
@@ -22,6 +22,7 @@ from mycoswarm.capabilities import classify_node
 from mycoswarm.node import build_identity, NodeIdentity
 from mycoswarm.discovery import Discovery, PeerRegistry, DEFAULT_PORT
 from mycoswarm.api import create_api, TaskQueue
+from mycoswarm.worker import TaskWorker
 
 logger = logging.getLogger(__name__)
 
@@ -121,6 +122,7 @@ async def run_daemon(port: int = DEFAULT_PORT, verbose: bool = False):
     registry.on_change(_peer_logger)
     task_queue = TaskQueue()
     discovery = Discovery(identity, registry, port=port)
+    worker = TaskWorker(task_queue, identity.node_id)
 
     # Create FastAPI app
     app = create_api(identity, registry, task_queue, start_time)
@@ -149,20 +151,31 @@ async def run_daemon(port: int = DEFAULT_PORT, verbose: bool = False):
     server = uvicorn.Server(config)
     server_task = asyncio.create_task(server.serve())
 
+    # Start task worker
+    worker_task = asyncio.create_task(worker.run())
+
     # Start status refresh
     refresh_task = asyncio.create_task(
         _status_refresh_loop(discovery, registry)
     )
 
     logger.info(f"🌐 API listening on http://{identity.lan_ip}:{port}")
+    logger.info("👷 Task worker running")
 
     # Wait for shutdown
     await stop_event.wait()
 
     # Cleanup
+    worker.stop()
     refresh_task.cancel()
     try:
         await refresh_task
+    except asyncio.CancelledError:
+        pass
+
+    worker_task.cancel()
+    try:
+        await worker_task
     except asyncio.CancelledError:
         pass
 
@@ -170,6 +183,11 @@ async def run_daemon(port: int = DEFAULT_PORT, verbose: bool = False):
     await server_task
     await discovery.stop()
 
+    stats = worker.stats
+    print(
+        f"  Tasks: {stats['tasks_completed']} completed, "
+        f"{stats['tasks_failed']} failed"
+    )
     print(f"  Saw {registry.count} peer(s) during session")
     print("  Goodbye. 🍄")
 

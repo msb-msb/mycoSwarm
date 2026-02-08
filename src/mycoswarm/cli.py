@@ -9,6 +9,7 @@ Usage:
     mycoswarm daemon -v           Verbose logging
     mycoswarm swarm               Show swarm status (query local daemon)
     mycoswarm ping                Ping all known peers
+    mycoswarm ask "your prompt"   Send a prompt for inference
 """
 
 import argparse
@@ -212,6 +213,97 @@ def cmd_ping(args):
                 print(f"  ❌ {p['hostname']} ({p['ip']}) — {e}")
 
 
+def cmd_ask(args):
+    """Send a prompt to the swarm for inference."""
+    import time
+    import uuid
+
+    profile = detect_all()
+    ip = profile.lan_ip or "localhost"
+    url = f"http://{ip}:{args.port}"
+    prompt = " ".join(args.prompt)
+
+    # If no model specified, pick the best one from the daemon
+    model = args.model
+    if not model:
+        try:
+            with httpx.Client(timeout=5) as client:
+                status = client.get(f"{url}/status").json()
+                models = status.get("ollama_models", [])
+                if models:
+                    # Prefer a 14b+ model, fall back to first available
+                    model = models[0]
+                    for m in models:
+                        if "14b" in m or "32b" in m or "27b" in m:
+                            model = m
+                            break
+                else:
+                    print("❌ No Ollama models available on this node.")
+                    sys.exit(1)
+        except httpx.ConnectError:
+            print("❌ Daemon not running. Start it with: mycoswarm daemon")
+            sys.exit(1)
+
+    task_id = f"task-{uuid.uuid4().hex[:8]}"
+    task_payload = {
+        "task_id": task_id,
+        "task_type": "inference",
+        "payload": {
+            "model": model,
+            "prompt": prompt,
+        },
+        "source_node": "cli",
+        "priority": 5,
+        "timeout_seconds": 300,
+    }
+
+    print(f"🍄 Asking: {prompt}")
+    print(f"   Model: {model}")
+    print(f"   Sending to {ip}:{args.port}...\n")
+
+    try:
+        with httpx.Client(timeout=5) as client:
+            resp = client.post(f"{url}/task", json=task_payload)
+            resp.raise_for_status()
+    except httpx.ConnectError:
+        print("❌ Daemon not running. Start it with: mycoswarm daemon")
+        sys.exit(1)
+
+    # Poll for result
+    start = time.time()
+    with httpx.Client(timeout=5) as client:
+        while time.time() - start < 300:
+            time.sleep(0.5)
+            try:
+                result_resp = client.get(f"{url}/task/{task_id}")
+                data = result_resp.json()
+
+                if data.get("status") == "completed":
+                    result = data.get("result", {})
+                    response_text = result.get("response", "")
+                    tps = result.get("tokens_per_second", 0)
+                    duration = data.get("duration_seconds", 0)
+
+                    print(response_text)
+                    print(f"\n{'─' * 50}")
+                    print(
+                        f"  ⏱  {duration:.1f}s | "
+                        f"{tps:.1f} tok/s | "
+                        f"model: {model}"
+                    )
+                    return
+
+                elif data.get("status") == "failed":
+                    print(f"❌ Task failed: {data.get('error', 'unknown error')}")
+                    sys.exit(1)
+
+            except Exception:
+                pass
+
+    print("❌ Timed out waiting for response.")
+    sys.exit(1)
+
+
 def main():
     parser = argparse.ArgumentParser(
         prog="mycoswarm",
@@ -261,6 +353,19 @@ def main():
         "--port", type=int, default=7890, help="Local daemon port"
     )
     ping_parser.set_defaults(func=cmd_ping)
+
+    # ask
+    ask_parser = subparsers.add_parser(
+        "ask", help="Send a prompt to the swarm for inference"
+    )
+    ask_parser.add_argument("prompt", nargs="+", help="The prompt text")
+    ask_parser.add_argument(
+        "--model", type=str, default=None, help="Ollama model name"
+    )
+    ask_parser.add_argument(
+        "--port", type=int, default=7890, help="Local daemon port"
+    )
+    ask_parser.set_defaults(func=cmd_ask)
 
     args = parser.parse_args()
 
