@@ -49,6 +49,14 @@
 - [x] Peer health monitoring — PeerRegistry tracks consecutive failures per peer, marks unhealthy after 3, resets on success or mDNS update
 - [x] Graceful degradation — _route_remote wrapped in try/except, orchestrator errors fail the task gracefully; local tasks always work independently
 
+### Phase 9a: Chat Mode (2026-02-08)
+- [x] Chat mode: `mycoswarm chat` — interactive REPL with conversation history
+- [x] Worker handle_inference supports messages array (Ollama /api/chat endpoint)
+- [x] Extracted CLI helpers: _discover_model, _submit_and_poll, _list_swarm_models
+- [x] Slash commands: /model (list/switch), /peers, /clear, /quit
+- [x] Multi-turn memory verified: model remembers context across turns
+- [x] Shows node_id, tokens/sec, duration in response footer
+
 ## Next
 
 ### Phase 5b: Cross-Node Inference (remaining)
@@ -69,8 +77,7 @@
 - [ ] Benchmark: coordinated 3090+3060 vs 3090 solo (research question #1)
 - [ ] Load balancing: distribute tasks based on real-time utilization
 
-### Phase 9: Advanced Features
-- [ ] Chat mode: `mycoswarm chat` — interactive conversation via swarm
+### Phase 9: Advanced Features (remaining)
 - [ ] Streaming inference (SSE from Ollama through to client)
 - [ ] Embedding handler (for RAG pipelines)
 - [ ] Web fetch handler (download + parse URLs)

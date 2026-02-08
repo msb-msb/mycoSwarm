@@ -34,34 +34,53 @@ OLLAMA_TIMEOUT = 300.0  # 5 min max for inference
 async def handle_inference(task: TaskRequest) -> TaskResult:
     """Run inference via local Ollama.
 
+    Supports two modes:
+      - prompt mode: payload has "prompt" → uses /api/generate
+      - chat mode:   payload has "messages" → uses /api/chat
+
     Expected payload:
         model: str          — Ollama model name (e.g. "qwen2.5:14b-instruct-q4_K_M")
-        prompt: str         — The prompt text
+        prompt: str         — The prompt text (generate mode)
+        messages: list      — Chat messages [{role, content}] (chat mode)
         system: str         — Optional system prompt
         temperature: float  — Optional, default 0.7
         max_tokens: int     — Optional, default 2048
     """
     payload = task.payload
     model = payload.get("model")
+    messages = payload.get("messages")
     prompt = payload.get("prompt")
 
-    if not model or not prompt:
+    if not model or (not prompt and not messages):
         return TaskResult(
             task_id=task.task_id,
             status=TaskStatus.FAILED,
-            error="Missing required fields: 'model' and 'prompt'",
+            error="Missing required fields: 'model' and ('prompt' or 'messages')",
         )
 
-    # Build Ollama request
-    ollama_payload = {
-        "model": model,
-        "prompt": prompt,
-        "stream": False,
-        "options": {
-            "temperature": payload.get("temperature", 0.7),
-            "num_predict": payload.get("max_tokens", 2048),
-        },
-    }
+    # Build Ollama request — chat mode vs generate mode
+    if messages:
+        endpoint = f"{OLLAMA_BASE}/api/chat"
+        ollama_payload = {
+            "model": model,
+            "messages": messages,
+            "stream": False,
+            "options": {
+                "temperature": payload.get("temperature", 0.7),
+                "num_predict": payload.get("max_tokens", 2048),
+            },
+        }
+    else:
+        endpoint = f"{OLLAMA_BASE}/api/generate"
+        ollama_payload = {
+            "model": model,
+            "prompt": prompt,
+            "stream": False,
+            "options": {
+                "temperature": payload.get("temperature", 0.7),
+                "num_predict": payload.get("max_tokens", 2048),
+            },
+        }
 
     if payload.get("system"):
         ollama_payload["system"] = payload["system"]
@@ -70,20 +89,23 @@ async def handle_inference(task: TaskRequest) -> TaskResult:
 
     try:
         async with httpx.AsyncClient(timeout=OLLAMA_TIMEOUT) as client:
-            response = await client.post(
-                f"{OLLAMA_BASE}/api/generate",
-                json=ollama_payload,
-            )
+            response = await client.post(endpoint, json=ollama_payload)
             response.raise_for_status()
             data = response.json()
 
         duration = time.time() - start
 
+        # /api/chat returns response in message.content, /api/generate in response
+        if messages:
+            response_text = data.get("message", {}).get("content", "")
+        else:
+            response_text = data.get("response", "")
+
         return TaskResult(
             task_id=task.task_id,
             status=TaskStatus.COMPLETED,
             result={
-                "response": data.get("response", ""),
+                "response": response_text,
                 "model": model,
                 "total_duration_ms": data.get("total_duration", 0) / 1_000_000,
                 "eval_count": data.get("eval_count", 0),

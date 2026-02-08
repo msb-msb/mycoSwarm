@@ -10,6 +10,7 @@ Usage:
     mycoswarm swarm               Show swarm status (query local daemon)
     mycoswarm ping                Ping all known peers
     mycoswarm ask "your prompt"   Send a prompt for inference
+    mycoswarm chat                Interactive chat with the swarm
 """
 
 import argparse
@@ -213,9 +214,78 @@ def cmd_ping(args):
                 print(f"  ❌ {p['hostname']} ({p['ip']}) — {e}")
 
 
+def _discover_model(url: str, prefer: str | None = None) -> str:
+    """Pick the best model from the swarm. Returns model name or exits."""
+    if prefer:
+        return prefer
+    try:
+        with httpx.Client(timeout=5) as client:
+            status = client.get(f"{url}/status").json()
+            models = status.get("ollama_models", [])
+
+            # If local node has no models, check peers (best VRAM first)
+            if not models:
+                peers_data = client.get(f"{url}/peers").json()
+                peers_with_models = [
+                    p for p in peers_data
+                    if p.get("available_models")
+                ]
+                if peers_with_models:
+                    best_peer = max(
+                        peers_with_models,
+                        key=lambda p: p.get("vram_total_mb", 0),
+                    )
+                    models = best_peer["available_models"]
+
+            if models:
+                # Prefer a 14b+ model, fall back to first available
+                model = models[0]
+                for m in models:
+                    if "14b" in m or "32b" in m or "27b" in m:
+                        model = m
+                        break
+                return model
+            else:
+                print("❌ No Ollama models available in the swarm.")
+                sys.exit(1)
+    except httpx.ConnectError:
+        print("❌ Daemon not running. Start it with: mycoswarm daemon")
+        sys.exit(1)
+
+
+def _submit_and_poll(url: str, task_payload: dict, timeout: int = 300) -> dict | None:
+    """Submit a task and poll until completion. Returns result dict or None."""
+    import time
+
+    task_id = task_payload["task_id"]
+    try:
+        with httpx.Client(timeout=5) as client:
+            resp = client.post(f"{url}/task", json=task_payload)
+            resp.raise_for_status()
+    except httpx.ConnectError:
+        print("❌ Daemon not running. Start it with: mycoswarm daemon")
+        sys.exit(1)
+
+    start = time.time()
+    with httpx.Client(timeout=5) as client:
+        while time.time() - start < timeout:
+            time.sleep(0.5)
+            try:
+                result_resp = client.get(f"{url}/task/{task_id}")
+                data = result_resp.json()
+
+                if data.get("status") == "completed":
+                    return data
+                elif data.get("status") == "failed":
+                    return data
+            except Exception:
+                pass
+
+    return None
+
+
 def cmd_ask(args):
     """Send a prompt to the swarm for inference."""
-    import time
     import uuid
 
     profile = detect_all()
@@ -223,41 +293,7 @@ def cmd_ask(args):
     url = f"http://{ip}:{args.port}"
     prompt = " ".join(args.prompt)
 
-    # If no model specified, pick the best one from the daemon (or peers)
-    model = args.model
-    if not model:
-        try:
-            with httpx.Client(timeout=5) as client:
-                status = client.get(f"{url}/status").json()
-                models = status.get("ollama_models", [])
-
-                # If local node has no models, check peers (best VRAM first)
-                if not models:
-                    peers_data = client.get(f"{url}/peers").json()
-                    peers_with_models = [
-                        p for p in peers_data
-                        if p.get("available_models")
-                    ]
-                    if peers_with_models:
-                        best_peer = max(
-                            peers_with_models,
-                            key=lambda p: p.get("vram_total_mb", 0),
-                        )
-                        models = best_peer["available_models"]
-
-                if models:
-                    # Prefer a 14b+ model, fall back to first available
-                    model = models[0]
-                    for m in models:
-                        if "14b" in m or "32b" in m or "27b" in m:
-                            model = m
-                            break
-                else:
-                    print("❌ No Ollama models available in the swarm.")
-                    sys.exit(1)
-        except httpx.ConnectError:
-            print("❌ Daemon not running. Start it with: mycoswarm daemon")
-            sys.exit(1)
+    model = _discover_model(url, args.model)
 
     task_id = f"task-{uuid.uuid4().hex[:8]}"
     task_payload = {
@@ -276,47 +312,155 @@ def cmd_ask(args):
     print(f"   Model: {model}")
     print(f"   Sending to {ip}:{args.port}...\n")
 
-    try:
-        with httpx.Client(timeout=5) as client:
-            resp = client.post(f"{url}/task", json=task_payload)
-            resp.raise_for_status()
-    except httpx.ConnectError:
-        print("❌ Daemon not running. Start it with: mycoswarm daemon")
+    data = _submit_and_poll(url, task_payload)
+    if data is None:
+        print("❌ Timed out waiting for response.")
+        sys.exit(1)
+    if data.get("status") == "failed":
+        print(f"❌ Task failed: {data.get('error', 'unknown error')}")
         sys.exit(1)
 
-    # Poll for result
-    start = time.time()
-    with httpx.Client(timeout=5) as client:
-        while time.time() - start < 300:
-            time.sleep(0.5)
-            try:
-                result_resp = client.get(f"{url}/task/{task_id}")
-                data = result_resp.json()
+    result = data.get("result", {})
+    print(result.get("response", ""))
+    print(f"\n{'─' * 50}")
+    print(
+        f"  ⏱  {data.get('duration_seconds', 0):.1f}s | "
+        f"{result.get('tokens_per_second', 0):.1f} tok/s | "
+        f"model: {model}"
+    )
 
-                if data.get("status") == "completed":
-                    result = data.get("result", {})
-                    response_text = result.get("response", "")
-                    tps = result.get("tokens_per_second", 0)
-                    duration = data.get("duration_seconds", 0)
 
-                    print(response_text)
-                    print(f"\n{'─' * 50}")
-                    print(
-                        f"  ⏱  {duration:.1f}s | "
-                        f"{tps:.1f} tok/s | "
-                        f"model: {model}"
-                    )
-                    return
+def _list_swarm_models(url: str) -> list[str]:
+    """Gather all unique models across the swarm."""
+    models = set()
+    try:
+        with httpx.Client(timeout=5) as client:
+            status = client.get(f"{url}/status").json()
+            models.update(status.get("ollama_models", []))
+            peers = client.get(f"{url}/peers").json()
+            for p in peers:
+                models.update(p.get("available_models", []))
+    except httpx.ConnectError:
+        pass
+    return sorted(models)
 
-                elif data.get("status") == "failed":
-                    print(f"❌ Task failed: {data.get('error', 'unknown error')}")
-                    sys.exit(1)
 
-            except Exception:
-                pass
+def cmd_chat(args):
+    """Interactive chat with the swarm."""
+    import uuid
 
-    print("❌ Timed out waiting for response.")
-    sys.exit(1)
+    profile = detect_all()
+    ip = profile.lan_ip or "localhost"
+    url = f"http://{ip}:{args.port}"
+    model = _discover_model(url, args.model)
+    messages: list[dict[str, str]] = []
+
+    print("🍄 mycoSwarm Chat")
+    print(f"   Model: {model}")
+    print("   /model to switch, /peers to show swarm, /clear to reset, /quit to exit")
+    print(f"{'─' * 50}")
+
+    while True:
+        try:
+            user_input = input("\n🍄> ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\nBye. 🍄")
+            break
+
+        if not user_input:
+            continue
+
+        # --- Slash commands ---
+        if user_input.startswith("/"):
+            cmd = user_input.split()[0].lower()
+
+            if cmd in ("/quit", "/exit", "/q"):
+                print("Bye. 🍄")
+                break
+
+            elif cmd == "/clear":
+                messages.clear()
+                print("   Conversation cleared.")
+                continue
+
+            elif cmd == "/model":
+                parts = user_input.split(maxsplit=1)
+                if len(parts) > 1:
+                    model = parts[1]
+                    print(f"   Model → {model}")
+                else:
+                    all_models = _list_swarm_models(url)
+                    if all_models:
+                        print("   Available models:")
+                        for m in all_models:
+                            marker = " ◀" if m == model else ""
+                            print(f"     • {m}{marker}")
+                    else:
+                        print("   No models found.")
+                continue
+
+            elif cmd == "/peers":
+                try:
+                    with httpx.Client(timeout=5) as client:
+                        peers = client.get(f"{url}/peers").json()
+                    if peers:
+                        for p in peers:
+                            gpu = f" [{p['gpu_name']}]" if p.get("gpu_name") else ""
+                            print(
+                                f"   • {p['hostname']} ({p['ip']}) "
+                                f"[{p['node_tier'].upper()}]{gpu}"
+                            )
+                    else:
+                        print("   No peers.")
+                except httpx.ConnectError:
+                    print("   ❌ Can't reach daemon.")
+                continue
+
+            else:
+                print(f"   Unknown command: {cmd}")
+                continue
+
+        # --- Send message ---
+        messages.append({"role": "user", "content": user_input})
+
+        task_id = f"chat-{uuid.uuid4().hex[:8]}"
+        task_payload = {
+            "task_id": task_id,
+            "task_type": "inference",
+            "payload": {
+                "model": model,
+                "messages": list(messages),
+            },
+            "source_node": "cli-chat",
+            "priority": 5,
+            "timeout_seconds": 300,
+        }
+
+        data = _submit_and_poll(url, task_payload)
+
+        if data is None:
+            print("❌ Timed out.")
+            messages.pop()  # Remove unanswered user message
+            continue
+
+        if data.get("status") == "failed":
+            print(f"❌ {data.get('error', 'unknown error')}")
+            messages.pop()
+            continue
+
+        result = data.get("result", {})
+        response_text = result.get("response", "")
+        messages.append({"role": "assistant", "content": response_text})
+
+        print(f"\n{response_text}")
+        node_id = data.get("node_id", "")
+        tps = result.get("tokens_per_second", 0)
+        duration = data.get("duration_seconds", 0)
+        print(
+            f"\n{'─' * 50}\n"
+            f"  ⏱  {duration:.1f}s | {tps:.1f} tok/s | "
+            f"{model} | node: {node_id}"
+        )
 
 
 def main():
@@ -381,6 +525,18 @@ def main():
         "--port", type=int, default=7890, help="Local daemon port"
     )
     ask_parser.set_defaults(func=cmd_ask)
+
+    # chat
+    chat_parser = subparsers.add_parser(
+        "chat", help="Interactive chat with the swarm"
+    )
+    chat_parser.add_argument(
+        "--model", type=str, default=None, help="Ollama model name"
+    )
+    chat_parser.add_argument(
+        "--port", type=int, default=7890, help="Local daemon port"
+    )
+    chat_parser.set_defaults(func=cmd_chat)
 
     args = parser.parse_args()
 
