@@ -69,14 +69,22 @@
 - [x] cmd_ask unchanged (still uses _submit_and_poll)
 
 ### Phase 9c: Web Search & Fetch (2026-02-08)
-- [x] Added duckduckgo-search dependency (no API key, fits manifesto)
-- [x] handle_web_search: DuckDuckGo via AsyncDDGS, returns title/url/snippet
+- [x] Added ddgs dependency (no API key, fits manifesto)
+- [x] handle_web_search: DuckDuckGo via DDGS + asyncio.to_thread, returns title/url/snippet
 - [x] handle_web_fetch: httpx GET with HTML stripping, follow_redirects, max_length
 - [x] _strip_html helper: removes script/style, strips tags, decodes entities
 - [x] Registered web_search/web_fetch in worker HANDLERS
 - [x] Orchestrator already routes web_search/web_fetch → cpu_worker nodes
 - [x] CLI: `mycoswarm search "query"` with -n/--max-results flag
 - [x] Enables CPU-only nodes (M710Qs) to contribute web skills to the swarm
+
+### Phase 9d: Research Command (2026-02-08)
+- [x] `mycoswarm research "query"` — compound command: CPU workers search, GPU nodes think
+- [x] Flow: web_search task → build context from results → inference task with system prompt
+- [x] Progress display: "Searching on naru..." → "Thinking with gemma3:27b..."
+- [x] Streams final response with live tokens via SSE
+- [x] Sources cited in footer with numbered URLs matching [1], [2] refs in response
+- [x] Demonstrates parallel swarm advantage: two cheap boxes > one expensive box
 
 ## Next
 

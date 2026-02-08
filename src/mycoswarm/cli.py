@@ -11,6 +11,7 @@ Usage:
     mycoswarm ping                Ping all known peers
     mycoswarm ask "your prompt"   Send a prompt for inference
     mycoswarm search "query"      Search the web via the swarm
+    mycoswarm research "query"    Search + synthesize (CPU search → GPU think)
     mycoswarm chat                Interactive chat with the swarm
 """
 
@@ -438,6 +439,170 @@ def cmd_search(args):
     print(f"  ⏱  {duration:.1f}s | {len(results)} results | node: {node_id}")
 
 
+def cmd_research(args):
+    """Search the web then synthesize results via LLM inference.
+
+    The swarm's signature move: CPU workers search, GPU nodes think.
+    """
+    import uuid
+
+    profile = detect_all()
+    ip = profile.lan_ip or "localhost"
+    url = f"http://{ip}:{args.port}"
+    query = " ".join(args.query)
+    model = _discover_model(url, args.model)
+
+    # --- Phase 1: Web search (CPU worker) ---
+    search_id = f"research-search-{uuid.uuid4().hex[:8]}"
+    search_payload = {
+        "task_id": search_id,
+        "task_type": "web_search",
+        "payload": {"query": query, "max_results": args.max_results},
+        "source_node": "cli",
+        "priority": 7,
+        "timeout_seconds": 60,
+    }
+
+    print(f"🔍 Searching: {query}")
+
+    # Submit and get routing info
+    try:
+        with httpx.Client(timeout=10) as client:
+            resp = client.post(f"{url}/task", json=search_payload)
+            resp.raise_for_status()
+            submit_data = resp.json()
+    except httpx.ConnectError:
+        print("❌ Daemon not running. Start it with: mycoswarm daemon")
+        sys.exit(1)
+    except httpx.HTTPStatusError as e:
+        detail = e.response.json().get("detail", str(e))
+        print(f"❌ {detail}")
+        sys.exit(1)
+
+    search_node = submit_data.get("message", "")
+    if "Routed to" in search_node:
+        print(f"   {search_node}...")
+    else:
+        print(f"   Searching locally...")
+
+    # Poll for search results
+    import time
+    start = time.time()
+    search_data = None
+    with httpx.Client(timeout=5) as client:
+        while time.time() - start < 60:
+            time.sleep(0.5)
+            try:
+                r = client.get(f"{url}/task/{search_id}")
+                data = r.json()
+                if data.get("status") in ("completed", "failed"):
+                    search_data = data
+                    break
+            except Exception:
+                pass
+
+    if search_data is None:
+        print("❌ Search timed out.")
+        sys.exit(1)
+    if search_data.get("status") == "failed":
+        print(f"❌ Search failed: {search_data.get('error', 'unknown')}")
+        sys.exit(1)
+
+    results = search_data.get("result", {}).get("results", [])
+    if not results:
+        print("❌ No search results found.")
+        sys.exit(1)
+
+    search_duration = search_data.get("duration_seconds", 0)
+    search_node_id = search_data.get("node_id", "local")
+    print(f"   Found {len(results)} results ({search_duration:.1f}s, node: {search_node_id})")
+
+    # --- Phase 2: Inference with context (GPU node) ---
+    # Build context block from search results
+    context_lines = []
+    sources = []
+    for i, r in enumerate(results, 1):
+        context_lines.append(f"[{i}] {r['title']}")
+        context_lines.append(f"    URL: {r['url']}")
+        context_lines.append(f"    {r['snippet']}")
+        context_lines.append("")
+        sources.append({"num": i, "title": r["title"], "url": r["url"]})
+    context_block = "\n".join(context_lines)
+
+    system_prompt = (
+        "You are a research assistant. The user asked a question and web search "
+        "results are provided below as context. Synthesize the information into "
+        "a clear, well-organized answer. Cite sources using [1], [2], etc. "
+        "matching the numbered results. Be concise but thorough. If the search "
+        "results don't fully answer the question, say so.\n\n"
+        f"SEARCH RESULTS:\n{context_block}"
+    )
+
+    infer_id = f"research-infer-{uuid.uuid4().hex[:8]}"
+    infer_payload = {
+        "task_id": infer_id,
+        "task_type": "inference",
+        "payload": {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": query},
+            ],
+        },
+        "source_node": "cli",
+        "priority": 7,
+        "timeout_seconds": 300,
+    }
+
+    print(f"\n🧠 Thinking with {model}...")
+
+    try:
+        with httpx.Client(timeout=10) as client:
+            resp = client.post(f"{url}/task", json=infer_payload)
+            resp.raise_for_status()
+            infer_submit = resp.json()
+    except httpx.HTTPStatusError as e:
+        detail = e.response.json().get("detail", str(e))
+        print(f"❌ {detail}")
+        sys.exit(1)
+
+    infer_node = infer_submit.get("message", "")
+    if "Routed to" in infer_node:
+        print(f"   {infer_node}...")
+
+    # Stream directly from target for remote inference
+    target_ip = infer_submit.get("target_ip")
+    target_port = infer_submit.get("target_port")
+    if target_ip and target_port:
+        stream_url = f"http://{target_ip}:{target_port}"
+    else:
+        stream_url = url
+
+    print()
+    full_text, metrics = _stream_response(stream_url, infer_id)
+
+    if not full_text:
+        print("❌ No response from model.")
+        sys.exit(1)
+
+    # --- Footer: sources + metrics ---
+    tps = metrics.get("tokens_per_second", 0)
+    duration = metrics.get("duration_seconds", 0)
+    node_id = metrics.get("node_id", "")
+
+    print(f"\n\n{'─' * 50}")
+    print("📚 Sources:")
+    for s in sources:
+        print(f"   [{s['num']}] {s['title']}")
+        print(f"       {s['url']}")
+    print(f"{'─' * 50}")
+    print(
+        f"  🔍 search: {search_duration:.1f}s ({search_node_id}) | "
+        f"🧠 inference: {duration:.1f}s {tps:.1f} tok/s ({node_id}) | "
+        f"model: {model}"
+    )
+
+
 def _list_swarm_models(url: str) -> list[str]:
     """Gather all unique models across the swarm."""
     models = set()
@@ -664,6 +829,23 @@ def main():
         "--port", type=int, default=7890, help="Local daemon port"
     )
     search_parser.set_defaults(func=cmd_search)
+
+    # research
+    research_parser = subparsers.add_parser(
+        "research", help="Search + synthesize (CPU search → GPU think)"
+    )
+    research_parser.add_argument("query", nargs="+", help="Research question")
+    research_parser.add_argument(
+        "--model", type=str, default=None, help="Ollama model name"
+    )
+    research_parser.add_argument(
+        "-n", "--max-results", type=int, default=5,
+        help="Number of search results to feed to LLM (default: 5)",
+    )
+    research_parser.add_argument(
+        "--port", type=int, default=7890, help="Local daemon port"
+    )
+    research_parser.set_defaults(func=cmd_research)
 
     # chat
     chat_parser = subparsers.add_parser(
