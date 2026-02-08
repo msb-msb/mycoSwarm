@@ -18,6 +18,7 @@ import time
 from enum import Enum
 from typing import TYPE_CHECKING
 
+import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
@@ -58,6 +59,8 @@ class TaskResponse(BaseModel):
     task_id: str
     status: TaskStatus
     message: str
+    target_ip: str | None = None
+    target_port: int | None = None
 
 
 class TaskResult(BaseModel):
@@ -237,51 +240,83 @@ def create_api(
             f"🔀 Can't handle {task.task_type} locally, routing to peer..."
         )
 
-        stream_queue = task_queue.create_stream(task.task_id)
+        candidates = await orchestrator._select_nodes(task.task_type)
+        if not candidates:
+            raise HTTPException(
+                status_code=503,
+                detail=f"No peer in swarm can handle: {task.task_type}",
+            )
 
-        async def _route_remote():
-            try:
-                result = await orchestrator.route_task(task)
-                if result is None:
-                    result = TaskResult(
-                        task_id=task.task_id,
-                        status=TaskStatus.FAILED,
-                        error=f"No peer in swarm can handle: {task.task_type}",
-                    )
-            except Exception as e:
-                logger.error(f"💥 Orchestrator error for {task.task_id}: {e}")
-                result = TaskResult(
-                    task_id=task.task_id,
-                    status=TaskStatus.FAILED,
-                    error=f"Routing failed: {e}",
+        target = candidates[0]
+
+        # Submit task directly to target peer
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.post(
+                    f"http://{target.ip}:{target.port}/task",
+                    json=task.model_dump(),
                 )
+                resp.raise_for_status()
+        except (httpx.ConnectError, httpx.TimeoutException) as e:
+            registry.record_failure(target.node_id)
+            raise HTTPException(
+                status_code=502,
+                detail=f"Can't reach {target.hostname}: {e}",
+            )
 
-            await task_queue.store_result(result)
+        registry.record_success(target.node_id)
+        logger.info(
+            f"🎯 Routed {task.task_type} → {target.hostname} "
+            f"({target.ip}:{target.port})"
+        )
 
-            # Push full response as single-shot events for remote tasks
-            sq = task_queue.get_stream(task.task_id)
-            if sq is not None:
-                if result.status == TaskStatus.COMPLETED and result.result:
-                    response_text = result.result.get("response", "")
-                    if response_text:
-                        sq.put_nowait({"token": response_text, "done": False})
-                    sq.put_nowait({
-                        "done": True,
-                        "model": result.result.get("model", ""),
-                        "tokens_per_second": result.result.get("tokens_per_second", 0),
-                        "duration_seconds": result.duration_seconds,
-                        "node_id": result.node_id,
-                    })
-                elif result.error:
-                    sq.put_nowait({"error": result.error, "done": True})
-                sq.put_nowait(None)
+        # Background: poll target for result (needed by cmd_ask polling)
+        async def _poll_remote_result():
+            base_url = f"http://{target.ip}:{target.port}"
+            deadline = time.time() + task.timeout_seconds
+            try:
+                async with httpx.AsyncClient(timeout=10.0) as poll_client:
+                    while time.time() < deadline:
+                        await asyncio.sleep(1.0)
+                        try:
+                            r = await poll_client.get(
+                                f"{base_url}/task/{task.task_id}"
+                            )
+                            data = r.json()
+                            if data.get("status") in ("completed", "failed"):
+                                result = TaskResult(
+                                    task_id=task.task_id,
+                                    status=TaskStatus(data["status"]),
+                                    result=data.get("result"),
+                                    error=data.get("error"),
+                                    duration_seconds=data.get(
+                                        "duration_seconds", 0
+                                    ),
+                                    node_id=data.get(
+                                        "node_id", target.node_id
+                                    ),
+                                )
+                                await task_queue.store_result(result)
+                                return
+                        except httpx.HTTPError:
+                            pass
+            except Exception as e:
+                logger.error(f"💥 Poll error for {task.task_id}: {e}")
+            await task_queue.store_result(TaskResult(
+                task_id=task.task_id,
+                status=TaskStatus.FAILED,
+                error=f"Timed out waiting for {target.hostname}",
+                node_id=target.node_id,
+            ))
 
-        asyncio.create_task(_route_remote())
+        asyncio.create_task(_poll_remote_result())
 
         return TaskResponse(
             task_id=task.task_id,
             status=TaskStatus.PENDING,
-            message="Routed to remote peer",
+            message=f"Routed to {target.hostname}",
+            target_ip=target.ip,
+            target_port=target.port,
         )
 
     @app.get("/task/{task_id}")

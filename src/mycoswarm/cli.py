@@ -492,17 +492,31 @@ def cmd_chat(args):
 
         # Submit task
         try:
-            with httpx.Client(timeout=5) as client:
+            with httpx.Client(timeout=10) as client:
                 resp = client.post(f"{url}/task", json=task_payload)
                 resp.raise_for_status()
+                submit_data = resp.json()
         except httpx.ConnectError:
             print("❌ Daemon not running. Start it with: mycoswarm daemon")
             messages.pop()
             continue
+        except httpx.HTTPStatusError as e:
+            detail = e.response.json().get("detail", str(e))
+            print(f"❌ {detail}")
+            messages.pop()
+            continue
+
+        # Stream directly from target node for remote tasks
+        target_ip = submit_data.get("target_ip")
+        target_port = submit_data.get("target_port")
+        if target_ip and target_port:
+            stream_url = f"http://{target_ip}:{target_port}"
+        else:
+            stream_url = url
 
         # Stream tokens live
         print()  # newline before response
-        full_text, metrics = _stream_response(url, task_id)
+        full_text, metrics = _stream_response(stream_url, task_id)
 
         if not full_text:
             messages.pop()
