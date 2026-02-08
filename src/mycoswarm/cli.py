@@ -10,6 +10,7 @@ Usage:
     mycoswarm swarm               Show swarm status (query local daemon)
     mycoswarm ping                Ping all known peers
     mycoswarm ask "your prompt"   Send a prompt for inference
+    mycoswarm search "query"      Search the web via the swarm
     mycoswarm chat                Interactive chat with the swarm
 """
 
@@ -384,6 +385,59 @@ def cmd_ask(args):
     )
 
 
+def cmd_search(args):
+    """Search the web via the swarm."""
+    import uuid
+
+    profile = detect_all()
+    ip = profile.lan_ip or "localhost"
+    url = f"http://{ip}:{args.port}"
+    query = " ".join(args.query)
+    max_results = args.max_results
+
+    task_id = f"task-{uuid.uuid4().hex[:8]}"
+    task_payload = {
+        "task_id": task_id,
+        "task_type": "web_search",
+        "payload": {
+            "query": query,
+            "max_results": max_results,
+        },
+        "source_node": "cli",
+        "priority": 5,
+        "timeout_seconds": 60,
+    }
+
+    print(f"🔍 Searching: {query}")
+    print(f"   Sending to {ip}:{args.port}...\n")
+
+    data = _submit_and_poll(url, task_payload, timeout=60)
+    if data is None:
+        print("❌ Timed out waiting for search results.")
+        sys.exit(1)
+    if data.get("status") == "failed":
+        print(f"❌ Search failed: {data.get('error', 'unknown error')}")
+        sys.exit(1)
+
+    result = data.get("result", {})
+    results = result.get("results", [])
+
+    if not results:
+        print("No results found.")
+        return
+
+    for i, r in enumerate(results, 1):
+        print(f"  {i}. {r['title']}")
+        print(f"     {r['snippet']}")
+        print(f"     🔗 {r['url']}")
+        print()
+
+    print(f"{'─' * 50}")
+    node_id = data.get("node_id", "")
+    duration = data.get("duration_seconds", 0)
+    print(f"  ⏱  {duration:.1f}s | {len(results)} results | node: {node_id}")
+
+
 def _list_swarm_models(url: str) -> list[str]:
     """Gather all unique models across the swarm."""
     models = set()
@@ -596,6 +650,20 @@ def main():
         "--port", type=int, default=7890, help="Local daemon port"
     )
     ask_parser.set_defaults(func=cmd_ask)
+
+    # search
+    search_parser = subparsers.add_parser(
+        "search", help="Search the web via the swarm"
+    )
+    search_parser.add_argument("query", nargs="+", help="Search query")
+    search_parser.add_argument(
+        "-n", "--max-results", type=int, default=5,
+        help="Number of results (default: 5, max: 20)",
+    )
+    search_parser.add_argument(
+        "--port", type=int, default=7890, help="Local daemon port"
+    )
+    search_parser.set_defaults(func=cmd_search)
 
     # chat
     chat_parser = subparsers.add_parser(

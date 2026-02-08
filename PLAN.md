@@ -68,6 +68,16 @@
 - [x] cmd_chat uses streaming: POST /task → SSE stream → live token display
 - [x] cmd_ask unchanged (still uses _submit_and_poll)
 
+### Phase 9c: Web Search & Fetch (2026-02-08)
+- [x] Added duckduckgo-search dependency (no API key, fits manifesto)
+- [x] handle_web_search: DuckDuckGo via AsyncDDGS, returns title/url/snippet
+- [x] handle_web_fetch: httpx GET with HTML stripping, follow_redirects, max_length
+- [x] _strip_html helper: removes script/style, strips tags, decodes entities
+- [x] Registered web_search/web_fetch in worker HANDLERS
+- [x] Orchestrator already routes web_search/web_fetch → cpu_worker nodes
+- [x] CLI: `mycoswarm search "query"` with -n/--max-results flag
+- [x] Enables CPU-only nodes (M710Qs) to contribute web skills to the swarm
+
 ## Next
 
 ### Phase 5b: Cross-Node Inference (remaining)
@@ -90,7 +100,6 @@
 
 ### Phase 9: Advanced Features (remaining)
 - [ ] Embedding handler (for RAG pipelines)
-- [ ] Web fetch handler (download + parse URLs)
 - [ ] File processing handler (read, transform, summarize documents)
 - [ ] Model management: `mycoswarm models` — list/pull/remove across swarm
 - [ ] Dashboard: simple web UI showing swarm topology and status

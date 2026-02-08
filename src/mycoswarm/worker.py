@@ -4,10 +4,11 @@ Pulls tasks from the node's queue and executes them.
 Each task type has a handler function. Currently supports:
 
   - inference: Send prompt to Ollama and return response
+  - web_search: Search the web via DuckDuckGo (no API key)
+  - web_fetch: Fetch a URL and extract readable text
   - ping: Simple health check task (for testing)
 
 Future handlers:
-  - web_fetch: Download and parse web pages
   - file_process: Read/transform files
   - embedding: Generate embeddings via Ollama
 """
@@ -15,6 +16,7 @@ Future handlers:
 import asyncio
 import json
 import logging
+import re
 import time
 from typing import Callable, Awaitable
 
@@ -313,10 +315,139 @@ async def handle_ping(task: TaskRequest) -> TaskResult:
     )
 
 
+async def handle_web_search(task: TaskRequest) -> TaskResult:
+    """Search the web via DuckDuckGo. No API key needed.
+
+    Expected payload:
+        query: str         — search terms
+        max_results: int   — number of results (default 5, max 20)
+    """
+    from duckduckgo_search import AsyncDDGS
+
+    payload = task.payload
+    query = payload.get("query")
+    if not query:
+        return TaskResult(
+            task_id=task.task_id,
+            status=TaskStatus.FAILED,
+            error="Missing required field: 'query'",
+        )
+
+    max_results = min(payload.get("max_results", 5), 20)
+    start = time.time()
+
+    try:
+        async with AsyncDDGS() as ddgs:
+            raw = await ddgs.atext(query, max_results=max_results)
+
+        results = [
+            {
+                "title": r.get("title", ""),
+                "url": r.get("href", ""),
+                "snippet": r.get("body", ""),
+            }
+            for r in raw
+        ]
+
+        return TaskResult(
+            task_id=task.task_id,
+            status=TaskStatus.COMPLETED,
+            result={"query": query, "results": results, "count": len(results)},
+            duration_seconds=round(time.time() - start, 2),
+        )
+    except Exception as e:
+        return TaskResult(
+            task_id=task.task_id,
+            status=TaskStatus.FAILED,
+            error=f"Web search failed: {e}",
+            duration_seconds=round(time.time() - start, 2),
+        )
+
+
+def _strip_html(html: str) -> str:
+    """Strip HTML tags and collapse whitespace into readable text."""
+    # Remove script/style blocks
+    text = re.sub(r"<(script|style)[^>]*>.*?</\1>", "", html, flags=re.DOTALL | re.IGNORECASE)
+    # Remove tags
+    text = re.sub(r"<[^>]+>", " ", text)
+    # Decode common entities
+    for entity, char in [("&amp;", "&"), ("&lt;", "<"), ("&gt;", ">"),
+                         ("&quot;", '"'), ("&#39;", "'"), ("&nbsp;", " ")]:
+        text = text.replace(entity, char)
+    # Collapse whitespace
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
+async def handle_web_fetch(task: TaskRequest) -> TaskResult:
+    """Fetch a URL and return its content.
+
+    Expected payload:
+        url: str             — the URL to fetch
+        extract_text: bool   — strip HTML tags (default true)
+        max_length: int      — max chars to return (default 50000)
+    """
+    payload = task.payload
+    url = payload.get("url")
+    if not url:
+        return TaskResult(
+            task_id=task.task_id,
+            status=TaskStatus.FAILED,
+            error="Missing required field: 'url'",
+        )
+
+    extract_text = payload.get("extract_text", True)
+    max_length = payload.get("max_length", 50_000)
+    start = time.time()
+
+    try:
+        async with httpx.AsyncClient(
+            timeout=30.0, follow_redirects=True
+        ) as client:
+            resp = await client.get(url, headers={
+                "User-Agent": "mycoSwarm/0.1 (web_fetch task handler)",
+            })
+            resp.raise_for_status()
+
+        content = resp.text
+        if extract_text:
+            content = _strip_html(content)
+        if len(content) > max_length:
+            content = content[:max_length] + "... [truncated]"
+
+        return TaskResult(
+            task_id=task.task_id,
+            status=TaskStatus.COMPLETED,
+            result={
+                "url": str(resp.url),
+                "status_code": resp.status_code,
+                "text": content,
+                "length": len(content),
+            },
+            duration_seconds=round(time.time() - start, 2),
+        )
+    except httpx.TimeoutException:
+        return TaskResult(
+            task_id=task.task_id,
+            status=TaskStatus.FAILED,
+            error=f"Fetch timed out: {url}",
+            duration_seconds=round(time.time() - start, 2),
+        )
+    except httpx.HTTPError as e:
+        return TaskResult(
+            task_id=task.task_id,
+            status=TaskStatus.FAILED,
+            error=f"Fetch failed: {e}",
+            duration_seconds=round(time.time() - start, 2),
+        )
+
+
 # --- Handler Registry ---
 
 HANDLERS: dict[str, Callable[[TaskRequest], Awaitable[TaskResult]]] = {
     "inference": handle_inference,
+    "web_search": handle_web_search,
+    "web_fetch": handle_web_fetch,
     "ping": handle_ping,
 }
 
