@@ -335,6 +335,7 @@ async def handle_web_search(task: TaskRequest) -> TaskResult:
 
     max_results = min(payload.get("max_results", 5), 20)
     start = time.time()
+    logger.info(f"🔍 Web search: {query!r} (max_results={max_results})")
 
     def _search():
         return DDGS().text(query, max_results=max_results)
