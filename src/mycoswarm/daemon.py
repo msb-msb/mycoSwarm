@@ -1,8 +1,8 @@
 """mycoSwarm node daemon.
 
 Runs on every machine in the swarm. Detects hardware, announces
-capabilities via mDNS, listens for peers, and periodically
-refreshes status.
+capabilities via mDNS, listens for peers, serves the node API,
+and periodically refreshes status.
 
 Usage:
     mycoswarm daemon              Start the daemon
@@ -13,15 +13,18 @@ import asyncio
 import logging
 import signal
 import sys
+import time
+
+import uvicorn
 
 from mycoswarm.hardware import detect_all
 from mycoswarm.capabilities import classify_node
 from mycoswarm.node import build_identity, NodeIdentity
 from mycoswarm.discovery import Discovery, PeerRegistry, DEFAULT_PORT
+from mycoswarm.api import create_api, TaskQueue
 
 logger = logging.getLogger(__name__)
 
-# How often to refresh hardware status (seconds)
 STATUS_REFRESH_INTERVAL = 30
 
 
@@ -32,6 +35,8 @@ def _setup_logging(verbose: bool = False):
         format="%(asctime)s | %(levelname)-5s | %(message)s",
         datefmt="%H:%M:%S",
     )
+    if not verbose:
+        logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
 
 
 def _print_banner(identity: NodeIdentity, port: int):
@@ -47,6 +52,11 @@ def _print_banner(identity: NodeIdentity, port: int):
   VRAM:     {identity.vram_total_mb} MB
   Caps:     {', '.join(identity.capabilities)}
   Models:   {len(identity.available_models)}
+{'=' * 50}
+  API:      http://{identity.lan_ip}:{port}
+  Health:   http://{identity.lan_ip}:{port}/health
+  Status:   http://{identity.lan_ip}:{port}/status
+  Peers:    http://{identity.lan_ip}:{port}/peers
 {'=' * 50}
   Announcing on LAN... (Ctrl+C to stop)
 """)
@@ -77,7 +87,7 @@ async def _status_refresh_loop(
 
 
 async def _peer_logger(event: str, peer):
-    """Default callback for peer changes — just log them."""
+    """Default callback for peer changes."""
     if event == "added":
         gpu_info = f" [{peer.gpu_name}]" if peer.gpu_name else ""
         print(
@@ -93,8 +103,8 @@ async def _peer_logger(event: str, peer):
 async def run_daemon(port: int = DEFAULT_PORT, verbose: bool = False):
     """Main daemon loop."""
     _setup_logging(verbose)
+    start_time = time.time()
 
-    # Detect hardware and build identity
     logger.info("Detecting hardware...")
     profile = detect_all()
     caps = classify_node(profile)
@@ -106,11 +116,14 @@ async def run_daemon(port: int = DEFAULT_PORT, verbose: bool = False):
 
     _print_banner(identity, port)
 
-    # Set up peer registry and discovery
+    # Set up components
     registry = PeerRegistry()
     registry.on_change(_peer_logger)
-
+    task_queue = TaskQueue()
     discovery = Discovery(identity, registry, port=port)
+
+    # Create FastAPI app
+    app = create_api(identity, registry, task_queue, start_time)
 
     # Handle shutdown
     stop_event = asyncio.Event()
@@ -126,12 +139,24 @@ async def run_daemon(port: int = DEFAULT_PORT, verbose: bool = False):
     # Start discovery
     await discovery.start()
 
-    # Start status refresh loop
+    # Start API server
+    config = uvicorn.Config(
+        app,
+        host=identity.lan_ip,
+        port=port,
+        log_level="warning" if not verbose else "info",
+    )
+    server = uvicorn.Server(config)
+    server_task = asyncio.create_task(server.serve())
+
+    # Start status refresh
     refresh_task = asyncio.create_task(
         _status_refresh_loop(discovery, registry)
     )
 
-    # Wait for shutdown signal
+    logger.info(f"🌐 API listening on http://{identity.lan_ip}:{port}")
+
+    # Wait for shutdown
     await stop_event.wait()
 
     # Cleanup
@@ -141,9 +166,10 @@ async def run_daemon(port: int = DEFAULT_PORT, verbose: bool = False):
     except asyncio.CancelledError:
         pass
 
+    server.should_exit = True
+    await server_task
     await discovery.stop()
 
-    peers = await registry.get_all()
     print(f"  Saw {registry.count} peer(s) during session")
     print("  Goodbye. 🍄")
 
