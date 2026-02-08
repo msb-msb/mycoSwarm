@@ -7,10 +7,14 @@ Usage:
     mycoswarm daemon              Start the node daemon (announce + discover)
     mycoswarm daemon --port 7890  Start on a specific port
     mycoswarm daemon -v           Verbose logging
+    mycoswarm swarm               Show swarm status (query local daemon)
+    mycoswarm ping                Ping all known peers
 """
 
 import argparse
 import sys
+
+import httpx
 
 from mycoswarm.hardware import detect_all
 from mycoswarm.capabilities import classify_node
@@ -27,16 +31,13 @@ def cmd_detect(args):
         print(identity.to_json())
         return
 
-    # Human-readable output
     print("🍄 mycoSwarm Node Detection")
     print("=" * 50)
 
-    # Hostname & Network
     print(f"\n📍 Host: {profile.hostname}")
     if profile.lan_ip:
         print(f"   LAN:  {profile.lan_ip}")
 
-    # CPU
     if profile.cpu:
         print(f"\n🔧 CPU: {profile.cpu.model}")
         print(
@@ -44,7 +45,6 @@ def cmd_detect(args):
             f"{profile.cpu.cores_logical}L @ {profile.cpu.frequency_mhz:.0f} MHz"
         )
 
-    # Memory
     if profile.memory:
         print(
             f"\n💾 RAM: {profile.memory.total_mb:,} MB total, "
@@ -52,7 +52,6 @@ def cmd_detect(args):
             f"({profile.memory.percent_used:.0f}% used)"
         )
 
-    # GPU
     if profile.gpus:
         for gpu in profile.gpus:
             print(f"\n🎮 GPU {gpu.index}: {gpu.name}")
@@ -67,7 +66,6 @@ def cmd_detect(args):
     else:
         print("\n🎮 GPU: None detected")
 
-    # Disk
     if profile.disks:
         print("\n💿 Disk:")
         for disk in profile.disks:
@@ -76,7 +74,6 @@ def cmd_detect(args):
                 f"/ {disk.total_gb:.0f} GB ({disk.percent_used:.0f}% used)"
             )
 
-    # Ollama
     if profile.ollama_running:
         print(f"\n🦙 Ollama: running ({len(profile.ollama_models)} models)")
         for m in profile.ollama_models:
@@ -85,7 +82,6 @@ def cmd_detect(args):
     else:
         print("\n🦙 Ollama: not detected")
 
-    # Classification
     print(f"\n{'=' * 50}")
     print(f"📊 Node Tier: {caps.node_tier.value.upper()}")
     print(f"   GPU Tier:  {caps.gpu_tier.value}")
@@ -123,6 +119,99 @@ def cmd_daemon(args):
     start_daemon(port=args.port, verbose=args.verbose)
 
 
+def cmd_swarm(args):
+    """Show swarm status by querying the local daemon."""
+    profile = detect_all()
+    ip = profile.lan_ip or "localhost"
+    url = f"http://{ip}:{args.port}"
+
+    try:
+        with httpx.Client(timeout=5) as client:
+            status = client.get(f"{url}/status").json()
+            peers_data = client.get(f"{url}/peers").json()
+    except httpx.ConnectError:
+        print("❌ Daemon not running. Start it with: mycoswarm daemon")
+        sys.exit(1)
+
+    print("🍄 mycoSwarm — Swarm Status")
+    print("=" * 60)
+
+    print(f"\n📍 This Node: {status['hostname']} [{status['node_tier'].upper()}]")
+    if status.get('gpu'):
+        print(f"   GPU: {status['gpu']} ({status['vram_total_mb']} MB VRAM)")
+    print(f"   Caps: {', '.join(status['capabilities'])}")
+    print(f"   Models: {len(status.get('ollama_models', []))}")
+    print(f"   Uptime: {status['uptime_seconds']:.0f}s")
+
+    if peers_data:
+        print(f"\n🌐 Peers ({len(peers_data)}):")
+        for p in peers_data:
+            gpu_info = f" [{p['gpu_name']}]" if p.get('gpu_name') else ""
+            tier = p['node_tier'].upper()
+            print(f"   • {p['hostname']} ({p['ip']}) [{tier}]{gpu_info}")
+            print(f"     Caps: {', '.join(p['capabilities'])}")
+            if p['vram_total_mb'] > 0:
+                print(f"     VRAM: {p['vram_total_mb']} MB")
+    else:
+        print("\n🌐 Peers: none discovered yet")
+
+    total_nodes = 1 + len(peers_data)
+    gpu_nodes = (1 if status.get('gpu') else 0) + sum(
+        1 for p in peers_data if p.get('gpu_name')
+    )
+    total_vram = status.get('vram_total_mb', 0) + sum(
+        p.get('vram_total_mb', 0) for p in peers_data
+    )
+
+    print(f"\n{'=' * 60}")
+    print(f"📊 Swarm Total:")
+    print(f"   Nodes:      {total_nodes}")
+    print(f"   GPU Nodes:  {gpu_nodes}")
+    print(f"   CPU Nodes:  {total_nodes - gpu_nodes}")
+    print(f"   Total VRAM: {total_vram:,} MB")
+    print(f"   Tasks:      {status.get('tasks_pending', 0)} pending, "
+          f"{status.get('tasks_active', 0)} active")
+
+
+def cmd_ping(args):
+    """Ping all known peers."""
+    profile = detect_all()
+    ip = profile.lan_ip or "localhost"
+    url = f"http://{ip}:{args.port}"
+
+    try:
+        with httpx.Client(timeout=5) as client:
+            peers_data = client.get(f"{url}/peers").json()
+    except httpx.ConnectError:
+        print("❌ Daemon not running. Start it with: mycoswarm daemon")
+        sys.exit(1)
+
+    if not peers_data:
+        print("No peers discovered yet.")
+        return
+
+    print(f"🏓 Pinging {len(peers_data)} peer(s)...\n")
+
+    import time
+
+    with httpx.Client(timeout=5) as client:
+        for p in peers_data:
+            peer_url = f"http://{p['ip']}:{p['port']}/health"
+            try:
+                start = time.time()
+                resp = client.get(peer_url)
+                elapsed = (time.time() - start) * 1000
+                data = resp.json()
+                print(
+                    f"  ✅ {p['hostname']} ({p['ip']}) — "
+                    f"{elapsed:.0f}ms — "
+                    f"up {data['uptime_seconds']:.0f}s — "
+                    f"{data['peer_count']} peer(s)"
+                )
+            except Exception as e:
+                print(f"  ❌ {p['hostname']} ({p['ip']}) — {e}")
+
+
 def main():
     parser = argparse.ArgumentParser(
         prog="mycoswarm",
@@ -134,9 +223,7 @@ def main():
     detect_parser = subparsers.add_parser(
         "detect", help="Detect hardware and classify capabilities"
     )
-    detect_parser.add_argument(
-        "--json", action="store_true", help="Output as JSON"
-    )
+    detect_parser.add_argument("--json", action="store_true", help="Output as JSON")
     detect_parser.set_defaults(func=cmd_detect)
 
     # identity
@@ -150,18 +237,30 @@ def main():
         "daemon", help="Start the node daemon (announce + discover peers)"
     )
     daemon_parser.add_argument(
-        "--port",
-        type=int,
-        default=7890,
-        help="API port (default: 7890)",
+        "--port", type=int, default=7890, help="API port (default: 7890)"
     )
     daemon_parser.add_argument(
-        "-v",
-        "--verbose",
-        action="store_true",
-        help="Verbose logging",
+        "-v", "--verbose", action="store_true", help="Verbose logging"
     )
     daemon_parser.set_defaults(func=cmd_daemon)
+
+    # swarm
+    swarm_parser = subparsers.add_parser(
+        "swarm", help="Show swarm status"
+    )
+    swarm_parser.add_argument(
+        "--port", type=int, default=7890, help="Local daemon port"
+    )
+    swarm_parser.set_defaults(func=cmd_swarm)
+
+    # ping
+    ping_parser = subparsers.add_parser(
+        "ping", help="Ping all discovered peers"
+    )
+    ping_parser.add_argument(
+        "--port", type=int, default=7890, help="Local daemon port"
+    )
+    ping_parser.set_defaults(func=cmd_ping)
 
     args = parser.parse_args()
 
