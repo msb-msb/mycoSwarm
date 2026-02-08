@@ -180,9 +180,12 @@ class TaskWorker:
 
             logger.info(f"⚙️  Executing: {task.task_id} ({task.task_type})")
             await self.task_queue.mark_active(task)
+            start = time.time()
 
             try:
-                result = await handler(task)
+                result = await asyncio.wait_for(
+                    handler(task), timeout=task.timeout_seconds
+                )
                 result.node_id = self.node_id
                 await self.task_queue.store_result(result)
 
@@ -197,6 +200,21 @@ class TaskWorker:
                     logger.error(
                         f"❌ Failed: {task.task_id} — {result.error}"
                     )
+
+            except asyncio.TimeoutError:
+                elapsed = round(time.time() - start, 2)
+                result = TaskResult(
+                    task_id=task.task_id,
+                    status=TaskStatus.FAILED,
+                    error=f"Task timed out after {task.timeout_seconds}s",
+                    duration_seconds=elapsed,
+                    node_id=self.node_id,
+                )
+                await self.task_queue.store_result(result)
+                self._tasks_failed += 1
+                logger.error(
+                    f"⏱️ Timeout: {task.task_id} after {elapsed:.1f}s"
+                )
 
             except Exception as e:
                 result = TaskResult(

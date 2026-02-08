@@ -209,8 +209,10 @@ class Discovery:
             server=f"{self.identity.hostname}.local.",
         )
 
-        # Register ourselves
-        await self._zeroconf.async_register_service(self._service_info)
+        # Register ourselves (allow_name_change prevents NonUniqueNameException on restart)
+        await self._zeroconf.async_register_service(
+            self._service_info, allow_name_change=True
+        )
         logger.info(
             f"📡 Announcing: {self.identity.node_id} at {ip}:{self.port} "
             f"[{self.identity.node_tier}]"

@@ -39,20 +39,22 @@
 - [x] Orchestrator dispatches to peer and polls for result (replaces fire-and-forget POST)
 - [x] CLI discovers models from peers when local node has none (for naru → Miu flow)
 - [x] /peers endpoint now includes available_models for model discovery
+- [x] First cross-node inference: naru → Miu, gemma3:27b
+
+### Phase 6: Robustness (2026-02-08)
+- [x] Handle Ollama not running gracefully — strip gpu_inference/cpu_inference caps when Ollama unreachable
+- [x] Add `allow_name_change=True` to zeroconf registration (prevent NonUniqueNameException on restart)
+- [x] Task timeout enforcement in worker — asyncio.wait_for cancels tasks exceeding timeout_seconds
 
 ## Next
 
 ### Phase 5b: Cross-Node Inference (remaining)
-- [ ] Test submitting inference from naru → Miu (remote dispatch via orchestrator)
 - [ ] Add `--remote` flag to `mycoswarm ask` to force remote execution
 
-### Phase 6: Robustness
-- [ ] Handle Ollama not running gracefully (detect, warn, disable inference cap)
+### Phase 6b: Robustness (remaining)
 - [ ] Retry failed dispatches to next-best node
 - [ ] Peer health monitoring (mark unhealthy after N failed pings)
 - [ ] Graceful degradation when orchestrator node goes down
-- [ ] Task timeout enforcement in worker
-- [ ] Add `allow_name_change=True` to zeroconf registration (prevent NonUniqueNameException)
 
 ### Phase 7: Testing
 - [ ] Unit tests for hardware detection (mock subprocess/psutil)

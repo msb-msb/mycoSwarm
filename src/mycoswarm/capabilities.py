@@ -186,8 +186,16 @@ def classify_node(profile: HardwareProfile) -> NodeCapabilities:
     if profile.ollama_running:
         model_count = len(profile.ollama_models)
         caps.notes.append(f"Ollama: running, {model_count} model(s) available")
-    elif profile.has_gpu:
-        caps.notes.append("Ollama: not detected (install for GPU inference)")
+    else:
+        # No Ollama — can't actually do inference, strip those caps
+        caps.capabilities = [
+            c for c in caps.capabilities
+            if c not in (Capability.GPU_INFERENCE, Capability.CPU_INFERENCE)
+        ]
+        if profile.has_gpu:
+            caps.notes.append("Ollama: not detected (install for GPU inference)")
+        else:
+            caps.notes.append("Ollama: not detected (install for inference)")
 
     # --- Overall node tier ---
     if caps.gpu_tier == GpuTier.ULTRA:
