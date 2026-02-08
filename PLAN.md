@@ -82,6 +82,10 @@
 - [x] `mycoswarm research "query"` — compound command: CPU workers search, GPU nodes think
 - [x] Planning step: GPU node decomposes query into 2-4 specific search queries (JSON response)
 - [x] Parallel search dispatch: all queries sent concurrently via ThreadPoolExecutor
+- [x] Searches distributed across CPU workers via orchestrator (not always local)
+- [x] Load-aware routing: orchestrator tracks inflight tasks per peer, least-loaded wins
+- [x] Distributable task types (web_search, web_fetch) bypass local shortcut in API
+- [x] CLI shows which node handled each search with timing
 - [x] Result deduplication by URL across all search results
 - [x] Synthesis: all results bundled into context block, streamed via SSE
 - [x] Progress display: Planning → parallel Searching → Synthesizing

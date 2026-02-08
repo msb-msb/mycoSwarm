@@ -216,40 +216,13 @@ def create_api(
             for p in peers
         ]
 
-    @app.post("/task", response_model=TaskResponse)
-    async def submit_task(task: TaskRequest):
-        logger.info(
-            f"📥 Task received: {task.task_id} ({task.task_type}) "
-            f"from {task.source_node}"
-        )
+    # Task types that should be distributed across the swarm
+    # even when the local node could handle them.
+    DISTRIBUTABLE_TASKS = {"web_search", "web_fetch"}
 
-        # Check if we can handle this locally
-        can_local = (
-            orchestrator is None
-            or orchestrator.can_handle_locally(task.task_type)
-        )
-
-        if can_local:
-            # Create stream queue so worker can push tokens (inference only)
-            if task.task_type == "inference":
-                task_queue.create_stream(task.task_id)
-            return await task_queue.submit(task)
-
-        # Can't handle locally — route to best peer
-        logger.info(
-            f"🔀 Can't handle {task.task_type} locally, routing to peer..."
-        )
-
-        candidates = await orchestrator._select_nodes(task.task_type)
-        if not candidates:
-            raise HTTPException(
-                status_code=503,
-                detail=f"No peer in swarm can handle: {task.task_type}",
-            )
-
-        target = candidates[0]
-
-        # Submit task directly to target peer
+    async def _route_to_peer(task: TaskRequest, target):
+        """Forward task to a peer and poll for result in background."""
+        orchestrator.record_dispatch(target.node_id)
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.post(
@@ -258,6 +231,7 @@ def create_api(
                 )
                 resp.raise_for_status()
         except (httpx.ConnectError, httpx.TimeoutException) as e:
+            orchestrator.record_completion(target.node_id)
             registry.record_failure(target.node_id)
             raise HTTPException(
                 status_code=502,
@@ -270,7 +244,7 @@ def create_api(
             f"({target.ip}:{target.port})"
         )
 
-        # Background: poll target for result (needed by cmd_ask polling)
+        # Background: poll target for result
         async def _poll_remote_result():
             base_url = f"http://{target.ip}:{target.port}"
             deadline = time.time() + task.timeout_seconds
@@ -300,14 +274,22 @@ def create_api(
                                 return
                         except httpx.HTTPError:
                             pass
+                await task_queue.store_result(TaskResult(
+                    task_id=task.task_id,
+                    status=TaskStatus.FAILED,
+                    error=f"Timed out waiting for {target.hostname}",
+                    node_id=target.node_id,
+                ))
             except Exception as e:
                 logger.error(f"💥 Poll error for {task.task_id}: {e}")
-            await task_queue.store_result(TaskResult(
-                task_id=task.task_id,
-                status=TaskStatus.FAILED,
-                error=f"Timed out waiting for {target.hostname}",
-                node_id=target.node_id,
-            ))
+                await task_queue.store_result(TaskResult(
+                    task_id=task.task_id,
+                    status=TaskStatus.FAILED,
+                    error=f"Poll error: {e}",
+                    node_id=target.node_id,
+                ))
+            finally:
+                orchestrator.record_completion(target.node_id)
 
         asyncio.create_task(_poll_remote_result())
 
@@ -318,6 +300,53 @@ def create_api(
             target_ip=target.ip,
             target_port=target.port,
         )
+
+    @app.post("/task", response_model=TaskResponse)
+    async def submit_task(task: TaskRequest):
+        logger.info(
+            f"📥 Task received: {task.task_id} ({task.task_type}) "
+            f"from {task.source_node}"
+        )
+
+        can_local = (
+            orchestrator is None
+            or orchestrator.can_handle_locally(task.task_type)
+        )
+
+        # Distributable tasks: route to least-loaded peer when possible
+        if (
+            orchestrator is not None
+            and task.task_type in DISTRIBUTABLE_TASKS
+        ):
+            candidates = await orchestrator._select_nodes(task.task_type)
+            if candidates:
+                return await _route_to_peer(task, candidates[0])
+            # No peers — fall through to local
+
+        if can_local:
+            if task.task_type == "inference":
+                task_queue.create_stream(task.task_id)
+            return await task_queue.submit(task)
+
+        # Can't handle locally — route to best peer
+        logger.info(
+            f"🔀 Can't handle {task.task_type} locally, routing to peer..."
+        )
+
+        if orchestrator is None:
+            raise HTTPException(
+                status_code=503,
+                detail=f"No orchestrator and can't handle: {task.task_type}",
+            )
+
+        candidates = await orchestrator._select_nodes(task.task_type)
+        if not candidates:
+            raise HTTPException(
+                status_code=503,
+                detail=f"No peer in swarm can handle: {task.task_type}",
+            )
+
+        return await _route_to_peer(task, candidates[0])
 
     @app.get("/task/{task_id}")
     async def get_task_result(task_id: str):

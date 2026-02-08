@@ -69,7 +69,18 @@ class Orchestrator:
         self.identity = identity
         self.registry = registry
         self._records: dict[str, TaskRecord] = {}
+        self._inflight: dict[str, int] = {}  # node_id → active task count
         self._client = httpx.AsyncClient(timeout=PEER_TIMEOUT)
+
+    def record_dispatch(self, node_id: str) -> None:
+        """Increment inflight count for a peer (call when dispatching)."""
+        self._inflight[node_id] = self._inflight.get(node_id, 0) + 1
+
+    def record_completion(self, node_id: str) -> None:
+        """Decrement inflight count for a peer (call when result arrives)."""
+        count = self._inflight.get(node_id, 0)
+        if count > 0:
+            self._inflight[node_id] = count - 1
 
     async def close(self):
         await self._client.aclose()
@@ -97,6 +108,8 @@ class Orchestrator:
             score -= 20
         if peer.is_stale:
             score -= 2000
+        # Penalise busy peers — distributes tasks round-robin style
+        score -= self._inflight.get(peer.node_id, 0) * 100
         return score
 
     async def _select_nodes(self, task_type: str) -> list[Peer]:

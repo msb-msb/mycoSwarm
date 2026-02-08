@@ -440,34 +440,10 @@ def cmd_search(args):
     print(f"  ⏱  {duration:.1f}s | {len(results)} results | node: {node_id}")
 
 
-def _research_submit_and_poll(
-    url: str, task_payload: dict, timeout: int = 60,
-) -> dict | None:
-    """Submit a task and poll until done. Returns result dict or None."""
-    import time as _time
-
-    task_id = task_payload["task_id"]
-    with httpx.Client(timeout=5) as client:
-        resp = client.post(f"{url}/task", json=task_payload)
-        resp.raise_for_status()
-        submit_data = resp.json()
-
-    start = _time.time()
-    with httpx.Client(timeout=5) as client:
-        while _time.time() - start < timeout:
-            _time.sleep(0.5)
-            try:
-                r = client.get(f"{url}/task/{task_id}")
-                data = r.json()
-                if data.get("status") in ("completed", "failed"):
-                    return data
-            except Exception:
-                pass
-    return None
-
-
 def _do_search(url: str, query: str, task_id: str, max_results: int) -> dict:
     """Submit a web_search task and poll to completion. Thread-safe."""
+    import time as _t
+
     payload = {
         "task_id": task_id,
         "task_type": "web_search",
@@ -476,8 +452,38 @@ def _do_search(url: str, query: str, task_id: str, max_results: int) -> dict:
         "priority": 7,
         "timeout_seconds": 60,
     }
-    result = _research_submit_and_poll(url, payload, timeout=60)
-    return {"query": query, "task_id": task_id, "data": result}
+    start = _t.time()
+    # Submit and capture routing info
+    with httpx.Client(timeout=5) as client:
+        resp = client.post(f"{url}/task", json=payload)
+        resp.raise_for_status()
+        submit_data = resp.json()
+    routed_to = submit_data.get("message", "")
+
+    # Poll for result
+    data = None
+    with httpx.Client(timeout=5) as client:
+        while _t.time() - start < 60:
+            _t.sleep(0.5)
+            try:
+                r = client.get(f"{url}/task/{task_id}")
+                d = r.json()
+                if d.get("status") in ("completed", "failed"):
+                    data = d
+                    break
+            except Exception:
+                pass
+
+    elapsed = round(_t.time() - start, 1)
+    node = data.get("node_id", "") if data else ""
+    # Use hostname from routing message if available
+    routed_host = ""
+    if "Routed to" in routed_to:
+        routed_host = routed_to.replace("Routed to ", "")
+    return {
+        "query": query, "task_id": task_id, "data": data,
+        "node": routed_host or node, "elapsed": elapsed,
+    }
 
 
 def cmd_research(args):
@@ -569,13 +575,16 @@ def cmd_research(args):
 
     def _run_search(sq: str) -> dict:
         sid = f"research-s-{uuid.uuid4().hex[:8]}"
-        print(f"🔍 Searching: {sq}")
         return _do_search(url, sq, sid, args.max_results)
 
     with ThreadPoolExecutor(max_workers=4) as pool:
         futures = {pool.submit(_run_search, sq): sq for sq in search_queries}
         for future in as_completed(futures):
-            results_per_query.append(future.result())
+            rq = future.result()
+            results_per_query.append(rq)
+            node_label = f" → {rq['node']}" if rq.get("node") else ""
+            status = "✅" if rq.get("data", {}).get("status") == "completed" else "❌"
+            print(f"  {status} \"{rq['query']}\"{node_label} ({rq['elapsed']}s)")
 
     search_duration = round(time.time() - search_start, 1)
 
