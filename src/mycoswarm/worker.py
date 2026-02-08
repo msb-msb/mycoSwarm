@@ -322,7 +322,7 @@ async def handle_web_search(task: TaskRequest) -> TaskResult:
         query: str         — search terms
         max_results: int   — number of results (default 5, max 20)
     """
-    from duckduckgo_search import DDGS
+    from ddgs import DDGS
 
     payload = task.payload
     query = payload.get("query")
@@ -337,8 +337,7 @@ async def handle_web_search(task: TaskRequest) -> TaskResult:
     start = time.time()
 
     def _search():
-        with DDGS() as ddgs:
-            return list(ddgs.text(query, max_results=max_results))
+        return DDGS().text(query, max_results=max_results)
 
     try:
         raw = await asyncio.to_thread(_search)
