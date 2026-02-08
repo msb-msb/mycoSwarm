@@ -440,12 +440,56 @@ def cmd_search(args):
     print(f"  ⏱  {duration:.1f}s | {len(results)} results | node: {node_id}")
 
 
+def _research_submit_and_poll(
+    url: str, task_payload: dict, timeout: int = 60,
+) -> dict | None:
+    """Submit a task and poll until done. Returns result dict or None."""
+    import time as _time
+
+    task_id = task_payload["task_id"]
+    with httpx.Client(timeout=5) as client:
+        resp = client.post(f"{url}/task", json=task_payload)
+        resp.raise_for_status()
+        submit_data = resp.json()
+
+    start = _time.time()
+    with httpx.Client(timeout=5) as client:
+        while _time.time() - start < timeout:
+            _time.sleep(0.5)
+            try:
+                r = client.get(f"{url}/task/{task_id}")
+                data = r.json()
+                if data.get("status") in ("completed", "failed"):
+                    return data
+            except Exception:
+                pass
+    return None
+
+
+def _do_search(url: str, query: str, task_id: str, max_results: int) -> dict:
+    """Submit a web_search task and poll to completion. Thread-safe."""
+    payload = {
+        "task_id": task_id,
+        "task_type": "web_search",
+        "payload": {"query": query, "max_results": max_results},
+        "source_node": "cli",
+        "priority": 7,
+        "timeout_seconds": 60,
+    }
+    result = _research_submit_and_poll(url, payload, timeout=60)
+    return {"query": query, "task_id": task_id, "data": result}
+
+
 def cmd_research(args):
     """Search the web then synthesize results via LLM inference.
 
     The swarm's signature move: CPU workers search, GPU nodes think.
+    Plan → parallel search → synthesize.
     """
+    import json as _json
     import uuid
+    import time
+    from concurrent.futures import ThreadPoolExecutor, as_completed
 
     profile = detect_all()
     ip = profile.lan_ip or "localhost"
@@ -453,76 +497,113 @@ def cmd_research(args):
     query = " ".join(args.query)
     model = _discover_model(url, args.model)
 
-    # --- Phase 1: Web search (CPU worker) ---
-    search_id = f"research-search-{uuid.uuid4().hex[:8]}"
-    search_payload = {
-        "task_id": search_id,
-        "task_type": "web_search",
-        "payload": {"query": query, "max_results": args.max_results},
+    # --- Phase 1: Planning — ask model to decompose into search queries ---
+    print("🧠 Planning...")
+
+    plan_id = f"research-plan-{uuid.uuid4().hex[:8]}"
+    plan_payload = {
+        "task_id": plan_id,
+        "task_type": "inference",
+        "payload": {
+            "model": model,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        "Decompose the user's question into 2-4 specific web "
+                        "search queries. Respond with ONLY JSON, no explanation: "
+                        '{"searches": ["query1", "query2"]}'
+                    ),
+                },
+                {"role": "user", "content": query},
+            ],
+            "temperature": 0.3,
+            "max_tokens": 200,
+        },
         "source_node": "cli",
-        "priority": 7,
-        "timeout_seconds": 60,
+        "priority": 8,
+        "timeout_seconds": 30,
     }
 
-    print(f"🔍 Searching: {query}")
-
-    # Submit and get routing info
     try:
-        with httpx.Client(timeout=10) as client:
-            resp = client.post(f"{url}/task", json=search_payload)
-            resp.raise_for_status()
-            submit_data = resp.json()
-    except httpx.ConnectError:
-        print("❌ Daemon not running. Start it with: mycoswarm daemon")
-        sys.exit(1)
-    except httpx.HTTPStatusError as e:
-        detail = e.response.json().get("detail", str(e))
-        print(f"❌ {detail}")
-        sys.exit(1)
+        plan_data = _submit_and_poll(url, plan_payload, timeout=30)
+    except SystemExit:
+        raise
+    except Exception:
+        plan_data = None
 
-    search_node = submit_data.get("message", "")
-    if "Routed to" in search_node:
-        print(f"   {search_node}...")
-    else:
-        print(f"   Searching locally...")
-
-    # Poll for search results
-    import time
-    start = time.time()
-    search_data = None
-    with httpx.Client(timeout=5) as client:
-        while time.time() - start < 60:
-            time.sleep(0.5)
-            try:
-                r = client.get(f"{url}/task/{search_id}")
-                data = r.json()
-                if data.get("status") in ("completed", "failed"):
-                    search_data = data
+    # Parse search queries from model response
+    search_queries = []
+    if plan_data and plan_data.get("status") == "completed":
+        raw_response = plan_data.get("result", {}).get("response", "")
+        # Extract JSON from response (model might wrap in markdown)
+        json_str = raw_response.strip()
+        if "```" in json_str:
+            # Strip markdown code fences
+            for block in json_str.split("```"):
+                block = block.strip()
+                if block.startswith("json"):
+                    block = block[4:].strip()
+                if block.startswith("{"):
+                    json_str = block
                     break
-            except Exception:
-                pass
+        try:
+            parsed = _json.loads(json_str)
+            search_queries = parsed.get("searches", [])[:4]
+        except _json.JSONDecodeError:
+            pass
 
-    if search_data is None:
-        print("❌ Search timed out.")
-        sys.exit(1)
-    if search_data.get("status") == "failed":
-        print(f"❌ Search failed: {search_data.get('error', 'unknown')}")
-        sys.exit(1)
+    # Fallback: use original query if planning failed
+    if not search_queries:
+        search_queries = [query]
+        print("   Using original query (planning skipped)")
+    else:
+        print(f"   {len(search_queries)} searches planned:")
+        for sq in search_queries:
+            print(f"     • {sq}")
 
-    results = search_data.get("result", {}).get("results", [])
-    if not results:
+    # --- Phase 2: Parallel search across CPU workers ---
+    print()
+    search_start = time.time()
+    results_per_query: list[dict] = []
+
+    def _run_search(sq: str) -> dict:
+        sid = f"research-s-{uuid.uuid4().hex[:8]}"
+        print(f"🔍 Searching: {sq}")
+        return _do_search(url, sq, sid, args.max_results)
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        futures = {pool.submit(_run_search, sq): sq for sq in search_queries}
+        for future in as_completed(futures):
+            results_per_query.append(future.result())
+
+    search_duration = round(time.time() - search_start, 1)
+
+    # Collect and deduplicate results by URL
+    seen_urls: set[str] = set()
+    all_results: list[dict] = []
+    for rq in results_per_query:
+        data = rq.get("data")
+        if not data or data.get("status") != "completed":
+            continue
+        for r in data.get("result", {}).get("results", []):
+            if r["url"] not in seen_urls:
+                seen_urls.add(r["url"])
+                all_results.append(r)
+
+    if not all_results:
         print("❌ No search results found.")
         sys.exit(1)
 
-    search_duration = search_data.get("duration_seconds", 0)
-    search_node_id = search_data.get("node_id", "local")
-    print(f"   Found {len(results)} results ({search_duration:.1f}s, node: {search_node_id})")
+    print(
+        f"✅ {len(all_results)} unique results from "
+        f"{len(search_queries)} searches ({search_duration}s)"
+    )
 
-    # --- Phase 2: Inference with context (GPU node) ---
-    # Build context block from search results
+    # --- Phase 3: Synthesis inference (GPU node) ---
     context_lines = []
     sources = []
-    for i, r in enumerate(results, 1):
+    for i, r in enumerate(all_results, 1):
         context_lines.append(f"[{i}] {r['title']}")
         context_lines.append(f"    URL: {r['url']}")
         context_lines.append(f"    {r['snippet']}")
@@ -555,13 +636,16 @@ def cmd_research(args):
         "timeout_seconds": 300,
     }
 
-    print(f"\n🧠 Thinking with {model}...")
+    print(f"\n🧠 Synthesizing with {model}...")
 
     try:
         with httpx.Client(timeout=10) as client:
             resp = client.post(f"{url}/task", json=infer_payload)
             resp.raise_for_status()
             infer_submit = resp.json()
+    except httpx.ConnectError:
+        print("❌ Daemon not running. Start it with: mycoswarm daemon")
+        sys.exit(1)
     except httpx.HTTPStatusError as e:
         detail = e.response.json().get("detail", str(e))
         print(f"❌ {detail}")
@@ -598,8 +682,8 @@ def cmd_research(args):
         print(f"       {s['url']}")
     print(f"{'─' * 50}")
     print(
-        f"  🔍 search: {search_duration:.1f}s ({search_node_id}) | "
-        f"🧠 inference: {duration:.1f}s {tps:.1f} tok/s ({node_id}) | "
+        f"  🔍 {len(search_queries)} searches: {search_duration}s | "
+        f"🧠 synthesis: {duration:.1f}s {tps:.1f} tok/s ({node_id}) | "
         f"model: {model}"
     )
 

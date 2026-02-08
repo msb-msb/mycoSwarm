@@ -78,13 +78,15 @@
 - [x] CLI: `mycoswarm search "query"` with -n/--max-results flag
 - [x] Enables CPU-only nodes (M710Qs) to contribute web skills to the swarm
 
-### Phase 9d: Research Command (2026-02-08)
+### Phase 9d: Research Command with Parallel Planner (2026-02-08)
 - [x] `mycoswarm research "query"` — compound command: CPU workers search, GPU nodes think
-- [x] Flow: web_search task → build context from results → inference task with system prompt
-- [x] Progress display: "Searching on naru..." → "Thinking with gemma3:27b..."
-- [x] Streams final response with live tokens via SSE
+- [x] Planning step: GPU node decomposes query into 2-4 specific search queries (JSON response)
+- [x] Parallel search dispatch: all queries sent concurrently via ThreadPoolExecutor
+- [x] Result deduplication by URL across all search results
+- [x] Synthesis: all results bundled into context block, streamed via SSE
+- [x] Progress display: Planning → parallel Searching → Synthesizing
 - [x] Sources cited in footer with numbered URLs matching [1], [2] refs in response
-- [x] Demonstrates parallel swarm advantage: two cheap boxes > one expensive box
+- [x] Fallback: if planning fails, falls back to single original query
 
 ### Phase 9e: Models Command & Systemd (2026-02-08)
 - [x] `mycoswarm models` — unified view of every model across the swarm, grouped by model name with node/GPU info
