@@ -1,0 +1,49 @@
+# mycoSwarm systemd service
+#
+# Install:
+#   1. Copy this file:
+#        sudo cp scripts/mycoswarm.service /etc/systemd/system/
+#
+#   2. Edit the service to match your setup:
+#        sudo systemctl edit mycoswarm
+#      Then override User, WorkingDirectory, and ExecStart as needed.
+#      Or edit the file directly:
+#        sudo nano /etc/systemd/system/mycoswarm.service
+#
+#   3. Enable and start:
+#        sudo systemctl daemon-reload
+#        sudo systemctl enable mycoswarm
+#        sudo systemctl start mycoswarm
+#
+#   4. Check status:
+#        sudo systemctl status mycoswarm
+#        journalctl -u mycoswarm -f
+#
+# Works on any node — Miu (workstation), M710Qs, P320s.
+# Adjust User and venv path per machine.
+
+[Unit]
+Description=mycoSwarm Node Daemon
+Documentation=https://github.com/msb-msb/mycoSwarm
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=minotaur
+WorkingDirectory=/home/minotaur/Desktop/mycoSwarm
+ExecStart=/home/minotaur/Desktop/mycoSwarm/.venv/bin/mycoswarm daemon
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=10
+
+# Logging — stdout/stderr go to journalctl
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mycoswarm
+
+# Environment
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

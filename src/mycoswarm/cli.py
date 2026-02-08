@@ -12,6 +12,7 @@ Usage:
     mycoswarm ask "your prompt"   Send a prompt for inference
     mycoswarm search "query"      Search the web via the swarm
     mycoswarm research "query"    Search + synthesize (CPU search → GPU think)
+    mycoswarm models              Show all models available across the swarm
     mycoswarm chat                Interactive chat with the swarm
 """
 
@@ -618,6 +619,63 @@ def _list_swarm_models(url: str) -> list[str]:
     return sorted(models)
 
 
+def cmd_models(args):
+    """Show all models available across the swarm."""
+    profile = detect_all()
+    ip = profile.lan_ip or "localhost"
+    url = f"http://{ip}:{args.port}"
+
+    try:
+        with httpx.Client(timeout=5) as client:
+            status = client.get(f"{url}/status").json()
+            peers_data = client.get(f"{url}/peers").json()
+    except httpx.ConnectError:
+        print("❌ Daemon not running. Start it with: mycoswarm daemon")
+        sys.exit(1)
+
+    # Build model → list of nodes mapping
+    model_nodes: dict[str, list[dict]] = {}
+
+    # Local node
+    for model_name in status.get("ollama_models", []):
+        node_info = {
+            "hostname": status["hostname"],
+            "gpu_name": status.get("gpu"),
+            "vram_total_mb": status.get("vram_total_mb", 0),
+        }
+        model_nodes.setdefault(model_name, []).append(node_info)
+
+    # Peers
+    for p in peers_data:
+        for model_name in p.get("available_models", []):
+            node_info = {
+                "hostname": p["hostname"],
+                "gpu_name": p.get("gpu_name"),
+                "vram_total_mb": p.get("vram_total_mb", 0),
+            }
+            model_nodes.setdefault(model_name, []).append(node_info)
+
+    if not model_nodes:
+        print("❌ No models available in the swarm.")
+        print("   Install models with: ollama pull <model>")
+        sys.exit(1)
+
+    print("🍄 mycoSwarm — Available Models")
+    print("=" * 60)
+
+    for model_name in sorted(model_nodes):
+        nodes = model_nodes[model_name]
+        print(f"\n  {model_name}")
+        for n in nodes:
+            gpu = f"{n['gpu_name']}, {n['vram_total_mb'] // 1024}GB" if n["gpu_name"] else "CPU only"
+            print(f"    • {n['hostname']} ({gpu})")
+
+    total = len(model_nodes)
+    node_count = 1 + len(peers_data)
+    print(f"\n{'=' * 60}")
+    print(f"  {total} model(s) across {node_count} node(s)")
+
+
 def cmd_chat(args):
     """Interactive chat with the swarm."""
     import uuid
@@ -846,6 +904,15 @@ def main():
         "--port", type=int, default=7890, help="Local daemon port"
     )
     research_parser.set_defaults(func=cmd_research)
+
+    # models
+    models_parser = subparsers.add_parser(
+        "models", help="Show all models available across the swarm"
+    )
+    models_parser.add_argument(
+        "--port", type=int, default=7890, help="Local daemon port"
+    )
+    models_parser.set_defaults(func=cmd_models)
 
     # chat
     chat_parser = subparsers.add_parser(

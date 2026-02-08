@@ -86,6 +86,10 @@
 - [x] Sources cited in footer with numbered URLs matching [1], [2] refs in response
 - [x] Demonstrates parallel swarm advantage: two cheap boxes > one expensive box
 
+### Phase 9e: Models Command & Systemd (2026-02-08)
+- [x] `mycoswarm models` — unified view of every model across the swarm, grouped by model name with node/GPU info
+- [x] Systemd service file: scripts/mycoswarm.service — auto-start daemon on boot, works on all nodes
+
 ## Next
 
 ### Phase 5b: Cross-Node Inference (remaining)
@@ -109,12 +113,12 @@
 ### Phase 9: Advanced Features (remaining)
 - [ ] Embedding handler (for RAG pipelines)
 - [ ] File processing handler (read, transform, summarize documents)
-- [ ] Model management: `mycoswarm models` — list/pull/remove across swarm
+- [ ] Model management: `mycoswarm models pull/remove` across swarm
 - [ ] Dashboard: simple web UI showing swarm topology and status
 
 ### Phase 10: Production Hardening
 - [ ] mTLS between nodes (upgrade from shared-secret auth)
-- [ ] Systemd service file for daemon auto-start
+- [x] Systemd service file for daemon auto-start
 - [ ] Log rotation
 - [ ] Config file support (~/.config/mycoswarm/config.toml)
 - [ ] Plugin system for custom task handlers
