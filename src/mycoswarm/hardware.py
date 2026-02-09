@@ -2,15 +2,21 @@
 
 Detects GPU, CPU, RAM, disk, network interfaces, and available Ollama models.
 No external dependencies beyond psutil and subprocess calls to nvidia-smi/ollama.
+Cross-platform: Linux and macOS (Apple Silicon + Intel).
 """
 
 import json
+import platform
 import shutil
 import subprocess
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import psutil
+
+IS_MACOS = sys.platform == "darwin"
+IS_LINUX = sys.platform.startswith("linux")
 
 
 @dataclass
@@ -98,8 +104,8 @@ class HardwareProfile:
         return None
 
 
-def detect_gpus() -> list[GpuInfo]:
-    """Detect NVIDIA GPUs via nvidia-smi."""
+def _detect_nvidia_gpus() -> list[GpuInfo]:
+    """Detect NVIDIA GPUs via nvidia-smi (Linux)."""
     if not shutil.which("nvidia-smi"):
         return []
 
@@ -140,29 +146,20 @@ def detect_gpus() -> list[GpuInfo]:
             )
 
         # Get CUDA version separately
-        cuda_result = subprocess.run(
-            ["nvidia-smi", "--query-gpu=driver_version", "--format=csv,noheader"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        # CUDA version is in the header of nvidia-smi, parse it differently
         header_result = subprocess.run(
             ["nvidia-smi"], capture_output=True, text=True, timeout=5
         )
         if header_result.returncode == 0:
             for line in header_result.stdout.split("\n"):
                 if "CUDA Version" in line:
-                    for part in line.split():
-                        try:
-                            # Find the version number after "CUDA Version:"
-                            idx = line.index("CUDA Version:")
-                            version = line[idx:].split()[2].strip("|").strip()
-                            for gpu in gpus:
-                                gpu.cuda_version = version
-                            break
-                        except (ValueError, IndexError):
-                            continue
+                    try:
+                        idx = line.index("CUDA Version:")
+                        version = line[idx:].split()[2].strip("|").strip()
+                        for gpu in gpus:
+                            gpu.cuda_version = version
+                    except (ValueError, IndexError):
+                        pass
+                    break
 
         return gpus
 
@@ -170,19 +167,89 @@ def detect_gpus() -> list[GpuInfo]:
         return []
 
 
-def detect_cpu() -> CpuInfo:
-    """Detect CPU information."""
-    import platform
+def _detect_apple_silicon_gpu() -> list[GpuInfo]:
+    """Detect Apple Silicon GPU via system_profiler.
 
+    Apple Silicon uses unified memory — the full system RAM is available
+    to the GPU (Metal) and to Ollama for model inference.
+    """
+    if not IS_MACOS:
+        return []
+
+    # Check for Apple Silicon (arm64)
+    if platform.machine() != "arm64":
+        return []
+
+    try:
+        # Get chip name from system_profiler
+        result = subprocess.run(
+            ["system_profiler", "SPDisplaysDataType", "-json"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode != 0:
+            return []
+
+        data = json.loads(result.stdout)
+        displays = data.get("SPDisplaysDataType", [])
+        if not displays:
+            return []
+
+        chip_name = displays[0].get("sppci_model", "Apple Silicon GPU")
+
+        # Unified memory: total system RAM is available for GPU/inference
+        mem = psutil.virtual_memory()
+        total_mb = mem.total // (1024 * 1024)
+        available_mb = mem.available // (1024 * 1024)
+        used_mb = total_mb - available_mb
+
+        return [
+            GpuInfo(
+                index=0,
+                name=chip_name,
+                vram_total_mb=total_mb,
+                vram_used_mb=used_mb,
+                vram_free_mb=available_mb,
+                driver_version="Metal",
+            )
+        ]
+
+    except (subprocess.TimeoutExpired, json.JSONDecodeError, OSError):
+        return []
+
+
+def detect_gpus() -> list[GpuInfo]:
+    """Detect GPUs — NVIDIA on Linux, Apple Silicon on macOS."""
+    gpus = _detect_nvidia_gpus()
+    if not gpus:
+        gpus = _detect_apple_silicon_gpu()
+    return gpus
+
+
+def detect_cpu() -> CpuInfo:
+    """Detect CPU information. Works on Linux and macOS."""
     model = "Unknown"
 
-    # Try /proc/cpuinfo on Linux
-    cpuinfo_path = Path("/proc/cpuinfo")
-    if cpuinfo_path.exists():
-        for line in cpuinfo_path.read_text().split("\n"):
-            if line.startswith("model name"):
-                model = line.split(":", 1)[1].strip()
-                break
+    if IS_LINUX:
+        cpuinfo_path = Path("/proc/cpuinfo")
+        if cpuinfo_path.exists():
+            for line in cpuinfo_path.read_text().split("\n"):
+                if line.startswith("model name"):
+                    model = line.split(":", 1)[1].strip()
+                    break
+    elif IS_MACOS:
+        try:
+            result = subprocess.run(
+                ["sysctl", "-n", "machdep.cpu.brand_string"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                model = result.stdout.strip()
+        except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+            pass
 
     freq = psutil.cpu_freq()
 
@@ -211,11 +278,15 @@ def detect_disks() -> list[DiskInfo]:
     disks = []
     seen_devices = set()
 
+    # Mountpoints to skip per platform
+    _skip = ("/snap/", "/boot/")
+    if IS_MACOS:
+        _skip = ("/System/Volumes/", "/private/var/vm")
+
     for partition in psutil.disk_partitions(all=False):
         if partition.device in seen_devices:
             continue
-        # Skip snap mounts and other pseudo-filesystems
-        if "/snap/" in partition.mountpoint or "/boot/" in partition.mountpoint:
+        if any(s in partition.mountpoint for s in _skip):
             continue
         seen_devices.add(partition.device)
 
@@ -242,6 +313,9 @@ def detect_network() -> list[NetworkInterface]:
     addrs = psutil.net_if_addrs()
     stats = psutil.net_if_stats()
 
+    # AF_PACKET on Linux, AF_LINK on macOS — both carry MAC addresses
+    _link_families = {"AF_PACKET", "AF_LINK"}
+
     for name, addr_list in addrs.items():
         # Skip interfaces that are down
         if name in stats and not stats[name].isup:
@@ -253,7 +327,7 @@ def detect_network() -> list[NetworkInterface]:
             if addr.family.name == "AF_INET":
                 iface.ipv4 = addr.address
                 iface.is_loopback = addr.address.startswith("127.")
-            elif addr.family.name == "AF_PACKET":
+            elif addr.family.name in _link_families:
                 iface.mac = addr.address
 
         if iface.ipv4:  # Only include interfaces with an IPv4 address

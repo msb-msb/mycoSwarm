@@ -21,7 +21,9 @@ def _datetime_string() -> str:
     from datetime import datetime
 
     now = datetime.now().astimezone()
-    return now.strftime("Current date and time: %A, %B %-d, %Y at %-I:%M %p %Z")
+    day = now.day
+    hour = now.hour % 12 or 12
+    return now.strftime(f"Current date and time: %A, %B {day}, %Y at {hour}:%M %p %Z")
 
 
 def check_daemon(port: int = 7890) -> bool:

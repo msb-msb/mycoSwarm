@@ -21,6 +21,27 @@ This starts an interactive chat session using your local Ollama models — no da
 
 **Prerequisites:** [Ollama](https://ollama.com) installed and running with at least one model pulled (e.g. `ollama pull llama3.2`).
 
+**macOS (Apple Silicon & Intel):**
+
+```bash
+brew install ollama
+ollama serve &
+ollama pull llama3.2
+pip install mycoswarm
+mycoswarm chat
+```
+
+Apple Silicon unified memory is automatically detected as available VRAM for inference.
+
+**Linux:**
+
+```bash
+curl -fsSL https://ollama.com/install.sh | sh
+ollama pull llama3.2
+pip install mycoswarm
+mycoswarm chat
+```
+
 **Single-node mode** works instantly for `chat` and `ask`:
 
 ```bash
@@ -179,14 +200,14 @@ For model recommendations by GPU, VRAM tier, and budget, see [InsiderLLM.com](ht
 ## Requirements
 
 **Minimum (Solo mode):**
-- Any Linux machine (Ubuntu/Debian recommended)
+- Linux or macOS (Apple Silicon or Intel)
 - Python 3.11+
 - 8GB RAM
-- Any Ollama-supported model
+- Ollama with at least one model
 
 **Recommended (Desk mode):**
-- 1x GPU node (RTX 3060 or better, 12GB+ VRAM)
-- 1-4x CPU nodes (any x86_64 with 8GB+ RAM)
+- 1x GPU node (RTX 3060+ or Apple Silicon Mac with 16GB+)
+- 1-4x CPU nodes (any x86_64/arm64 with 8GB+ RAM)
 - 1 GbE LAN connecting all nodes
 
 **No cloud accounts, API keys, or subscriptions required.**

@@ -48,7 +48,9 @@ def _datetime_string() -> str:
     from datetime import datetime, timezone
 
     now = datetime.now().astimezone()
-    return now.strftime("Current date and time: %A, %B %-d, %Y at %-I:%M %p %Z")
+    day = now.day
+    hour = now.hour % 12 or 12
+    return now.strftime(f"Current date and time: %A, %B {day}, %Y at {hour}:%M %p %Z")
 
 
 def _build_ollama_request(
@@ -886,14 +888,18 @@ async def handle_code_run(task: TaskRequest) -> TaskResult:
             code_path.write_text(code)
 
             # Minimal environment — no credentials, restricted paths
+            sandbox_path = "/usr/bin:/bin:/usr/local/bin"
+            if sys.platform == "darwin":
+                sandbox_path = "/opt/homebrew/bin:" + sandbox_path
             env = {
-                "PATH": "/usr/bin:/bin:/usr/local/bin",
+                "PATH": sandbox_path,
                 "HOME": tmpdir,
                 "TMPDIR": tmpdir,
                 "PYTHONDONTWRITEBYTECODE": "1",
             }
 
             # Try network-isolated execution via Linux user namespaces
+            # (not available on macOS — falls back to unsandboxed subprocess)
             net_isolated = await _check_unshare()
             if net_isolated:
                 cmd = ["unshare", "-rn", sys.executable, str(code_path)]

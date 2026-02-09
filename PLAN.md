@@ -132,6 +132,17 @@
 - [x] Seamless upgrade: if daemon is running, uses full swarm pipeline automatically
 - [x] README updated with two-command quick start: pip install mycoswarm / mycoswarm chat
 
+### Phase 13: macOS Compatibility (2026-02-09)
+- [x] hardware.py: Apple Silicon GPU detection via system_profiler (unified memory as VRAM)
+- [x] hardware.py: macOS CPU detection via sysctl -n machdep.cpu.brand_string
+- [x] hardware.py: AF_LINK support for MAC addresses on macOS (was AF_PACKET only)
+- [x] hardware.py: macOS pseudo-mount filtering (/System/Volumes/, /private/var/vm)
+- [x] worker.py: cross-platform strftime (removed glibc-only %-d and %-I specifiers)
+- [x] solo.py: same strftime fix
+- [x] worker.py: /opt/homebrew/bin added to sandbox PATH on macOS
+- [x] worker.py: unshare gracefully skipped on macOS (falls back to unsandboxed subprocess)
+- [x] README: macOS install docs (brew install ollama + pip install mycoswarm)
+
 ## Next
 
 ### Phase 5b: Cross-Node Inference (remaining)
