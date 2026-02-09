@@ -88,7 +88,7 @@ def _build_ollama_request(
         endpoint = f"{OLLAMA_BASE}/api/generate"
         ollama_payload = {
             "model": model,
-            "prompt": prompt,
+            "prompt": f"{datetime_line}\n\n{prompt}",
             "options": {
                 "temperature": payload.get("temperature", 0.7),
                 "num_predict": payload.get("max_tokens", 2048),
@@ -96,13 +96,10 @@ def _build_ollama_request(
         }
         is_chat = False
 
-    # System prompt: prepend datetime
+    # System prompt: prepend datetime to explicit system prompts
     existing_system = payload.get("system", "")
     if existing_system:
         ollama_payload["system"] = f"{datetime_line}\n\n{existing_system}"
-    elif not is_chat:
-        # Generate mode with no system — inject datetime
-        ollama_payload["system"] = datetime_line
 
     return endpoint, ollama_payload, is_chat
 
