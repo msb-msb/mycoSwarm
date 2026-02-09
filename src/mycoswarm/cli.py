@@ -1037,6 +1037,7 @@ def cmd_chat(args):
 
     while True:
         try:
+            sys.stdout.flush()
             user_input = input("\n🍄> ").strip()
         except (EOFError, KeyboardInterrupt):
             print()
