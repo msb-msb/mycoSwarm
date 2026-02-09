@@ -193,15 +193,26 @@ def format_summaries_for_prompt(summaries: list[dict]) -> str:
 # Prompt Builder
 # ---------------------------------------------------------------------------
 
-def build_memory_system_prompt() -> str | None:
+def build_memory_system_prompt() -> str:
     """Build a combined memory prompt from facts + summaries.
 
-    Returns a string to inject as a system message, or None if empty.
+    Always returns a system prompt string — includes capability boundaries
+    to prevent hallucination of real-time data, plus any memory content.
     """
     parts = [
+        "You are running locally with NO internet access during chat. "
+        "You CANNOT look up current weather, news, stock prices, sports "
+        "scores, or any real-time information. If asked about something "
+        "you're uncertain about or that requires current data, be honest "
+        "and say: 'I don't have access to real-time information. You can "
+        "try: mycoswarm research <your question> for web-sourced answers.' "
+        "Never fabricate current data like weather, prices, or news. "
+        "You DO have access to: persistent memory (facts the user has "
+        "stored), session history, and your training knowledge.",
+
         "You have persistent memory across conversations. When the user "
         "asks what you know about them, state the facts naturally without "
-        "disclaimers about memory limitations."
+        "disclaimers about memory limitations.",
     ]
 
     facts = load_facts()
@@ -213,8 +224,5 @@ def build_memory_system_prompt() -> str | None:
     summaries_text = format_summaries_for_prompt(summaries)
     if summaries_text:
         parts.append(summaries_text)
-
-    if len(parts) == 1:
-        return None  # only the instruction line, no actual memory content
 
     return "\n\n".join(parts)

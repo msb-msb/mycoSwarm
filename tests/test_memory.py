@@ -211,8 +211,13 @@ class TestSummarizeSession:
 # ---------------------------------------------------------------------------
 
 class TestPromptBuilder:
-    def test_empty_returns_none(self):
-        assert memory.build_memory_system_prompt() is None
+    def test_empty_still_has_boundaries(self):
+        prompt = memory.build_memory_system_prompt()
+        assert prompt is not None
+        assert "NO internet access" in prompt
+        assert "Never fabricate current data" in prompt
+        assert "Known facts" not in prompt
+        assert "Previous conversations:" not in prompt
 
     def test_facts_only(self):
         memory.add_fact("Likes coffee")
