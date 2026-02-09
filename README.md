@@ -10,7 +10,13 @@ No cloud. No subscriptions. No data leaving your network. Just your hardware, yo
 
 ## Quick Start
 
-Two commands. That's it.
+**One-line install** — installs Python, Ollama, mycoswarm, and pulls a model sized for your hardware:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/msb-msb/mycoSwarm/main/scripts/install.sh | bash
+```
+
+**Or do it manually** — two commands if you already have Ollama:
 
 ```bash
 pip install mycoswarm
@@ -19,7 +25,7 @@ mycoswarm chat
 
 This starts an interactive chat session using your local Ollama models — no daemon, no config, no network setup. Just you and your hardware.
 
-**Prerequisites:** [Ollama](https://ollama.com) installed and running with at least one model pulled (e.g. `ollama pull llama3.2`).
+**Prerequisites for manual install:** [Ollama](https://ollama.com) installed and running with at least one model pulled (e.g. `ollama pull llama3.2`).
 
 **macOS (Apple Silicon & Intel):**
 

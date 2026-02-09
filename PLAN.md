@@ -143,6 +143,14 @@
 - [x] worker.py: unshare gracefully skipped on macOS (falls back to unsandboxed subprocess)
 - [x] README: macOS install docs (brew install ollama + pip install mycoswarm)
 
+### Phase 14: One-Line Install Script (2026-02-09)
+- [x] scripts/install.sh: detects OS (Linux/macOS), installs Python, Ollama, mycoswarm
+- [x] Auto-pulls model sized for RAM: gemma3:1b (<8GB), gemma3:4b (8-16GB), gemma3:27b (16GB+)
+- [x] Supports apt, dnf, pacman (Linux) and brew (macOS)
+- [x] Starts Ollama if not running (systemd on Linux, background process on macOS)
+- [x] Runs `mycoswarm detect` to show user what was found
+- [x] README updated with one-line install: curl ... | bash
+
 ## Next
 
 ### Phase 5b: Cross-Node Inference (remaining)
