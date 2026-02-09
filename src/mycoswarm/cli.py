@@ -18,6 +18,9 @@ Usage:
     mycoswarm research "query"    Search + synthesize (CPU search → GPU think)
     mycoswarm models              Show all models available across the swarm
     mycoswarm plugins             List installed plugins and their status
+    mycoswarm memory              Show stored facts about the user
+    mycoswarm memory --add "..."  Remember a fact
+    mycoswarm memory --forget N   Forget a fact by ID
 """
 
 import argparse
@@ -986,6 +989,20 @@ def cmd_chat(args):
     else:
         model = pick_model(models, args.model)
 
+    # Inject persistent memory into messages
+    from mycoswarm.memory import build_memory_system_prompt
+
+    memory_prompt = build_memory_system_prompt()
+    if memory_prompt and not messages:
+        # Only inject for fresh sessions; resumed sessions already have context
+        messages.insert(0, {"role": "system", "content": memory_prompt})
+    elif memory_prompt and messages:
+        # For resumed sessions, update/add system message at the front
+        if messages[0].get("role") == "system":
+            messages[0] = {"role": "system", "content": memory_prompt}
+        else:
+            messages.insert(0, {"role": "system", "content": memory_prompt})
+
     print("🍄 mycoSwarm Chat")
     print(f"   Model: {model}")
     print(f"   Session: {session_name}")
@@ -994,14 +1011,29 @@ def cmd_chat(args):
     if messages:
         print(f"   Resumed: {len(messages)} messages")
     if daemon_up:
-        print("   /model to switch, /peers to show swarm, /clear to reset, /quit to exit")
+        print("   /model /peers /remember /memories /forget /clear /quit")
     else:
-        print("   /model to switch, /clear to reset, /quit to exit")
+        print("   /model /remember /memories /forget /clear /quit")
     print(f"{'─' * 50}")
 
     def _save():
         _save_session(session_name, messages, model)
         print(f"   Session saved: {session_name}")
+
+        # Summarize session for persistent memory
+        from mycoswarm.memory import summarize_session, save_session_summary
+        # Only summarize if there are user+assistant messages (skip system-only)
+        user_msgs = [m for m in messages if m["role"] in ("user", "assistant")]
+        if len(user_msgs) >= 2:
+            print("   Summarizing session...", end=" ", flush=True)
+            summary = summarize_session(messages, model)
+            if summary:
+                save_session_summary(session_name, model, summary, len(user_msgs))
+                print("done.")
+            else:
+                print("skipped.")
+        else:
+            print("   (too short to summarize)")
 
     while True:
         try:
@@ -1070,6 +1102,38 @@ def cmd_chat(args):
                         print("   No peers.")
                 except httpx.ConnectError:
                     print("   ❌ Can't reach daemon.")
+                continue
+
+            elif cmd == "/remember":
+                parts = user_input.split(maxsplit=1)
+                if len(parts) < 2:
+                    print("   Usage: /remember <fact>")
+                    continue
+                from mycoswarm.memory import add_fact
+                fact = add_fact(parts[1])
+                print(f"   Remembered (#{fact['id']}): {fact['text']}")
+                continue
+
+            elif cmd == "/memories":
+                from mycoswarm.memory import load_facts
+                facts = load_facts()
+                if not facts:
+                    print("   No facts stored. Use /remember <fact> to add one.")
+                else:
+                    for f in facts:
+                        print(f"   #{f['id']}: {f['text']}")
+                continue
+
+            elif cmd == "/forget":
+                parts = user_input.split(maxsplit=1)
+                if len(parts) < 2 or not parts[1].isdigit():
+                    print("   Usage: /forget <number>")
+                    continue
+                from mycoswarm.memory import remove_fact
+                if remove_fact(int(parts[1])):
+                    print(f"   Forgot #{parts[1]}.")
+                else:
+                    print(f"   Fact #{parts[1]} not found.")
                 continue
 
             else:
@@ -1155,6 +1219,37 @@ def cmd_chat(args):
             f"  ⏱  {duration:.1f}s | {tps:.1f} tok/s | "
             f"{model} | node: {node_id}"
         )
+
+
+def cmd_memory(args):
+    """Manage persistent memory (facts)."""
+    from mycoswarm.memory import load_facts, add_fact, remove_fact
+
+    if args.add:
+        fact = add_fact(args.add)
+        print(f"✅ Added #{fact['id']}: {fact['text']}")
+        return
+
+    if args.forget is not None:
+        if remove_fact(args.forget):
+            print(f"✅ Forgot #{args.forget}.")
+        else:
+            print(f"❌ Fact #{args.forget} not found.")
+        return
+
+    # Default: list all facts
+    facts = load_facts()
+    if not facts:
+        print("🧠 No facts stored.")
+        print("   Add one with: mycoswarm memory --add \"your fact\"")
+        return
+
+    print("🧠 mycoSwarm Memory — Known Facts")
+    print("=" * 40)
+    for f in facts:
+        added = f.get("added", "")[:10]
+        print(f"  #{f['id']}: {f['text']}  ({added})")
+    print(f"\n  {len(facts)} fact(s). Forget with: mycoswarm memory --forget <number>")
 
 
 def main():
@@ -1289,6 +1384,20 @@ def main():
         help="List saved chat sessions",
     )
     chat_parser.set_defaults(func=cmd_chat)
+
+    # memory
+    memory_parser = subparsers.add_parser(
+        "memory", help="Manage persistent memory (facts about the user)"
+    )
+    memory_parser.add_argument(
+        "--add", type=str, default=None,
+        help="Add a fact (e.g. --add \"I teach Tai Chi\")",
+    )
+    memory_parser.add_argument(
+        "--forget", type=int, default=None,
+        help="Remove a fact by ID (e.g. --forget 1)",
+    )
+    memory_parser.set_defaults(func=cmd_memory)
 
     args = parser.parse_args()
 
