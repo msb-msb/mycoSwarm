@@ -198,7 +198,11 @@ def build_memory_system_prompt() -> str | None:
 
     Returns a string to inject as a system message, or None if empty.
     """
-    parts = []
+    parts = [
+        "You have persistent memory across conversations. When the user "
+        "asks what you know about them, state the facts naturally without "
+        "disclaimers about memory limitations."
+    ]
 
     facts = load_facts()
     facts_text = format_facts_for_prompt(facts)
@@ -210,7 +214,7 @@ def build_memory_system_prompt() -> str | None:
     if summaries_text:
         parts.append(summaries_text)
 
-    if not parts:
-        return None
+    if len(parts) == 1:
+        return None  # only the instruction line, no actual memory content
 
     return "\n\n".join(parts)

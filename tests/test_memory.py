@@ -218,6 +218,7 @@ class TestPromptBuilder:
         memory.add_fact("Likes coffee")
         prompt = memory.build_memory_system_prompt()
         assert prompt is not None
+        assert "persistent memory across conversations" in prompt
         assert "Known facts about the user:" in prompt
         assert "Likes coffee" in prompt
         assert "Previous conversations:" not in prompt
@@ -226,6 +227,7 @@ class TestPromptBuilder:
         memory.save_session_summary("s1", "m", "Talked about coffee", 5)
         prompt = memory.build_memory_system_prompt()
         assert prompt is not None
+        assert "persistent memory across conversations" in prompt
         assert "Previous conversations:" in prompt
         assert "Talked about coffee" in prompt
         assert "Known facts" not in prompt
@@ -235,5 +237,6 @@ class TestPromptBuilder:
         memory.save_session_summary("s1", "m", "Discussed brewing methods", 5)
         prompt = memory.build_memory_system_prompt()
         assert prompt is not None
+        assert "persistent memory across conversations" in prompt
         assert "Known facts about the user:" in prompt
         assert "Previous conversations:" in prompt
