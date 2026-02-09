@@ -115,6 +115,65 @@ def ask_direct(prompt: str, model: str) -> None:
     print(f"  ⏱  {duration:.1f}s | {tps:.1f} tok/s | model: {model}")
 
 
+def classify_query(query: str, model: str) -> str:
+    """Classify a user query to determine what tools are needed.
+
+    Returns one of: "answer", "web_search", "rag", "web_and_rag".
+    Falls back to "answer" on any error.
+    """
+    try:
+        with httpx.Client(timeout=httpx.Timeout(5.0, read=15.0)) as client:
+            resp = client.post(
+                f"{OLLAMA_BASE}/api/chat",
+                json={
+                    "model": model,
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": (
+                                "Classify the user's message into exactly one category. "
+                                "Respond with ONLY the category word, nothing else.\n\n"
+                                "Categories:\n"
+                                "- answer: can be answered from general knowledge, math, coding, creative writing, or conversation\n"
+                                "- web_search: needs current/real-time info (news, weather, prices, sports, recent events, current status of things)\n"
+                                "- rag: asks about the user's own documents, files, notes, or stored library content\n"
+                                "- web_and_rag: needs both web info and the user's documents"
+                            ),
+                        },
+                        {"role": "user", "content": query},
+                    ],
+                    "options": {"temperature": 0.0, "num_predict": 20},
+                    "stream": False,
+                },
+            )
+            resp.raise_for_status()
+            raw = resp.json().get("message", {}).get("content", "").strip().lower()
+            # Extract the classification word from the response
+            for category in ("web_and_rag", "web_search", "rag", "answer"):
+                if category in raw:
+                    return category
+            return "answer"
+    except (httpx.ConnectError, httpx.TimeoutException, httpx.HTTPError):
+        return "answer"
+
+
+def web_search_solo(query: str, max_results: int = 5) -> list[dict]:
+    """Run a web search locally via DuckDuckGo. Returns list of result dicts."""
+    try:
+        from ddgs import DDGS
+        raw = DDGS().text(query, max_results=max_results)
+        return [
+            {
+                "title": r.get("title", ""),
+                "url": r.get("href", ""),
+                "snippet": r.get("body", ""),
+            }
+            for r in raw
+        ]
+    except Exception:
+        return []
+
+
 def chat_stream(
     messages: list[dict], model: str
 ) -> tuple[str, dict]:

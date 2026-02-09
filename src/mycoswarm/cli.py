@@ -1016,10 +1016,12 @@ def cmd_chat(args):
     if messages:
         print(f"   Resumed: {len(messages)} messages")
     if daemon_up:
-        print("   /model /peers /rag /library /remember /memories /forget /clear /quit")
+        print("   /model /peers /rag /library /auto /remember /memories /forget /clear /quit")
     else:
-        print("   /model /rag /library /remember /memories /forget /clear /quit")
+        print("   /model /rag /library /auto /remember /memories /forget /clear /quit")
     print(f"{'─' * 50}")
+
+    auto_tools = True  # agentic tool routing on by default
 
     def _save():
         _save_session(session_name, messages, model)
@@ -1208,34 +1210,107 @@ def cmd_chat(args):
                 continue
 
             elif cmd == "/library":
-                # Toggle auto-RAG
-                if not hasattr(cmd_chat, "_auto_rag"):
-                    cmd_chat._auto_rag = False
-                cmd_chat._auto_rag = not cmd_chat._auto_rag
-                state = "on" if cmd_chat._auto_rag else "off"
-                print(f"   Library auto-search: {state}")
+                from mycoswarm.library import list_documents
+                docs = list_documents()
+                if not docs:
+                    print("   No documents indexed. Try: mycoswarm library ingest")
+                else:
+                    for d in docs:
+                        print(f"   {d['file']}  ({d['chunks']} chunks)")
+                continue
+
+            elif cmd == "/auto":
+                auto_tools = not auto_tools
+                state = "on" if auto_tools else "off"
+                print(f"   Auto tool use: {state}")
                 continue
 
             else:
                 print(f"   Unknown command: {cmd}")
                 continue
 
-        # --- Auto-RAG injection ---
-        auto_rag_on = getattr(cmd_chat, "_auto_rag", False)
-        if auto_rag_on:
-            from mycoswarm.library import search as lib_search
-            auto_hits = lib_search(user_input, n_results=3)
-            if auto_hits:
-                auto_parts = []
-                for ai, hit in enumerate(auto_hits, 1):
-                    auto_parts.append(f"[{ai}] ({hit['source']}) {hit['text']}")
-                auto_context = "\n\n".join(auto_parts)
-                auto_system = (
-                    "Relevant document excerpts are provided for context. "
-                    "Use them if helpful. Cite sources using [1], [2] etc.\n\n"
-                    "DOCUMENT EXCERPTS:\n" + auto_context
+        # --- Agentic classification + tool gathering ---
+        tool_context = ""
+        tool_sources: list[str] = []
+
+        if auto_tools and len(user_input.split()) >= 5:
+            from mycoswarm.solo import classify_query
+            print("   🤔 ...", end="", flush=True)
+            classification = classify_query(user_input, model)
+            # Clear the thinking indicator
+            print("\r       \r", end="", flush=True)
+
+            need_web = classification in ("web_search", "web_and_rag")
+            need_rag = classification in ("rag", "web_and_rag")
+
+            web_context_parts: list[str] = []
+            rag_context_parts: list[str] = []
+
+            # --- Web search ---
+            if need_web:
+                print("   🔍 Searching the web...", end="", flush=True)
+                if daemon_up:
+                    import uuid as _uuid
+                    _sid = f"auto-ws-{_uuid.uuid4().hex[:8]}"
+                    ws_data = _do_search(url, user_input, _sid, 5)
+                    ws_results = []
+                    if ws_data.get("data", {}).get("status") == "completed":
+                        ws_results = ws_data["data"].get("result", {}).get("results", [])
+                else:
+                    from mycoswarm.solo import web_search_solo
+                    ws_results = web_search_solo(user_input, max_results=5)
+
+                if ws_results:
+                    print(f" {len(ws_results)} results", flush=True)
+                    for wi, r in enumerate(ws_results, 1):
+                        web_context_parts.append(
+                            f"[W{wi}] {r['title']}\n    {r['snippet']}"
+                        )
+                    tool_sources.append("web")
+                else:
+                    print(" no results", flush=True)
+
+            # --- RAG search ---
+            if need_rag:
+                print("   📚 Checking your documents...", end="", flush=True)
+                from mycoswarm.library import search as lib_search
+                rag_hits = lib_search(user_input, n_results=5)
+                if rag_hits:
+                    print(f" {len(rag_hits)} excerpts", flush=True)
+                    for ri, hit in enumerate(rag_hits, 1):
+                        rag_context_parts.append(
+                            f"[D{ri}] ({hit['source']}) {hit['text']}"
+                        )
+                    tool_sources.append("docs")
+                else:
+                    print(" no results", flush=True)
+
+            # --- Build combined context ---
+            context_sections: list[str] = []
+            if web_context_parts:
+                context_sections.append(
+                    "WEB SEARCH RESULTS:\n" + "\n\n".join(web_context_parts)
                 )
-                messages.append({"role": "system", "content": auto_system})
+            if rag_context_parts:
+                context_sections.append(
+                    "DOCUMENT EXCERPTS:\n" + "\n\n".join(rag_context_parts)
+                )
+            if context_sections:
+                cite_hint = ""
+                if web_context_parts and rag_context_parts:
+                    cite_hint = "Cite web sources as [W1], [W2] and documents as [D1], [D2]."
+                elif web_context_parts:
+                    cite_hint = "Cite sources as [W1], [W2] etc."
+                elif rag_context_parts:
+                    cite_hint = "Cite sources as [D1], [D2] etc."
+                tool_context = (
+                    f"Use the following context to answer. {cite_hint}\n\n"
+                    + "\n\n".join(context_sections)
+                )
+
+        # --- Inject tool context as a one-off system message ---
+        if tool_context:
+            messages.append({"role": "system", "content": tool_context})
 
         # --- Send message ---
         messages.append({"role": "user", "content": user_input})
@@ -1253,9 +1328,10 @@ def cmd_chat(args):
 
             tps = metrics.get("tokens_per_second", 0)
             duration = metrics.get("duration_seconds", 0)
+            tools_label = f" | tools: {'+'.join(tool_sources)}" if tool_sources else ""
             print(
                 f"\n\n{'─' * 50}\n"
-                f"  ⏱  {duration:.1f}s | {tps:.1f} tok/s | {model}"
+                f"  ⏱  {duration:.1f}s | {tps:.1f} tok/s | {model}{tools_label}"
             )
             continue
 
@@ -1311,10 +1387,11 @@ def cmd_chat(args):
         tps = metrics.get("tokens_per_second", 0)
         duration = metrics.get("duration_seconds", 0)
         node_id = metrics.get("node_id", "")
+        tools_label = f" | tools: {'+'.join(tool_sources)}" if tool_sources else ""
         print(
             f"\n\n{'─' * 50}\n"
             f"  ⏱  {duration:.1f}s | {tps:.1f} tok/s | "
-            f"{model} | node: {node_id}"
+            f"{model} | node: {node_id}{tools_label}"
         )
 
 
