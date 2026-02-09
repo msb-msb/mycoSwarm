@@ -7,8 +7,24 @@ name = "mycoswarm"
 version = "0.1.0"
 description = "Distributed AI framework — grow your own cluster from whatever hardware you've got"
 readme = "README.md"
-license = {text = "MIT"}
+license = "MIT"
 requires-python = ">=3.11"
+authors = [
+    {name = "msb", email = "msb@mycoswarm.org"},
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: System :: Distributed Computing",
+]
 dependencies = [
     "zeroconf>=0.131.0",
     "psutil>=5.9.0",
@@ -16,18 +32,25 @@ dependencies = [
     "uvicorn>=0.30.0",
     "fastapi>=0.111.0",
     "ddgs>=9.0.0",
-    "pymupdf>=1.24.0",
-    "chromadb>=0.4.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/msb-msb/mycoSwarm"
+Repository = "https://github.com/msb-msb/mycoSwarm"
+"Bug Tracker" = "https://github.com/msb-msb/mycoSwarm/issues"
 
 [project.scripts]
 mycoswarm = "mycoswarm.cli:main"
 
 [project.optional-dependencies]
+pdf = ["pymupdf>=1.24.0"]
+rag = ["chromadb>=0.4.0"]
+all = ["pymupdf>=1.24.0", "chromadb>=0.4.0"]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.24",
-    "httpx>=0.27",
+    "pymupdf>=1.24.0",
+    "chromadb>=0.4.0",
 ]
 
 [tool.pytest.ini_options]
