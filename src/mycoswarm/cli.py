@@ -1315,10 +1315,33 @@ def cmd_chat(args):
         # --- Send message ---
         messages.append({"role": "user", "content": user_input})
 
+        # Swap "no internet" boundary when web results are present
+        _send_msgs = list(messages)
+        if "web" in tool_sources and _send_msgs and _send_msgs[0].get("role") == "system":
+            _no_net = (
+                "You are running locally with NO internet access during chat. "
+                "You CANNOT look up current weather, news, stock prices, sports "
+                "scores, or any real-time information. If asked about something "
+                "you're uncertain about or that requires current data, be honest "
+                "and say: 'I don't have access to real-time information. You can "
+                "try: mycoswarm research <your question> for web-sourced answers.' "
+                "Never fabricate current data like weather, prices, or news. "
+                "You DO have access to: persistent memory (facts the user has "
+                "stored), session history, and your training knowledge."
+            )
+            _web_aware = (
+                "You have web search results available below. "
+                "Use them confidently to answer the user's question."
+            )
+            _send_msgs[0] = {
+                **_send_msgs[0],
+                "content": _send_msgs[0]["content"].replace(_no_net, _web_aware),
+            }
+
         if not daemon_up:
             # Single-node mode — direct to Ollama
             print()
-            full_text, metrics = chat_stream(list(messages), model)
+            full_text, metrics = chat_stream(_send_msgs, model)
 
             if not full_text:
                 messages.pop()
@@ -1344,7 +1367,7 @@ def cmd_chat(args):
             "task_type": "inference",
             "payload": {
                 "model": model,
-                "messages": list(messages),
+                "messages": _send_msgs,
             },
             "source_node": "cli-chat",
             "priority": 5,
