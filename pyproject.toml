@@ -17,10 +17,21 @@ dependencies = [
     "fastapi>=0.111.0",
     "ddgs>=9.0.0",
     "pymupdf>=1.24.0",
+    "chromadb>=0.4.0",
 ]
 
 [project.scripts]
 mycoswarm = "mycoswarm.cli:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "httpx>=0.27",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -21,6 +21,11 @@ Usage:
     mycoswarm memory              Show stored facts about the user
     mycoswarm memory --add "..."  Remember a fact
     mycoswarm memory --forget N   Forget a fact by ID
+    mycoswarm library ingest      Ingest documents into the local library
+    mycoswarm library search      Search indexed documents
+    mycoswarm library list        List indexed documents
+    mycoswarm library remove      Remove a document from the index
+    mycoswarm rag "question"      Ask a question with document context (RAG)
 """
 
 import argparse
@@ -1011,9 +1016,9 @@ def cmd_chat(args):
     if messages:
         print(f"   Resumed: {len(messages)} messages")
     if daemon_up:
-        print("   /model /peers /remember /memories /forget /clear /quit")
+        print("   /model /peers /rag /library /remember /memories /forget /clear /quit")
     else:
-        print("   /model /remember /memories /forget /clear /quit")
+        print("   /model /rag /library /remember /memories /forget /clear /quit")
     print(f"{'─' * 50}")
 
     def _save():
@@ -1137,9 +1142,100 @@ def cmd_chat(args):
                     print(f"   Fact #{parts[1]} not found.")
                 continue
 
+            elif cmd == "/rag":
+                parts = user_input.split(maxsplit=1)
+                if len(parts) < 2:
+                    print("   Usage: /rag <question>")
+                    continue
+                rag_query = parts[1]
+                from mycoswarm.library import search as lib_search
+                rag_hits = lib_search(rag_query, n_results=5)
+                if not rag_hits:
+                    print("   No documents indexed. Try: mycoswarm library ingest")
+                    continue
+                # Build context
+                rag_parts = []
+                for ri, hit in enumerate(rag_hits, 1):
+                    rag_parts.append(f"[{ri}] ({hit['source']}) {hit['text']}")
+                rag_context = "\n\n".join(rag_parts)
+                rag_system = (
+                    "Answer using the provided document excerpts. Cite sources using "
+                    "[1], [2] etc. If the excerpts don't contain enough information, "
+                    "say so.\n\nDOCUMENT EXCERPTS:\n" + rag_context
+                )
+                # Inject as a one-off system message for this turn
+                rag_messages = list(messages) + [
+                    {"role": "system", "content": rag_system},
+                    {"role": "user", "content": rag_query},
+                ]
+                print(f"   📚 {len(rag_hits)} document excerpts found.\n")
+                if not daemon_up:
+                    full_text, metrics = chat_stream(rag_messages, model)
+                else:
+                    import uuid as _uuid
+                    _tid = f"rag-{_uuid.uuid4().hex[:8]}"
+                    _tp = {
+                        "task_id": _tid,
+                        "task_type": "inference",
+                        "payload": {"model": model, "messages": rag_messages},
+                        "source_node": "cli-chat-rag",
+                        "priority": 5,
+                        "timeout_seconds": 300,
+                    }
+                    try:
+                        with httpx.Client(timeout=10) as client:
+                            _resp = client.post(f"{url}/task", json=_tp)
+                            _resp.raise_for_status()
+                            _sd = _resp.json()
+                    except (httpx.ConnectError, httpx.HTTPStatusError):
+                        print("   ❌ Failed to submit to daemon.")
+                        continue
+                    _tip = _sd.get("target_ip")
+                    _tpo = _sd.get("target_port")
+                    _surl = f"http://{_tip}:{_tpo}" if _tip and _tpo else url
+                    full_text, metrics = _stream_response(_surl, _tid)
+                if full_text:
+                    messages.append({"role": "user", "content": rag_query})
+                    messages.append({"role": "assistant", "content": full_text})
+                    rag_sources = sorted({h["source"] for h in rag_hits})
+                    tps = metrics.get("tokens_per_second", 0)
+                    duration = metrics.get("duration_seconds", 0)
+                    print(
+                        f"\n\n{'─' * 50}\n"
+                        f"  📚 {', '.join(rag_sources)} | "
+                        f"⏱  {duration:.1f}s | {tps:.1f} tok/s | {model}"
+                    )
+                continue
+
+            elif cmd == "/library":
+                # Toggle auto-RAG
+                if not hasattr(cmd_chat, "_auto_rag"):
+                    cmd_chat._auto_rag = False
+                cmd_chat._auto_rag = not cmd_chat._auto_rag
+                state = "on" if cmd_chat._auto_rag else "off"
+                print(f"   Library auto-search: {state}")
+                continue
+
             else:
                 print(f"   Unknown command: {cmd}")
                 continue
+
+        # --- Auto-RAG injection ---
+        auto_rag_on = getattr(cmd_chat, "_auto_rag", False)
+        if auto_rag_on:
+            from mycoswarm.library import search as lib_search
+            auto_hits = lib_search(user_input, n_results=3)
+            if auto_hits:
+                auto_parts = []
+                for ai, hit in enumerate(auto_hits, 1):
+                    auto_parts.append(f"[{ai}] ({hit['source']}) {hit['text']}")
+                auto_context = "\n\n".join(auto_parts)
+                auto_system = (
+                    "Relevant document excerpts are provided for context. "
+                    "Use them if helpful. Cite sources using [1], [2] etc.\n\n"
+                    "DOCUMENT EXCERPTS:\n" + auto_context
+                )
+                messages.append({"role": "system", "content": auto_system})
 
         # --- Send message ---
         messages.append({"role": "user", "content": user_input})
@@ -1220,6 +1316,187 @@ def cmd_chat(args):
             f"  ⏱  {duration:.1f}s | {tps:.1f} tok/s | "
             f"{model} | node: {node_id}"
         )
+
+
+def cmd_library(args):
+    """Manage the document library (ingest, search, list, remove)."""
+    from pathlib import Path
+    from mycoswarm.library import (
+        ingest_file, ingest_directory, search, list_documents, remove_document,
+        LIBRARY_DIR,
+    )
+
+    action = args.action
+
+    if action == "ingest":
+        path = Path(args.path).expanduser() if args.path else None
+
+        if path and path.is_file():
+            print(f"📄 Ingesting: {path.name}")
+            result = ingest_file(path, model=args.model)
+            if result.get("skipped"):
+                print(f"  ⏭  Skipped (unsupported extension)")
+            else:
+                print(f"  ✅ {result['chunks']} chunks indexed (model: {result['model']})")
+        else:
+            target = path if path else LIBRARY_DIR
+            print(f"📚 Ingesting directory: {target}")
+            results = ingest_directory(path, model=args.model)
+            if not results:
+                print(f"  No supported files found in {target}")
+                print(f"  Supported: .pdf .txt .md .html .csv .json")
+                return
+            total_chunks = 0
+            for r in results:
+                if r.get("skipped"):
+                    print(f"  ⏭  {r['file']} (unsupported)")
+                else:
+                    print(f"  ✅ {r['file']} — {r['chunks']} chunks")
+                    total_chunks += r["chunks"]
+            print(f"\n  📊 {len(results)} file(s), {total_chunks} total chunks")
+
+    elif action == "search":
+        query = args.query
+        if not query:
+            print("❌ Usage: mycoswarm library search --query \"your question\"")
+            return
+        print(f"🔍 Searching: {query}\n")
+        results = search(query, n_results=5, model=args.model)
+        if not results:
+            print("  No results found. Have you ingested documents?")
+            print(f"  Try: mycoswarm library ingest")
+            return
+        for i, hit in enumerate(results, 1):
+            score_pct = max(0, (1 - hit["score"]) * 100)
+            print(f"  [{i}] ({hit['source']}) — {score_pct:.0f}% match")
+            preview = hit["text"][:200].replace("\n", " ")
+            print(f"      {preview}...")
+            print()
+
+    elif action == "list":
+        docs = list_documents()
+        if not docs:
+            print("📚 No documents indexed.")
+            print(f"   Add files to {LIBRARY_DIR} then run: mycoswarm library ingest")
+            return
+        print("📚 Indexed Documents")
+        print("=" * 40)
+        total = 0
+        for d in docs:
+            print(f"  {d['file']}  ({d['chunks']} chunks)")
+            total += d["chunks"]
+        print(f"\n  {len(docs)} document(s), {total} total chunks")
+
+    elif action == "remove":
+        filename = args.path
+        if not filename:
+            print("❌ Usage: mycoswarm library remove <filename>")
+            return
+        if remove_document(filename):
+            print(f"✅ Removed: {filename}")
+        else:
+            print(f"❌ Not found in index: {filename}")
+
+
+def cmd_rag(args):
+    """Ask a question with document context via RAG."""
+    from mycoswarm.solo import check_daemon, check_ollama, pick_model, chat_stream
+    from mycoswarm.library import search as lib_search
+
+    question = " ".join(args.question)
+
+    # Search library for relevant chunks
+    print(f"🔍 Searching library...", end=" ", flush=True)
+    hits = lib_search(question, n_results=5)
+
+    if not hits:
+        print("no results.")
+        print("   No documents indexed. Try: mycoswarm library ingest")
+        return
+
+    print(f"{len(hits)} result(s) found.\n")
+
+    # Build context from hits
+    context_parts: list[str] = []
+    sources: list[str] = []
+    seen_sources: set[str] = set()
+    for i, hit in enumerate(hits, 1):
+        context_parts.append(f"[{i}] ({hit['source']}) {hit['text']}")
+        if hit["source"] not in seen_sources:
+            sources.append(hit["source"])
+            seen_sources.add(hit["source"])
+
+    context_block = "\n\n".join(context_parts)
+    system_prompt = (
+        "Answer using the provided document excerpts. Cite sources using "
+        "[1], [2] etc. If the excerpts don't contain enough information, "
+        "say so.\n\n"
+        f"DOCUMENT EXCERPTS:\n{context_block}"
+    )
+
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": question},
+    ]
+
+    # Route: daemon first, then direct Ollama
+    daemon_up = check_daemon(args.port)
+
+    if daemon_up:
+        import uuid
+
+        profile = detect_all()
+        ip = profile.lan_ip or "localhost"
+        url = f"http://{ip}:{args.port}"
+        model = _discover_model(url, args.model)
+
+        task_id = f"rag-{uuid.uuid4().hex[:8]}"
+        task_payload = {
+            "task_id": task_id,
+            "task_type": "inference",
+            "payload": {
+                "model": model,
+                "messages": messages,
+            },
+            "source_node": "cli-rag",
+            "priority": 5,
+            "timeout_seconds": 300,
+        }
+
+        print(f"🧠 Asking {model}...\n")
+        try:
+            with httpx.Client(timeout=10) as client:
+                resp = client.post(f"{url}/task", json=task_payload)
+                resp.raise_for_status()
+                submit_data = resp.json()
+        except httpx.ConnectError:
+            print("❌ Lost connection to daemon.")
+            return
+
+        target_ip = submit_data.get("target_ip")
+        target_port = submit_data.get("target_port")
+        stream_url = f"http://{target_ip}:{target_port}" if target_ip and target_port else url
+
+        full_text, metrics = _stream_response(stream_url, task_id)
+    else:
+        running, models = check_ollama()
+        if not running:
+            print("❌ No daemon running and Ollama is not reachable.")
+            sys.exit(1)
+
+        model = pick_model(models, args.model)
+        print(f"🧠 Asking {model}...\n")
+        full_text, metrics = chat_stream(messages, model)
+
+    if not full_text:
+        return
+
+    # Footer with sources
+    tps = metrics.get("tokens_per_second", 0)
+    duration = metrics.get("duration_seconds", 0)
+    print(f"\n\n{'─' * 50}")
+    print(f"📚 Sources: {', '.join(sources)}")
+    print(f"  ⏱  {duration:.1f}s | {tps:.1f} tok/s | {model}")
 
 
 def cmd_memory(args):
@@ -1385,6 +1662,44 @@ def main():
         help="List saved chat sessions",
     )
     chat_parser.set_defaults(func=cmd_chat)
+
+    # library
+    library_parser = subparsers.add_parser(
+        "library", help="Manage the document library (ingest, search, list, remove)"
+    )
+    library_parser.add_argument(
+        "action", choices=["ingest", "search", "list", "remove"],
+        help="Action to perform",
+    )
+    library_parser.add_argument(
+        "path", nargs="?", default=None,
+        help="File or directory path (for ingest) or filename (for remove)",
+    )
+    library_parser.add_argument(
+        "--query", type=str, default=None,
+        help="Search query (for search action)",
+    )
+    library_parser.add_argument(
+        "--model", type=str, default=None,
+        help="Embedding model override",
+    )
+    library_parser.add_argument(
+        "--port", type=int, default=7890, help="Local daemon port"
+    )
+    library_parser.set_defaults(func=cmd_library)
+
+    # rag
+    rag_parser = subparsers.add_parser(
+        "rag", help="Ask a question with document context (RAG)"
+    )
+    rag_parser.add_argument("question", nargs="+", help="Your question")
+    rag_parser.add_argument(
+        "--model", type=str, default=None, help="Inference model"
+    )
+    rag_parser.add_argument(
+        "--port", type=int, default=7890, help="Local daemon port"
+    )
+    rag_parser.set_defaults(func=cmd_rag)
 
     # memory
     memory_parser = subparsers.add_parser(
