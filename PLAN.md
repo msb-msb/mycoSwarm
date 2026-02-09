@@ -124,6 +124,14 @@
 - [x] file_read and code_run added to DISTRIBUTABLE_TASKS for swarm-wide distribution
 - [x] pymupdf dependency added to pyproject.toml
 
+### Phase 12: Single-Node Quick Start (2026-02-09)
+- [x] solo.py: direct Ollama inference module (no daemon/queue/worker needed)
+- [x] `mycoswarm chat` works without daemon — auto-detects Ollama, streams directly
+- [x] `mycoswarm ask` works without daemon — auto-detects Ollama, streams directly
+- [x] "Running in single-node mode" message when no daemon detected
+- [x] Seamless upgrade: if daemon is running, uses full swarm pipeline automatically
+- [x] README updated with two-command quick start: pip install mycoswarm / mycoswarm chat
+
 ## Next
 
 ### Phase 5b: Cross-Node Inference (remaining)

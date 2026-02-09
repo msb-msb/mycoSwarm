@@ -1,6 +1,11 @@
 """mycoSwarm CLI.
 
 Usage:
+    mycoswarm chat                Interactive chat (works without daemon)
+    mycoswarm chat --resume       Resume the most recent chat session
+    mycoswarm chat --session NAME Resume a named session
+    mycoswarm chat --list         List saved chat sessions
+    mycoswarm ask "your prompt"   Send a prompt for inference (works without daemon)
     mycoswarm detect              Show this node's hardware and capabilities
     mycoswarm detect --json       Output as JSON
     mycoswarm identity            Show full node identity announcement
@@ -9,15 +14,10 @@ Usage:
     mycoswarm daemon -v           Verbose logging
     mycoswarm swarm               Show swarm status (query local daemon)
     mycoswarm ping                Ping all known peers
-    mycoswarm ask "your prompt"   Send a prompt for inference
     mycoswarm search "query"      Search the web via the swarm
     mycoswarm research "query"    Search + synthesize (CPU search → GPU think)
     mycoswarm models              Show all models available across the swarm
     mycoswarm plugins             List installed plugins and their status
-    mycoswarm chat                Interactive chat with the swarm
-    mycoswarm chat --resume       Resume the most recent chat session
-    mycoswarm chat --session NAME Resume a named session
-    mycoswarm chat --list         List saved chat sessions
 """
 
 import argparse
@@ -347,48 +347,66 @@ def _submit_and_poll(url: str, task_payload: dict, timeout: int = 300) -> dict |
 
 def cmd_ask(args):
     """Send a prompt to the swarm for inference."""
-    import uuid
+    from mycoswarm.solo import check_daemon, check_ollama, pick_model, ask_direct
 
-    profile = detect_all()
-    ip = profile.lan_ip or "localhost"
-    url = f"http://{ip}:{args.port}"
     prompt = " ".join(args.prompt)
 
-    model = _discover_model(url, args.model)
+    # Try daemon first; fall back to direct Ollama
+    if check_daemon(args.port):
+        import uuid
 
-    task_id = f"task-{uuid.uuid4().hex[:8]}"
-    task_payload = {
-        "task_id": task_id,
-        "task_type": "inference",
-        "payload": {
-            "model": model,
-            "prompt": prompt,
-        },
-        "source_node": "cli",
-        "priority": 5,
-        "timeout_seconds": 300,
-    }
+        profile = detect_all()
+        ip = profile.lan_ip or "localhost"
+        url = f"http://{ip}:{args.port}"
+        model = _discover_model(url, args.model)
 
-    print(f"🍄 Asking: {prompt}")
-    print(f"   Model: {model}")
-    print(f"   Sending to {ip}:{args.port}...\n")
+        task_id = f"task-{uuid.uuid4().hex[:8]}"
+        task_payload = {
+            "task_id": task_id,
+            "task_type": "inference",
+            "payload": {
+                "model": model,
+                "prompt": prompt,
+            },
+            "source_node": "cli",
+            "priority": 5,
+            "timeout_seconds": 300,
+        }
 
-    data = _submit_and_poll(url, task_payload)
-    if data is None:
-        print("❌ Timed out waiting for response.")
+        print(f"🍄 Asking: {prompt}")
+        print(f"   Model: {model}")
+        print(f"   Sending to {ip}:{args.port}...\n")
+
+        data = _submit_and_poll(url, task_payload)
+        if data is None:
+            print("❌ Timed out waiting for response.")
+            sys.exit(1)
+        if data.get("status") == "failed":
+            print(f"❌ Task failed: {data.get('error', 'unknown error')}")
+            sys.exit(1)
+
+        result = data.get("result", {})
+        print(result.get("response", ""))
+        print(f"\n{'─' * 50}")
+        print(
+            f"  ⏱  {data.get('duration_seconds', 0):.1f}s | "
+            f"{result.get('tokens_per_second', 0):.1f} tok/s | "
+            f"model: {model}"
+        )
+        return
+
+    # Single-node mode — direct to Ollama
+    running, models = check_ollama()
+    if not running:
+        print("❌ No daemon running and Ollama is not reachable.")
+        print("   Start Ollama with: ollama serve")
+        print("   Or start the daemon with: mycoswarm daemon")
         sys.exit(1)
-    if data.get("status") == "failed":
-        print(f"❌ Task failed: {data.get('error', 'unknown error')}")
-        sys.exit(1)
 
-    result = data.get("result", {})
-    print(result.get("response", ""))
-    print(f"\n{'─' * 50}")
-    print(
-        f"  ⏱  {data.get('duration_seconds', 0):.1f}s | "
-        f"{result.get('tokens_per_second', 0):.1f} tok/s | "
-        f"model: {model}"
-    )
+    model = pick_model(models, args.model)
+    print(f"🍄 Running in single-node mode. Start the daemon to join a swarm.")
+    print(f"   Model: {model}\n")
+    ask_direct(prompt, model)
 
 
 def cmd_search(args):
@@ -902,8 +920,8 @@ def _latest_session_name() -> str | None:
 
 def cmd_chat(args):
     """Interactive chat with the swarm."""
-    import uuid
     from datetime import datetime
+    from mycoswarm.solo import check_daemon, check_ollama, pick_model, chat_stream
 
     # Handle --list
     if args.list_sessions:
@@ -921,9 +939,19 @@ def cmd_chat(args):
             )
         return
 
-    profile = detect_all()
-    ip = profile.lan_ip or "localhost"
-    url = f"http://{ip}:{args.port}"
+    daemon_up = check_daemon(args.port)
+
+    if daemon_up:
+        profile = detect_all()
+        ip = profile.lan_ip or "localhost"
+        url = f"http://{ip}:{args.port}"
+    else:
+        running, models = check_ollama()
+        if not running:
+            print("❌ No daemon running and Ollama is not reachable.")
+            print("   Start Ollama with: ollama serve")
+            print("   Or start the daemon with: mycoswarm daemon")
+            sys.exit(1)
 
     # Session loading
     session_name = None
@@ -953,18 +981,26 @@ def cmd_chat(args):
     if not session_name:
         session_name = f"chat-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
 
-    model = _discover_model(url, args.model)
+    if daemon_up:
+        model = _discover_model(url, args.model)
+    else:
+        model = pick_model(models, args.model)
 
     print("🍄 mycoSwarm Chat")
     print(f"   Model: {model}")
     print(f"   Session: {session_name}")
+    if not daemon_up:
+        print("   Running in single-node mode. Start the daemon to join a swarm.")
     if messages:
         print(f"   Resumed: {len(messages)} messages")
-    print("   /model to switch, /peers to show swarm, /clear to reset, /quit to exit")
+    if daemon_up:
+        print("   /model to switch, /peers to show swarm, /clear to reset, /quit to exit")
+    else:
+        print("   /model to switch, /clear to reset, /quit to exit")
     print(f"{'─' * 50}")
 
     def _save():
-        path = _save_session(session_name, messages, model)
+        _save_session(session_name, messages, model)
         print(f"   Session saved: {session_name}")
 
     while True:
@@ -1003,7 +1039,10 @@ def cmd_chat(args):
                     model = parts[1]
                     print(f"   Model → {model}")
                 else:
-                    all_models = _list_swarm_models(url)
+                    if daemon_up:
+                        all_models = _list_swarm_models(url)
+                    else:
+                        _, all_models = check_ollama()
                     if all_models:
                         print("   Available models:")
                         for m in all_models:
@@ -1014,6 +1053,9 @@ def cmd_chat(args):
                 continue
 
             elif cmd == "/peers":
+                if not daemon_up:
+                    print("   No peers (single-node mode). Start the daemon to join a swarm.")
+                    continue
                 try:
                     with httpx.Client(timeout=5) as client:
                         peers = client.get(f"{url}/peers").json()
@@ -1037,6 +1079,28 @@ def cmd_chat(args):
         # --- Send message ---
         messages.append({"role": "user", "content": user_input})
 
+        if not daemon_up:
+            # Single-node mode — direct to Ollama
+            print()
+            full_text, metrics = chat_stream(list(messages), model)
+
+            if not full_text:
+                messages.pop()
+                continue
+
+            messages.append({"role": "assistant", "content": full_text})
+
+            tps = metrics.get("tokens_per_second", 0)
+            duration = metrics.get("duration_seconds", 0)
+            print(
+                f"\n\n{'─' * 50}\n"
+                f"  ⏱  {duration:.1f}s | {tps:.1f} tok/s | {model}"
+            )
+            continue
+
+        # Daemon mode — submit via API
+        import uuid
+
         task_id = f"chat-{uuid.uuid4().hex[:8]}"
         task_payload = {
             "task_id": task_id,
@@ -1050,14 +1114,13 @@ def cmd_chat(args):
             "timeout_seconds": 300,
         }
 
-        # Submit task
         try:
             with httpx.Client(timeout=10) as client:
                 resp = client.post(f"{url}/task", json=task_payload)
                 resp.raise_for_status()
                 submit_data = resp.json()
         except httpx.ConnectError:
-            print("❌ Daemon not running. Start it with: mycoswarm daemon")
+            print("❌ Lost connection to daemon.")
             messages.pop()
             continue
         except httpx.HTTPStatusError as e:

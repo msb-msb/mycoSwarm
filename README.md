@@ -8,6 +8,36 @@ No cloud. No subscriptions. No data leaving your network. Just your hardware, yo
 
 ---
 
+## Quick Start
+
+Two commands. That's it.
+
+```bash
+pip install mycoswarm
+mycoswarm chat
+```
+
+This starts an interactive chat session using your local Ollama models — no daemon, no config, no network setup. Just you and your hardware.
+
+**Prerequisites:** [Ollama](https://ollama.com) installed and running with at least one model pulled (e.g. `ollama pull llama3.2`).
+
+**Single-node mode** works instantly for `chat` and `ask`:
+
+```bash
+mycoswarm ask "What is the capital of France?"    # one-shot question
+mycoswarm chat                                     # interactive session
+mycoswarm chat --resume                            # pick up where you left off
+```
+
+**Ready to add more machines?** Start the daemon to join a swarm:
+
+```bash
+mycoswarm daemon     # on each machine
+mycoswarm swarm      # see your cluster
+```
+
+---
+
 ## The Questions We're Asking
 
 ### Is the sum greater than the parts?
