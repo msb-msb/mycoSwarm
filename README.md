@@ -13,7 +13,7 @@ No cloud. No subscriptions. No data leaving your network. Just your hardware, yo
 **One-line install** — installs Python, Ollama, mycoswarm, and pulls a model sized for your hardware:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/msb-msb/mycoSwarm/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/msb-msb/mycoSwarm/main/install.sh | bash
 ```
 
 **Or do it manually** — two commands if you already have Ollama:
