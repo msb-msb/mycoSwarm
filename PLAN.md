@@ -151,15 +151,49 @@
 - [x] Runs `mycoswarm detect` to show user what was found
 - [x] README updated with one-line install: curl ... | bash
 
+### Phase 15: Persistent Memory (2026-02-09)
+- [x] memory.py: persistent fact store (facts.json) + session summaries (sessions.jsonl)
+- [x] /remember, /memories, /forget slash commands in chat
+- [x] Auto-summarize sessions on exit via Ollama
+- [x] build_memory_system_prompt() injects facts + summaries into chat system prompt
+- [x] Hallucination mitigation: capability boundary text prevents fabrication of real-time data
+
+### Phase 16: Document Library with RAG (2026-02-09)
+- [x] library.py: ChromaDB vector storage, document ingestion, chunking, embedding via Ollama
+- [x] Text extraction reuses _extract_text() from worker.py (PDF, HTML, MD, TXT, CSV, JSON)
+- [x] Word-based chunking with overlap (384 words ≈ 512 tokens)
+- [x] CLI: `mycoswarm library ingest/search/list/remove`
+- [x] CLI: `mycoswarm rag "question"` — standalone RAG with citations
+- [x] Chat: /rag slash command for inline RAG queries
+- [x] chromadb dependency added to pyproject.toml
+
+### Phase 17: Agentic Chat (2026-02-09)
+- [x] classify_query() in solo.py: LLM classifies each message as answer/web_search/rag/web_and_rag
+- [x] web_search_solo() in solo.py: local DuckDuckGo search via ddgs (no API key)
+- [x] Auto tool routing: web results tagged [W1],[W2], doc excerpts tagged [D1],[D2]
+- [x] Transparent progress indicators: 🤔 classifying → 🔍 searching → 📚 checking docs
+- [x] /auto slash command to toggle agentic mode (default ON)
+- [x] Skip classification for slash commands and short messages (< 5 words)
+- [x] Web-aware boundary swap: replaces "no internet" text when search results are injected
+
+### Phase 18: Testing (2026-02-09)
+- [x] Unit tests for hardware detection (mock subprocess/psutil) — 5 tests
+- [x] Unit tests for capability classification — 10 tests
+- [x] Unit tests for orchestrator routing logic — 5 tests
+- [x] Unit tests for API endpoints — 3 tests
+- [x] Unit tests for worker handlers — 8 tests
+- [x] Unit tests for plugin system — 5 tests
+- [x] Unit tests for document library/RAG — 23 tests
+- [x] Unit tests for persistent memory — 21 tests
+- [x] Unit tests for agentic chat classification — 9 tests
+- [x] 94 tests passing total
+
 ## Next
 
 ### Phase 5b: Cross-Node Inference (remaining)
 - [ ] Add `--remote` flag to `mycoswarm ask` to force remote execution
 
-### Phase 7: Testing
-- [ ] Unit tests for hardware detection (mock subprocess/psutil)
-- [ ] Unit tests for capability classification (known inputs → expected tiers)
-- [ ] Unit tests for orchestrator routing logic
+### Phase 7b: Testing (remaining)
 - [ ] Integration test: two-node discovery on loopback
 - [ ] Integration test: task dispatch and result retrieval
 - [ ] CI with GitHub Actions
@@ -172,17 +206,13 @@
 - [ ] Load balancing: distribute tasks based on real-time utilization
 
 ### Phase 9: Advanced Features (remaining)
-- [ ] Embedding handler (for RAG pipelines)
-- [ ] File processing handler (read, transform, summarize documents)
 - [ ] Model management: `mycoswarm models pull/remove` across swarm
 - [ ] Dashboard: simple web UI showing swarm topology and status
 
-### Phase 10: Production Hardening
+### Phase 10: Production Hardening (remaining)
 - [ ] mTLS between nodes (upgrade from shared-secret auth)
-- [x] Systemd service file for daemon auto-start
 - [ ] Log rotation
 - [ ] Config file support (~/.config/mycoswarm/config.toml)
-- [x] Plugin system for custom task handlers
 - [ ] Documentation site
 
 ## Hardware Roadmap
