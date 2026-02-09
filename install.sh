@@ -235,7 +235,8 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 # --- Done ---
 
 echo ""
-info "Ready! Run:"
-echo ""
-echo "    mycoswarm chat"
+echo "  🍄 mycoSwarm installed! Get started:"
+echo "     mycoswarm chat     — start chatting"
+echo "     mycoswarm detect   — see your hardware"
+echo "     mycoswarm --help   — all commands"
 echo ""
