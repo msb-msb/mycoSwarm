@@ -1,285 +1,311 @@
 # 🍄 mycoSwarm
 
-**Distributed AI framework — grow your own cluster from whatever hardware you've got.**
+**Distributed AI for everyone. Turn forgotten hardware into a thinking network.**
 
-mycoSwarm turns forgotten hardware into a collective intelligence. That old GPU in the closet, the retired office PC, the Raspberry Pi in the junk drawer — each one becomes a node in a living network that thinks together.
+mycoSwarm connects your machines — old laptops, mini PCs, Raspberry Pis, GPU workstations — into a single AI swarm. No cloud. No API keys. No data leaves your network.
 
-No cloud. No subscriptions. No data leaving your network. Just your hardware, your models, your rules.
+```bash
+curl -fsSL https://raw.githubusercontent.com/msb-msb/mycoSwarm/main/scripts/install.sh | bash
+mycoswarm chat
+```
+
+That's it. Two commands. You're running local AI.
 
 ---
 
-## Quick Start
+## What It Does
 
-**One-line install** — installs Python, Ollama, mycoswarm, and pulls a model sized for your hardware:
+**One machine?** Chat with local models instantly — no daemon, no config.
+
+**Multiple machines?** They find each other automatically via mDNS, share capabilities, and route tasks to the right hardware. A $50 mini PC can chat with a 27B model running on a GPU across the room.
+
+The weakest machine in the swarm gets access to the strongest model.
+
+### Real Example: 5-Node Swarm
+
+| Node | Hardware | Cost | Role |
+|------|----------|------|------|
+| Miu | RTX 3090, 64GB RAM | ~$300 (used) | GPU inference — runs 27B models |
+| naru | Lenovo M710Q, 8GB RAM | $50 | Web search, file processing |
+| uncho | Lenovo M710Q, 8GB RAM | $50 | Web search, coordination |
+| boa | Lenovo M710Q, 8GB RAM | $50 | Web search, code execution |
+| raspberrypi | Raspberry Pi 2, 1GB RAM | $35 | Search, lightweight tasks |
+
+Total: ~$485. Zero monthly fees.
+
+---
+
+## Features
+
+**Chat with memory** — Persistent facts and session history across conversations. Your AI remembers what you tell it.
+
+**Research** — Ask a question, the swarm plans multiple searches, distributes them across CPU workers in parallel, and synthesizes a cited answer on the GPU. Faster than any single machine.
+
+**Document library (RAG)** — Drop files into `~/mycoswarm-docs/`. The swarm indexes them and answers questions about your documents with citations.
+
+**Agentic tool routing** — The model automatically decides when it needs web search or document lookup, shows you what it's doing, and uses the results. No manual tool selection.
+
+**Honest AI** — When it doesn't know something, it says so. No hallucinated weather forecasts or fabricated facts.
+
+**Plugin system** — Drop a folder into `~/.config/mycoswarm/plugins/` and your node advertises a new capability. No core code changes.
+
+---
+
+## Install
+
+### Quick Start (Linux or macOS)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/msb-msb/mycoSwarm/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/msb-msb/mycoSwarm/main/scripts/install.sh | bash
+mycoswarm chat
 ```
 
-**Or do it manually** — two commands if you already have Ollama:
+The installer detects your OS, installs Python and Ollama if needed, pulls a model sized for your RAM, and runs hardware detection.
+
+### Manual Install
 
 ```bash
 pip install mycoswarm
 mycoswarm chat
 ```
 
-This starts an interactive chat session using your local Ollama models — no daemon, no config, no network setup. Just you and your hardware.
+Requires [Ollama](https://ollama.ai) running with at least one model pulled.
 
-**Prerequisites for manual install:** [Ollama](https://ollama.com) installed and running with at least one model pulled (e.g. `ollama pull llama3.2`).
-
-**macOS (Apple Silicon & Intel):**
+### macOS (Apple Silicon)
 
 ```bash
 brew install ollama
 ollama serve &
-ollama pull llama3.2
+ollama pull gemma3:27b  # or gemma3:4b for 8GB Macs
 pip install mycoswarm
 mycoswarm chat
 ```
 
-Apple Silicon unified memory is automatically detected as available VRAM for inference.
+Apple Silicon unified memory is detected automatically — an M1 with 16GB can run 14B+ models.
 
-**Linux:**
+### Raspberry Pi
 
-```bash
-curl -fsSL https://ollama.com/install.sh | sh
-ollama pull llama3.2
-pip install mycoswarm
-mycoswarm chat
-```
-
-**Single-node mode** works instantly for `chat` and `ask`:
+Works on Pi 2 and newer. pymupdf (PDF support) is optional — if it fails to build on ARM, PDF reading is disabled but everything else works.
 
 ```bash
-mycoswarm ask "What is the capital of France?"    # one-shot question
-mycoswarm chat                                     # interactive session
-mycoswarm chat --resume                            # pick up where you left off
+sudo apt install -y python3-venv git
+git clone https://github.com/msb-msb/mycoSwarm.git
+cd mycoSwarm
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e .
+mycoswarm detect
 ```
 
-**Ready to add more machines?** Start the daemon to join a swarm:
-
-```bash
-mycoswarm daemon     # on each machine
-mycoswarm swarm      # see your cluster
-```
+Pi nodes can't run inference (no GPU, limited RAM) but contribute as web search workers, file processors, and coordinators.
 
 ---
 
-## The Questions We're Asking
+## Growing the Swarm
 
-### Is the sum greater than the parts?
+Single-node mode works out of the box. When you're ready for more:
 
-A single RTX 3060 is limited. But three of them on a LAN, coordinated by an intelligent orchestrator — can they outperform a single expensive GPU for real-world tasks? Not synthetic benchmarks. Real work: research, writing, coding, analysis. Nobody has seriously tested the swarm hypothesis with hardware regular people actually own. We intend to.
+### Start the Daemon
 
-### Can a home cluster beat Claude Code?
+```bash
+mycoswarm daemon
+```
 
-Claude Code is a powerful agent — but it's trapped in a single-model, single-agent, serial execution box. It can't outsource to specialists. It can't parallelize research across multiple nodes. It can't route a coding task to a coding model and a writing task to a writing model simultaneously.
+Or install as a service (Linux):
 
-A home cluster has none of those constraints. Parallel execution, specialist routing, an executive brain orchestrating the whole thing — can it match or exceed a $200/month cloud subscription at zero marginal cost?
+```bash
+sudo cp scripts/mycoswarm.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now mycoswarm
+```
 
-Let's find out.
+### Add Another Machine
 
-### Can this be free and universal?
+Install mycoSwarm on the second machine, start the daemon. That's it. mDNS handles discovery — no IP addresses to configure, no config files to edit. Within seconds:
 
-If a student with two old laptops can't participate, the framework has failed. If a maker in rural India needs a credit card and a cloud account, the framework has failed. Cloud AI requires credit cards, reliable internet, and USD pricing. mycoSwarm requires a computer and a LAN cable.
+```bash
+mycoswarm swarm
+```
+
+Shows both nodes, their capabilities, and available models.
+
+### How Routing Works
+
+The orchestrator scores each node for each task type:
+
+- **Inference** → GPU nodes (highest VRAM wins)
+- **Web search / file processing** → CPU workers (distributed round-robin)
+- **Embeddings** → Nodes running Ollama with embedding models
+- **Code execution** → CPU workers (sandboxed subprocess)
+
+Tasks go to the best available node. If that node fails, the orchestrator retries on the next candidate. Executive (GPU) nodes are reserved for inference — they won't waste cycles on web searches when CPU workers are available.
 
 ---
 
-## Why
+## CLI Commands
 
-The AI revolution has a hardware problem. Frontier models need expensive subscriptions or enterprise GPUs. But most people already own enough compute — it's just scattered across devices collecting dust.
+| Command | What It Does |
+|---------|-------------|
+| `mycoswarm chat` | Interactive chat with memory, tools, and document search |
+| `mycoswarm ask "prompt"` | Single question, streamed response |
+| `mycoswarm research "topic"` | Parallel web search → synthesized answer with citations |
+| `mycoswarm rag "question"` | Answer from your indexed documents |
+| `mycoswarm search "query"` | Raw web search results |
+| `mycoswarm library ingest [path]` | Index files for document search |
+| `mycoswarm library list` | Show indexed documents |
+| `mycoswarm detect` | Show hardware and capabilities |
+| `mycoswarm swarm` | Swarm overview — all nodes and status |
+| `mycoswarm models` | All models across the swarm |
+| `mycoswarm plugins` | Installed plugins |
+| `mycoswarm memory` | View and manage stored facts |
+| `mycoswarm daemon` | Start the swarm daemon |
 
-A 2021 GPU isn't obsolete — it's an underutilized specialist node. A retired office PC isn't e-waste — it's a web scraping pool, a vector database host, a document processor. A Raspberry Pi isn't a toy — it's a voice interface, a sensor hub, a discovery beacon.
+### Chat Slash Commands
 
-mycoSwarm connects what you already have into something none of those devices could be alone.
-
----
-
-## Principles
-
-**Adapt to what you have.** The framework doesn't dictate your hardware — it discovers it, measures it, and puts it to work. One machine? Single-node agent. Ten machines? Distributed content factory. Same code, different scale.
-
-**Secure by default.** AI agents that execute code are dangerous. mycoSwarm treats security as foundational, not optional. Every node runs sandboxed, every connection is authenticated, no data leaves your LAN unless you explicitly allow it. See [SECURITY.md](SECURITY.md).
-
-**No center.** Any node can coordinate. If the biggest GPU goes down, a smaller one takes over. The system degrades gracefully, never fails completely.
-
-**Minimum viable node.** A Raspberry Pi is a first-class citizen. Not every node needs a GPU. A CPU-only box hosting a vector database or running web searches is just as valuable as a GPU doing inference.
-
-**Sovereignty.** Your prompts, your data, your models stay on your network. No API keys to revoke, no terms of service changes, no surprise bills.
-
-**Built from scraps.** If it can't be assembled from used parts on eBay, it's not accessible enough.
+| Command | What It Does |
+|---------|-------------|
+| `/remember <fact>` | Store a persistent fact |
+| `/memories` | Show all stored facts |
+| `/forget <n>` | Remove a fact by number |
+| `/rag <question>` | Search documents and answer |
+| `/library` | Show indexed documents |
+| `/auto` | Toggle agentic tool routing on/off |
+| `/model` | Switch model |
+| `/clear` | Reset conversation |
+| `/quit` | Save session and exit |
 
 ---
 
 ## Architecture
 
-mycoSwarm organizes nodes by what they can do, not what they are.
-
-### Node Capabilities
-
-Every node announces its capabilities to the swarm:
-
-- **GPU Inference** — runs LLM models (reports VRAM, loaded models, utilization)
-- **CPU Inference** — runs tiny models (1.5B-3B quantized)
-- **CPU Worker** — web scraping, document processing, file conversion, parsing
-- **Storage** — file serving, vector database (ChromaDB), artifact hosting
-- **Coordinator** — discovery, health monitoring, task routing
-- **Edge** — audio capture, sensor input, mobile client, physical I/O
-
-A single machine can offer multiple capabilities. Roles aren't fixed — they're discovered and reassigned dynamically.
-
-### Topology Patterns
-
-**Solo** — One machine, everything local. Personal AI assistant, no network dependency.
-
-**Desk** — 2-3 machines on a LAN. GPU nodes run models, CPU nodes handle research and storage. The sweet spot for home use.
-
-**Lab** — 5-10 nodes. University lab, hackerspace, or small team pooling resources.
-
-**Mesh** — Geographically distributed nodes over VPN. Communities sharing compute across locations.
-
-### The Orchestrator
-
-The orchestrator is a role, not a fixed service. Any capable node can fill it.
-
-- Discovers peers via mDNS/Avahi on the LAN
-- Collects capability announcements from each node
-- Routes tasks based on current load and capability
-- Redistributes work when nodes join or leave
-- Migrates to another node if the current coordinator goes down
-
-### Example: A Home Cluster
-
 ```
-┌─────────────────────────┐
-│   GPU Node (RTX 3090)   │ ← Executive: planning, synthesis
-│   Qwen 32B, Gemma 27B  │ ← Runs orchestrator
-└────────────┬────────────┘
-             │ 1 GbE LAN
-     ┌───────┼───────┐
-     │       │       │
-     ▼       ▼       ▼
-┌─────────┐ ┌─────────┐ ┌──────────┐
-│ GPU Node│ │ GPU Node│ │ CPU Pool  │
-│ RTX 3060│ │ RTX 3060│ │ ThinkCntr│
-│ 14B mdls│ │ 14B mdls│ │ scraping │
-│ research│ │ drafting│ │ ChromaDB │
-│ fact-chk│ │ coding  │ │ storage  │
-└─────────┘ └─────────┘ └──────────┘
-     ┌────────────┐
-     │ Edge Nodes  │
-     │ RPi: voice  │
-     │ RPi: dash   │
-     │ Phone: app  │
-     └────────────┘
+src/mycoswarm/
+├── hardware.py      # GPU/CPU/RAM/disk/Ollama detection (Linux, macOS, ARM)
+├── capabilities.py  # Node classification — tiers, capabilities, model limits
+├── node.py          # Persistent node identity (UUID survives restarts)
+├── discovery.py     # mDNS auto-discovery, peer health tracking
+├── api.py           # FastAPI service — health, status, peers, tasks, SSE streaming
+├── daemon.py        # Main daemon — detection + discovery + API + worker + orchestrator
+├── worker.py        # Task handlers — inference, search, embedding, files, code, translate
+├── orchestrator.py  # Task routing — scoring, retry, load balancing, inflight tracking
+├── plugins.py       # Plugin loader — scan ~/.config/mycoswarm/plugins/
+├── solo.py          # Single-node mode — direct Ollama, agentic classification
+├── library.py       # Document library — chunking, embeddings, ChromaDB, RAG
+├── memory.py        # Persistent memory — facts, session summaries, prompt injection
+└── cli.py           # All CLI commands and interactive chat
 ```
 
-### Example Workflow: Parallel Article Engine
+### Node Tiers
 
-One of the first target workflows — distributed content creation vs serial cloud agents:
+| Tier | Example Hardware | Role |
+|------|-----------------|------|
+| **EXECUTIVE** | RTX 3090 workstation | GPU inference, orchestration |
+| **SPECIALIST** | RTX 3060 desktop | GPU inference (smaller models) |
+| **LIGHT** | Lenovo M710Q, Raspberry Pi | Web search, file processing, coordination |
+| **WORKER** | Any CPU-only machine | Distributed task execution |
 
-1. **User submits topic** → Orchestrator receives request
-2. **Executive (3090) plans** → Outline, research queries, section assignments
-3. **Parallel research (3060s + CPU pool)** → Multiple search/summarize tasks run simultaneously
-4. **Parallel drafting (all GPU nodes)** → Each node drafts assigned sections
-5. **Fact-checking (3060s)** → Claims verified against research corpus in parallel
-6. **Synthesis (3090)** → Executive stitches sections, normalizes tone, polishes
+### Discovery
 
-A single cloud agent does steps 2-6 serially. mycoSwarm does them in parallel.
+Nodes broadcast via mDNS (`_mycoswarm._tcp.local.`). No central server, no configuration. Plug in a machine, start the daemon, the swarm grows.
 
----
+### Task Flow
 
-## What Can Your Hardware Run?
-
-For model recommendations by GPU, VRAM tier, and budget, see [InsiderLLM.com](https://insiderllm.com) — practical local AI guides from someone who figured it out on real hardware.
-
-- [VRAM Requirements for Local LLMs](https://insiderllm.com/guides/vram-requirements-local-llms/)
-- [12GB VRAM — What Can You Run?](https://insiderllm.com/guides/what-can-you-run-12gb-vram/)
-- [24GB VRAM — What Can You Run?](https://insiderllm.com/guides/what-can-you-run-24gb-vram/)
-- [Best Local Coding Models](https://insiderllm.com/guides/best-local-coding-models-2026/)
-- [CPU-Only LLMs: What Actually Works](https://insiderllm.com/guides/cpu-only-llms-what-actually-works/)
-- [GPU Buying Guide for Local AI](https://insiderllm.com/guides/gpu-buying-guide-local-ai/)
-- [Best GPU Under $300](https://insiderllm.com/guides/best-gpu-under-300-local-ai/)
+```
+User asks question on Node A
+  → Node A checks: can I handle this locally?
+    → Yes: execute locally
+    → No: orchestrator scores all peers
+      → Dispatch to best peer
+      → Stream response back to Node A
+```
 
 ---
 
-## Requirements
+## Plugins
 
-**Minimum (Solo mode):**
-- Linux or macOS (Apple Silicon or Intel)
-- Python 3.11+
-- 8GB RAM
-- Ollama with at least one model
+Extend the swarm without touching core code. Drop a directory into `~/.config/mycoswarm/plugins/`:
 
-**Recommended (Desk mode):**
-- 1x GPU node (RTX 3060+ or Apple Silicon Mac with 16GB+)
-- 1-4x CPU nodes (any x86_64/arm64 with 8GB+ RAM)
-- 1 GbE LAN connecting all nodes
+```
+~/.config/mycoswarm/plugins/
+└── my_summarizer/
+    ├── plugin.yaml
+    └── handler.py
+```
 
-**No cloud accounts, API keys, or subscriptions required.**
+**plugin.yaml:**
+```yaml
+name: my_summarizer
+task_type: summarize
+description: Summarize text by extracting key points
+capabilities: cpu_worker
+```
 
----
+**handler.py:**
+```python
+async def handle(task):
+    text = task.payload.get("text", "")
+    # Your logic here
+    return {"summary": summarized_text}
+```
 
-## Roadmap
-
-### Phase 1 — Foundation
-- [ ] Node daemon: capability announcement, health reporting
-- [ ] Discovery: mDNS-based peer finding on LAN
-- [ ] Orchestrator: basic task routing to available nodes
-- [ ] Security baseline: sandboxing, authentication, LAN-only defaults
-- [ ] Single-node mode: works as a standalone agent
-
-### Phase 2 — Distributed Inference
-- [ ] Multi-node model routing: send tasks to the right GPU
-- [ ] Parallel research: distribute search + summarization across nodes
-- [ ] Load balancing: route based on current VRAM/CPU usage
-- [ ] Graceful degradation: reassign orchestrator if primary goes down
-- [ ] Encrypted inter-node transport
-
-### Phase 3 — Workflows
-- [ ] Article engine: parallel research → outline → draft → fact-check → polish
-- [ ] Model comparison: same prompt to multiple models, compare output
-- [ ] Skill system: pluggable tools any node can execute
-- [ ] Voice pipeline: mic → Whisper → agent → TTS across edge + GPU nodes
-- [ ] Benchmarks: real-world task timing vs Claude Code / cloud agents
-
-### Phase 4 — Community
-- [ ] Topology templates: "I have X, Y, Z — here's your optimal config"
-- [ ] Shared skill library
-- [ ] Mesh networking over VPN
-- [ ] Hardware compatibility database (community benchmarks)
-- [ ] Auto-recommend models based on detected hardware
+Restart the daemon. The node advertises the new capability. Other nodes can route `summarize` tasks to it.
 
 ---
 
-## Security
+## Document Library
 
-Security is a core principle. See [SECURITY.md](SECURITY.md) for the full model.
+Drop files into `~/mycoswarm-docs/` and index them:
 
-The short version:
-- **Sandboxed by default.** Agents cannot access files outside their workspace.
-- **LAN-only by default.** No public interfaces, no outbound internet without explicit config.
-- **Authenticated peers.** Nodes verify each other before accepting work.
-- **Unprivileged execution.** Agent processes run as dedicated users with minimal permissions.
-- **Auditable.** Small, readable Python you can verify yourself. All tool calls logged.
-- **No cloud dependency.** No API keys to leak, no tokens to revoke.
+```bash
+mycoswarm library ingest
+```
 
----
+Supports: PDF, Markdown, TXT, HTML, CSV, JSON.
 
-## Philosophy
+Files are chunked, embedded (via Ollama), and stored in ChromaDB. Ask questions:
 
-mycoSwarm is named after mycelium — the fungal network that connects a forest underground. It doesn't force its way through the soil. It finds the path of least resistance, connects what's already there, and makes the whole system stronger than any individual part.
+```bash
+mycoswarm rag "what does the architecture section describe?"
+```
 
-The project exists because AI should be accessible to anyone with a computer, not just those who can afford cloud compute. The hardware already exists — it just needs software that knows how to use it.
+Or use `/rag` in chat for inline document search.
 
 ---
 
-## License
+## The Manifesto
 
-MIT — because freedom means freedom.
+Named after mycelium — the underground network connecting a forest. It doesn't centralize. It finds what's available and connects it.
+
+**If a student in Lagos with two old laptops can't participate, the framework has failed.**
+
+No cloud dependencies. No API keys. No expensive hardware requirements. Every node counts.
+
+---
+
+## What's Next
+
+- **Dashboard** — Web UI showing swarm topology, active tasks, node health
+- **Agentic planner** — LLM generates multi-step plans and executes them across the swarm
+- **mTLS security** — Encrypted, authenticated inter-node communication
+- **Config files** — `~/.config/mycoswarm/config.toml` for persistent settings
+- **PyPI publishing** — `pip install mycoswarm` from anywhere
+- **Mesh networking** — Connect swarms across the internet via VPN
+
+---
 
 ## Contributing
 
-This project is just getting started. If you've got old hardware and want to help build the future of distributed local AI, open an issue or submit a PR.
+mycoSwarm is MIT licensed. Contributions welcome.
 
-Every node counts. 🍄
+```bash
+git clone https://github.com/msb-msb/mycoSwarm.git
+cd mycoSwarm
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+python -m pytest tests/ -v  # 94 tests, all offline
+```
+
+---
+
+**Built with experience, not hype.** [InsiderLLM](https://insiderllm.com)
