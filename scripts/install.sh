@@ -182,20 +182,26 @@ info "Installing mycoswarm..."
 
 LOCAL_BIN="$HOME/.local/bin"
 PATH_LINE='export PATH="$HOME/.local/bin:$PATH"'
+ADDED_RC=false
 
+# Persist to shell config files (always check, even if current PATH has it —
+# the current shell may have inherited it from .profile at login, but .bashrc
+# is what new interactive terminals source)
+for rc in "$HOME/.bashrc" "$HOME/.profile"; do
+    if [ -f "$rc" ] && ! grep -qxF "$PATH_LINE" "$rc"; then
+        printf '\n# Added by mycoSwarm installer\n%s\n' "$PATH_LINE" >> "$rc"
+        ok "Added PATH entry to $(basename "$rc")"
+        ADDED_RC=true
+    fi
+done
+
+# Export for the current session so the rest of the installer works
 if [[ ":$PATH:" != *":$LOCAL_BIN:"* ]]; then
-    info "$LOCAL_BIN is not in PATH — fixing..."
     export PATH="$LOCAL_BIN:$PATH"
+fi
 
-    # Persist to shell config files
-    for rc in "$HOME/.bashrc" "$HOME/.profile"; do
-        if [ -f "$rc" ] && ! grep -qF '.local/bin' "$rc"; then
-            printf '\n# Added by mycoSwarm installer\n%s\n' "$PATH_LINE" >> "$rc"
-            ok "Added PATH entry to $rc"
-        fi
-    done
-
-    warn "PATH updated for this session. For new terminals, run: source ~/.bashrc"
+if [ "$ADDED_RC" = true ]; then
+    warn "For new terminals, run: source ~/.bashrc"
 fi
 
 # --- Verify mycoswarm is callable ---
