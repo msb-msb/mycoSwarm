@@ -166,7 +166,7 @@ async def run_daemon(port: int = DEFAULT_PORT, verbose: bool = False):
     # Start API server
     config = uvicorn.Config(
         app,
-        host=identity.lan_ip,
+        host="0.0.0.0",
         port=port,
         log_level="warning" if not verbose else "info",
     )
