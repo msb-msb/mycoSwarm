@@ -37,6 +37,23 @@ def _all_lan_addresses() -> list[bytes]:
     return addrs
 
 
+async def _pick_reachable_address(addresses: list[bytes], port: int) -> str:
+    """Try a quick TCP connect to each address; return the first reachable one."""
+    for addr in addresses:
+        ip = socket.inet_ntoa(addr)
+        try:
+            _, writer = await asyncio.wait_for(
+                asyncio.open_connection(ip, port), timeout=0.5
+            )
+            writer.close()
+            await writer.wait_closed()
+            return ip
+        except (OSError, asyncio.TimeoutError):
+            continue
+    # None responded — fall back to first
+    return socket.inet_ntoa(addresses[0])
+
+
 @dataclass
 class Peer:
     """A discovered peer node."""
@@ -301,8 +318,8 @@ class Discovery:
             if not info.addresses:
                 return
 
-            ip = socket.inet_ntoa(info.addresses[0])
             port = info.port
+            ip = await _pick_reachable_address(info.addresses, port)
 
             # Skip ourselves
             peer = _txt_to_peer(info.properties, ip, port)
