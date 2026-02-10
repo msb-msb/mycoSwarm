@@ -342,6 +342,27 @@ def create_api(
                 )
                 return await task_queue.submit(task)
 
+        # Inference/embedding: prefer GPU peers over local CPU inference
+        INFERENCE_TASKS = {"inference", "embedding", "translate", "file_summarize"}
+        if (
+            orchestrator is not None
+            and task.task_type in INFERENCE_TASKS
+            and can_local
+        ):
+            candidates = await orchestrator._select_nodes(task.task_type)
+            # Route to a GPU peer if one scores higher than local
+            gpu_candidates = [
+                p for p in candidates
+                if "gpu_inference" in p.capabilities
+            ]
+            if gpu_candidates:
+                logger.info(
+                    f"🎯 GPU peer available — routing {task.task_type} "
+                    f"to {gpu_candidates[0].hostname} instead of local CPU"
+                )
+                return await _route_to_peer(task, gpu_candidates[0])
+            # No GPU peer — fall through to local
+
         if can_local:
             if task.task_type == "inference":
                 task_queue.create_stream(task.task_id)
