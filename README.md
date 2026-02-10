@@ -25,13 +25,13 @@ The weakest machine in the swarm gets access to the strongest model.
 
 | Node | Hardware | Cost | Role |
 |------|----------|------|------|
-| Miu | RTX 3090, 64GB RAM | ~$300 (used) | GPU inference — runs 27B models |
+| Miu | RTX 3090, 64GB RAM | ~$850 (used) | GPU inference — runs 27B models |
 | naru | Lenovo M710Q, 8GB RAM | $50 | Web search, file processing |
 | uncho | Lenovo M710Q, 8GB RAM | $50 | Web search, coordination |
 | boa | Lenovo M710Q, 8GB RAM | $50 | Web search, code execution |
 | raspberrypi | Raspberry Pi 2, 1GB RAM | $35 | Search, lightweight tasks |
 
-Total: ~$485. Zero monthly fees.
+Total: ~$1,035. Zero monthly fees.
 
 ---
 
