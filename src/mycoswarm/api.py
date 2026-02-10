@@ -222,12 +222,30 @@ def create_api(
 
     async def _route_to_peer(task: TaskRequest, target):
         """Forward task to a peer and poll for result in background."""
+        # Fix model mismatch: if the task specifies a model the peer
+        # doesn't have, swap to the peer's first available model.
+        MODEL_TASKS = {"inference", "embedding", "translate", "file_summarize"}
+        task_data = task.model_dump()
+        if (
+            task.task_type in MODEL_TASKS
+            and target.available_models
+            and task_data.get("payload", {}).get("model")
+        ):
+            requested_model = task_data["payload"]["model"]
+            if requested_model not in target.available_models:
+                new_model = target.available_models[0]
+                logger.info(
+                    f"🔄 Model swap: {requested_model} not on "
+                    f"{target.hostname}, using {new_model}"
+                )
+                task_data["payload"]["model"] = new_model
+
         orchestrator.record_dispatch(target.node_id)
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.post(
                     f"http://{target.ip}:{target.port}/task",
-                    json=task.model_dump(),
+                    json=task_data,
                 )
                 resp.raise_for_status()
         except (httpx.ConnectError, httpx.TimeoutException) as e:
