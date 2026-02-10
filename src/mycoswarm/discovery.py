@@ -25,6 +25,18 @@ SERVICE_TYPE = "_mycoswarm._tcp.local."
 DEFAULT_PORT = 7890  # mycoSwarm API port
 
 
+def _all_lan_addresses() -> list[bytes]:
+    """Return packed IPv4 addresses for all non-loopback interfaces."""
+    import psutil
+
+    addrs: list[bytes] = []
+    for _iface, snics in psutil.net_if_addrs().items():
+        for snic in snics:
+            if snic.family == socket.AF_INET and not snic.address.startswith("127."):
+                addrs.append(socket.inet_aton(snic.address))
+    return addrs
+
+
 @dataclass
 class Peer:
     """A discovered peer node."""
@@ -239,10 +251,14 @@ class Discovery:
         service_name = f"{self.identity.node_id}.{SERVICE_TYPE}"
         txt_props = _identity_to_txt(self.identity)
 
+        all_addrs = _all_lan_addresses()
+        if not all_addrs:
+            all_addrs = [socket.inet_aton(ip)]
+
         self._service_info = ServiceInfo(
             type_=SERVICE_TYPE,
             name=service_name,
-            addresses=[socket.inet_aton(ip)],
+            addresses=all_addrs,
             port=self.port,
             properties=txt_props,
             server=f"{self.identity.hostname}.local.",
@@ -252,9 +268,10 @@ class Discovery:
         await self._zeroconf.async_register_service(
             self._service_info, allow_name_change=True
         )
+        addr_strs = [socket.inet_ntoa(a) for a in all_addrs]
         logger.info(
-            f"📡 Announcing: {self.identity.node_id} at {ip}:{self.port} "
-            f"[{self.identity.node_tier}]"
+            f"📡 Announcing: {self.identity.node_id} on {addr_strs} "
+            f"port {self.port} [{self.identity.node_tier}]"
         )
 
         # Browse for peers
@@ -306,10 +323,14 @@ class Discovery:
             txt_props = _identity_to_txt(identity)
             ip = identity.lan_ip
             if ip:
+                all_addrs = _all_lan_addresses()
+                if not all_addrs:
+                    all_addrs = [socket.inet_aton(ip)]
+
                 new_info = ServiceInfo(
                     type_=SERVICE_TYPE,
                     name=self._service_info.name,
-                    addresses=[socket.inet_aton(ip)],
+                    addresses=all_addrs,
                     port=self.port,
                     properties=txt_props,
                     server=f"{identity.hostname}.local.",
