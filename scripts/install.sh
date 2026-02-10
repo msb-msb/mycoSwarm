@@ -263,8 +263,17 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 # --- Done ---
 
 echo ""
-echo "  🍄 mycoSwarm installed! Get started:"
-echo "     mycoswarm chat     — start chatting"
-echo "     mycoswarm detect   — see your hardware"
-echo "     mycoswarm --help   — all commands"
+echo "  🍄 mycoSwarm installed!"
+echo ""
+if [ "$ADDED_RC" = true ]; then
+    echo "  ⚠️  First, run this (one time only):"
+    echo "      source ~/.bashrc"
+    echo ""
+    echo "  Then get started:"
+else
+    echo "  Get started:"
+fi
+echo "      mycoswarm chat     — start chatting"
+echo "      mycoswarm detect   — see your hardware"
+echo "      mycoswarm --help   — all commands"
 echo ""
