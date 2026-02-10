@@ -164,6 +164,40 @@ class TaskQueue:
         return len(self._active)
 
 
+def _parse_model_size(name: str) -> float:
+    """Extract parameter count in billions from a model name.
+
+    Examples: "gemma3:27b" → 27.0, "qwen2.5:14b-instruct-q4_K_M" → 14.0,
+    "llama3:8b" → 8.0, "unknown-model" → 0.0
+    """
+    import re
+    m = re.search(r"(\d+(?:\.\d+)?)b", name.lower())
+    return float(m.group(1)) if m else 0.0
+
+
+def _pick_best_model(models: list[str], embedding: bool = False) -> str | None:
+    """Pick the best model from a peer's available list.
+
+    For embedding tasks: prefer models with 'embed' in the name.
+    For everything else: filter OUT embed models, pick largest by param count.
+    """
+    if not models:
+        return None
+
+    if embedding:
+        embed_models = [m for m in models if "embed" in m.lower()]
+        if embed_models:
+            return embed_models[0]
+        return models[0]
+
+    # Chat/inference: exclude embedding models, pick largest
+    chat_models = [m for m in models if "embed" not in m.lower()]
+    if not chat_models:
+        return models[0]
+
+    return max(chat_models, key=_parse_model_size)
+
+
 # --- API Factory ---
 
 
@@ -233,12 +267,16 @@ def create_api(
         ):
             requested_model = task_data["payload"]["model"]
             if requested_model not in target.available_models:
-                new_model = target.available_models[0]
-                logger.info(
-                    f"🔄 Model swap: {requested_model} not on "
-                    f"{target.hostname}, using {new_model}"
+                new_model = _pick_best_model(
+                    target.available_models,
+                    embedding=task.task_type == "embedding",
                 )
-                task_data["payload"]["model"] = new_model
+                if new_model:
+                    logger.info(
+                        f"🔄 Model swap: {requested_model} not on "
+                        f"{target.hostname}, using {new_model}"
+                    )
+                    task_data["payload"]["model"] = new_model
 
         orchestrator.record_dispatch(target.node_id)
         try:
