@@ -4,6 +4,8 @@
 
 mycoSwarm connects your machines — old laptops, mini PCs, Raspberry Pis, GPU workstations — into a single AI swarm. No cloud. No API keys. No data leaves your network.
 
+![mycoSwarm Demo](assets/demo.gif)
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/msb-msb/mycoSwarm/main/scripts/install.sh | bash
 mycoswarm chat
