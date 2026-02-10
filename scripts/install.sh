@@ -178,16 +178,38 @@ info "Installing mycoswarm..."
     || "$PYTHON" -m pip install --quiet --break-system-packages mycoswarm \
     || fail "pip install failed. Try: $PYTHON -m pip install mycoswarm"
 
-# Ensure ~/.local/bin is in PATH for --user installs
-if ! need_cmd mycoswarm; then
-    LOCAL_BIN="$HOME/.local/bin"
-    if [ -f "$LOCAL_BIN/mycoswarm" ]; then
-        export PATH="$LOCAL_BIN:$PATH"
-    fi
+# --- Ensure ~/.local/bin is in PATH ---
+
+LOCAL_BIN="$HOME/.local/bin"
+PATH_LINE='export PATH="$HOME/.local/bin:$PATH"'
+
+if [[ ":$PATH:" != *":$LOCAL_BIN:"* ]]; then
+    info "$LOCAL_BIN is not in PATH — fixing..."
+    export PATH="$LOCAL_BIN:$PATH"
+
+    # Persist to shell config files
+    for rc in "$HOME/.bashrc" "$HOME/.profile"; do
+        if [ -f "$rc" ] && ! grep -qF '.local/bin' "$rc"; then
+            printf '\n# Added by mycoSwarm installer\n%s\n' "$PATH_LINE" >> "$rc"
+            ok "Added PATH entry to $rc"
+        fi
+    done
+
+    warn "PATH updated for this session. For new terminals, run: source ~/.bashrc"
 fi
 
-need_cmd mycoswarm || fail "mycoswarm not found in PATH after install."
-ok "mycoswarm installed"
+# --- Verify mycoswarm is callable ---
+
+if need_cmd mycoswarm; then
+    ok "mycoswarm installed"
+elif [ -x "$LOCAL_BIN/mycoswarm" ]; then
+    warn "mycoswarm is installed at $LOCAL_BIN/mycoswarm but not on PATH."
+    warn "Run this to fix:  source ~/.bashrc"
+    warn "Or run directly:  $LOCAL_BIN/mycoswarm"
+    ok "mycoswarm installed (at $LOCAL_BIN/mycoswarm)"
+else
+    fail "mycoswarm not found after install. Try: $PYTHON -m pip install --user mycoswarm"
+fi
 
 # --- Detect RAM and pull appropriate model ---
 
