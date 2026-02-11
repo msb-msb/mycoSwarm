@@ -13,6 +13,7 @@ from mycoswarm.library import (
     search,
     list_documents,
     remove_document,
+    _extract_chunk_sections,
     EMBEDDING_MODEL,
 )
 
@@ -53,6 +54,33 @@ class TestChunkText:
         text = " ".join(f"w{i}" for i in range(30))
         chunks = chunk_text(text, chunk_size=30, overlap=5)
         assert len(chunks) == 1
+
+
+# --- _extract_chunk_sections ---
+
+
+class TestExtractChunkSections:
+    def test_headings_mapped_to_chunks(self):
+        text = "# Intro\nSome intro text here.\n## Details\nMore details follow."
+        chunks = ["Some intro text here.", "More details follow."]
+        sections = _extract_chunk_sections(text, chunks)
+        assert sections[0] == "Intro"
+        assert sections[1] == "Details"
+
+    def test_no_headings(self):
+        text = "Just plain text without any headings."
+        chunks = ["Just plain text without any headings."]
+        sections = _extract_chunk_sections(text, chunks)
+        assert sections[0] == "untitled"
+
+    def test_all_chunks_under_one_heading(self):
+        words = " ".join(f"w{i}" for i in range(100))
+        text = f"# Only Section\n{words}"
+        chunks = [" ".join(f"w{i}" for i in range(50)),
+                  " ".join(f"w{i}" for i in range(50, 100))]
+        sections = _extract_chunk_sections(text, chunks)
+        assert sections[0] == "Only Section"
+        assert sections[1] == "Only Section"
 
 
 # --- extract_file_text ---
@@ -147,6 +175,46 @@ class TestIngestFile:
         assert result["model"] == "nomic-embed-text"
         mock_col.upsert.assert_called_once()
 
+        # Verify metadata fields on every chunk
+        upsert_kwargs = mock_col.upsert.call_args[1]
+        metadatas = upsert_kwargs["metadatas"]
+        for meta in metadatas:
+            assert "source" in meta
+            assert "section" in meta
+            assert "file_date" in meta
+            assert "doc_type" in meta
+            assert meta["doc_type"] == ".txt"
+            assert "embedding_model" in meta
+            assert meta["embedding_model"] == "nomic-embed-text"
+            assert "chunk_index" in meta
+
+    @patch("mycoswarm.library._get_collection")
+    @patch("mycoswarm.library.embed_text")
+    @patch("mycoswarm.library._get_embedding_model")
+    def test_ingest_md_file_with_sections(self, mock_get_model, mock_embed, mock_collection, tmp_path):
+        mock_get_model.return_value = "nomic-embed-text"
+        mock_embed.return_value = [0.1, 0.2, 0.3]
+
+        mock_col = MagicMock()
+        mock_collection.return_value = mock_col
+
+        f = tmp_path / "guide.md"
+        # Write enough content under each heading to form separate chunks
+        intro_words = " ".join(f"intro{i}" for i in range(400))
+        details_words = " ".join(f"detail{i}" for i in range(400))
+        f.write_text(f"# Introduction\n{intro_words}\n## Details\n{details_words}\n")
+
+        result = ingest_file(f)
+        assert result["chunks"] >= 2
+        assert result["model"] == "nomic-embed-text"
+
+        upsert_kwargs = mock_col.upsert.call_args[1]
+        metadatas = upsert_kwargs["metadatas"]
+        # First chunk should be under "Introduction", later chunks under "Details"
+        assert metadatas[0]["section"] == "Introduction"
+        assert metadatas[-1]["section"] == "Details"
+        assert metadatas[0]["doc_type"] == ".md"
+
     @patch("mycoswarm.library._get_embedding_model")
     def test_ingest_unsupported_extension(self, mock_get_model, tmp_path):
         f = tmp_path / "test.xyz"
@@ -187,8 +255,10 @@ class TestSearch:
         mock_col.query.return_value = {
             "documents": [["chunk one text", "chunk two text"]],
             "metadatas": [[
-                {"source": "doc.txt", "chunk_index": 0},
-                {"source": "doc.txt", "chunk_index": 1},
+                {"source": "doc.txt", "chunk_index": 0, "section": "Intro",
+                 "doc_type": ".txt", "file_date": 1700000000.0, "embedding_model": "nomic-embed-text"},
+                {"source": "doc.txt", "chunk_index": 1, "section": "Details",
+                 "doc_type": ".txt", "file_date": 1700000000.0, "embedding_model": "nomic-embed-text"},
             ]],
             "distances": [[0.15, 0.25]],
         }
@@ -199,6 +269,10 @@ class TestSearch:
         assert results[0]["source"] == "doc.txt"
         assert results[0]["score"] == 0.15
         assert results[0]["text"] == "chunk one text"
+        assert results[0]["section"] == "Intro"
+        assert results[0]["doc_type"] == ".txt"
+        assert results[0]["embedding_model"] == "nomic-embed-text"
+        assert results[1]["section"] == "Details"
 
     @patch("mycoswarm.library.embed_text")
     @patch("mycoswarm.library._get_embedding_model")

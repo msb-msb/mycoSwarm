@@ -1158,7 +1158,8 @@ def cmd_chat(args):
                 # Build context
                 rag_parts = []
                 for ri, hit in enumerate(rag_hits, 1):
-                    rag_parts.append(f"[{ri}] ({hit['source']}) {hit['text']}")
+                    section = hit.get("section", "untitled")
+                    rag_parts.append(f"[{ri}] ({hit['source']} > {section}) {hit['text']}")
                 rag_context = "\n\n".join(rag_parts)
                 rag_system = (
                     "Answer using the provided document excerpts. Cite sources using "
@@ -1278,8 +1279,9 @@ def cmd_chat(args):
                 if rag_hits:
                     print(f" {len(rag_hits)} excerpts", flush=True)
                     for ri, hit in enumerate(rag_hits, 1):
+                        section = hit.get("section", "untitled")
                         rag_context_parts.append(
-                            f"[D{ri}] ({hit['source']}) {hit['text']}"
+                            f"[D{ri}] ({hit['source']} > {section}) {hit['text']}"
                         )
                     tool_sources.append("docs")
                 else:
@@ -1521,7 +1523,8 @@ def cmd_rag(args):
     sources: list[str] = []
     seen_sources: set[str] = set()
     for i, hit in enumerate(hits, 1):
-        context_parts.append(f"[{i}] ({hit['source']}) {hit['text']}")
+        section = hit.get("section", "untitled")
+        context_parts.append(f"[{i}] ({hit['source']} > {section}) {hit['text']}")
         if hit["source"] not in seen_sources:
             sources.append(hit["source"])
             seen_sources.add(hit["source"])

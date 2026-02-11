@@ -8,6 +8,8 @@ Supports: PDF, TXT, MD, HTML, CSV, JSON.
 """
 
 import logging
+import os
+import re
 from pathlib import Path
 
 import httpx
@@ -65,6 +67,61 @@ def chunk_text(
         start = end - overlap
 
     return chunks
+
+
+# --- Section Heading Extraction ---
+
+_HEADING_RE = re.compile(r"^(#{1,6})\s+(.+)", re.MULTILINE)
+
+
+def _extract_chunk_sections(text: str, chunks: list[str]) -> list[str]:
+    """Map each chunk to the nearest markdown heading above it.
+
+    Builds a per-word heading array from the original text, then locates
+    each chunk's first words in that array to determine its section.
+    Returns a list parallel to chunks with the heading text (or "untitled").
+    """
+    # Build a per-word heading array by walking lines
+    current_heading = "untitled"
+    word_headings: list[str] = []
+    for line in text.splitlines():
+        heading_match = _HEADING_RE.match(line)
+        if heading_match:
+            current_heading = heading_match.group(2).strip()
+        for _ in line.split():
+            word_headings.append(current_heading)
+
+    # All words from the original text, for matching chunk starts
+    all_words = text.split()
+
+    sections: list[str] = []
+    search_from = 0
+    for chunk in chunks:
+        chunk_words = chunk.split()
+        if not chunk_words:
+            sections.append("untitled")
+            continue
+
+        # Find where this chunk's first words appear in the word list
+        prefix = chunk_words[:5]
+        found = False
+        for idx in range(search_from, len(all_words) - len(prefix) + 1):
+            if all_words[idx : idx + len(prefix)] == prefix:
+                sections.append(word_headings[idx])
+                search_from = idx  # don't go backwards
+                found = True
+                break
+        if not found:
+            # Fallback: try from beginning (overlap edge case)
+            for idx in range(0, len(all_words) - len(prefix) + 1):
+                if all_words[idx : idx + len(prefix)] == prefix:
+                    sections.append(word_headings[idx])
+                    found = True
+                    break
+            if not found:
+                sections.append("untitled")
+
+    return sections
 
 
 # --- Embedding ---
@@ -153,6 +210,14 @@ def ingest_file(path: Path, model: str | None = None) -> dict:
 
     collection = _get_collection(model)
 
+    # Extract section headings and file metadata
+    sections = _extract_chunk_sections(text, chunks)
+    try:
+        file_date = os.path.getmtime(path)
+    except OSError:
+        file_date = 0.0
+    doc_type = path.suffix.lower()
+
     ids: list[str] = []
     documents: list[str] = []
     embeddings: list[list[float]] = []
@@ -171,6 +236,10 @@ def ingest_file(path: Path, model: str | None = None) -> dict:
             "source": path.name,
             "chunk_index": i,
             "total_chunks": len(chunks),
+            "section": sections[i],
+            "file_date": file_date,
+            "doc_type": doc_type,
+            "embedding_model": model,
         })
 
     if ids:
@@ -238,6 +307,10 @@ def search(
                 "source": meta.get("source", ""),
                 "score": round(distance, 4),
                 "chunk_index": meta.get("chunk_index", 0),
+                "section": meta.get("section", "untitled"),
+                "doc_type": meta.get("doc_type", ""),
+                "file_date": meta.get("file_date", 0.0),
+                "embedding_model": meta.get("embedding_model", ""),
             })
 
     return hits
