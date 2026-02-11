@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>mycoSwarm Dashboard</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <header>
+        <h1>&#127812; mycoSwarm</h1>
+        <span id="connection-status" class="status-badge offline">disconnected</span>
+    </header>
+
+    <div id="summary-bar" class="summary-bar">
+        <div class="summary-item">
+            <span class="summary-value" id="total-nodes">-</span>
+            <span class="summary-label">Nodes</span>
+        </div>
+        <div class="summary-item">
+            <span class="summary-value" id="gpu-nodes">-</span>
+            <span class="summary-label">GPU</span>
+        </div>
+        <div class="summary-item">
+            <span class="summary-value" id="cpu-nodes">-</span>
+            <span class="summary-label">CPU</span>
+        </div>
+        <div class="summary-item">
+            <span class="summary-value" id="total-vram">-</span>
+            <span class="summary-label">VRAM</span>
+        </div>
+        <div class="summary-item">
+            <span class="summary-value" id="total-ram">-</span>
+            <span class="summary-label">RAM</span>
+        </div>
+    </div>
+
+    <main id="nodes-container" class="nodes-container">
+        <p class="placeholder">Connecting to daemon...</p>
+    </main>
+
+    <footer>
+        <span>Auto-refresh: 5s</span>
+        <span id="last-update">-</span>
+    </footer>
+
+    <script src="/static/dashboard.js"></script>
+</body>
+</html>

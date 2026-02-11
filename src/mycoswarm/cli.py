@@ -12,6 +12,7 @@ Usage:
     mycoswarm daemon              Start the node daemon (announce + discover)
     mycoswarm daemon --port 7890  Start on a specific port
     mycoswarm daemon -v           Verbose logging
+    mycoswarm dashboard           Start the web dashboard (http://localhost:8080)
     mycoswarm swarm               Show swarm status (query local daemon)
     mycoswarm ping                Ping all known peers
     mycoswarm search "query"      Search the web via the swarm
@@ -134,6 +135,17 @@ def cmd_daemon(args):
     from mycoswarm.daemon import start_daemon
 
     start_daemon(port=args.port, verbose=args.verbose)
+
+
+def cmd_dashboard(args):
+    """Start the web dashboard."""
+    import uvicorn
+    from mycoswarm.dashboard import create_app
+
+    app = create_app(daemon_port=args.daemon_port)
+    print(f"🍄 Dashboard running at http://localhost:{args.port}")
+    print(f"   Querying daemon on port {args.daemon_port}")
+    uvicorn.run(app, host="0.0.0.0", port=args.port, log_level="warning")
 
 
 def cmd_swarm(args):
@@ -1685,6 +1697,19 @@ def main():
         "-v", "--verbose", action="store_true", help="Verbose logging"
     )
     daemon_parser.set_defaults(func=cmd_daemon)
+
+    # dashboard
+    dashboard_parser = subparsers.add_parser(
+        "dashboard", help="Start the web dashboard"
+    )
+    dashboard_parser.add_argument(
+        "--port", type=int, default=8080, help="Dashboard port (default: 8080)"
+    )
+    dashboard_parser.add_argument(
+        "--daemon-port", type=int, default=7890,
+        help="Daemon API port to query (default: 7890)",
+    )
+    dashboard_parser.set_defaults(func=cmd_dashboard)
 
     # swarm
     swarm_parser = subparsers.add_parser(

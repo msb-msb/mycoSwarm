@@ -1,0 +1,229 @@
+/* mycoSwarm Dashboard — dark terminal theme */
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    background: #1a1a2e;
+    color: #e0e0e0;
+    font-family: "JetBrains Mono", "Fira Code", "Cascadia Code", monospace;
+    font-size: 14px;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 24px;
+    background: #0f0f23;
+    border-bottom: 1px solid #2a2a4a;
+}
+
+header h1 {
+    font-size: 20px;
+    font-weight: 600;
+    color: #c0c0ff;
+}
+
+.status-badge {
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.status-badge.online {
+    background: #0a3a0a;
+    color: #4cff4c;
+    border: 1px solid #2a6a2a;
+}
+
+.status-badge.offline {
+    background: #3a0a0a;
+    color: #ff4c4c;
+    border: 1px solid #6a2a2a;
+}
+
+/* Summary bar */
+.summary-bar {
+    display: flex;
+    gap: 24px;
+    padding: 16px 24px;
+    background: #12122a;
+    border-bottom: 1px solid #2a2a4a;
+}
+
+.summary-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 80px;
+}
+
+.summary-value {
+    font-size: 28px;
+    font-weight: 700;
+    color: #c0c0ff;
+}
+
+.summary-label {
+    font-size: 11px;
+    color: #808090;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-top: 2px;
+}
+
+/* Node cards */
+.nodes-container {
+    flex: 1;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+    gap: 16px;
+    padding: 24px;
+    align-content: start;
+}
+
+.nodes-container .placeholder {
+    grid-column: 1 / -1;
+    text-align: center;
+    color: #606080;
+    padding: 48px 0;
+}
+
+.node-card {
+    background: #16213e;
+    border: 1px solid #2a2a4a;
+    border-radius: 8px;
+    padding: 16px;
+    transition: border-color 0.2s;
+}
+
+.node-card:hover {
+    border-color: #4a4a7a;
+}
+
+.node-card.local {
+    border-left: 3px solid #c0c0ff;
+}
+
+.node-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+
+.node-hostname {
+    font-size: 16px;
+    font-weight: 600;
+    color: #e0e0ff;
+}
+
+.node-tier {
+    margin-left: auto;
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    text-transform: uppercase;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+}
+
+.node-tier.gpu { background: #1a3a1a; color: #4cff4c; }
+.node-tier.cpu { background: #2a2a1a; color: #ffcc4c; }
+.node-tier.hybrid { background: #1a2a3a; color: #4cccff; }
+.node-tier.executive { background: #2a1a3a; color: #cc80ff; }
+
+.node-subheader {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    font-size: 12px;
+    color: #808090;
+}
+
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.status-dot.online {
+    background: #4cff4c;
+    box-shadow: 0 0 6px #4cff4c80;
+}
+
+.status-dot.offline {
+    background: #ff4c4c;
+    box-shadow: 0 0 6px #ff4c4c80;
+}
+
+.node-stats {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    font-size: 13px;
+    color: #a0a0b0;
+}
+
+.node-stats .stat-row {
+    display: flex;
+    align-items: baseline;
+}
+
+.node-stats .label {
+    color: #606080;
+    min-width: 80px;
+    flex-shrink: 0;
+}
+
+.node-stats .value {
+    color: #c0c0d0;
+}
+
+.node-stats .pct {
+    color: #808090;
+    margin-left: 4px;
+}
+
+.node-models {
+    margin-top: 10px;
+    font-size: 12px;
+    color: #808090;
+}
+
+.node-models .model-primary {
+    color: #a0a0cc;
+}
+
+/* Footer */
+footer {
+    display: flex;
+    justify-content: space-between;
+    padding: 12px 24px;
+    background: #0f0f23;
+    border-top: 1px solid #2a2a4a;
+    font-size: 12px;
+    color: #606080;
+}
+
+/* Error state */
+.error-banner {
+    background: #3a1a1a;
+    border: 1px solid #6a2a2a;
+    color: #ff8080;
+    padding: 12px 24px;
+    text-align: center;
+    font-size: 13px;
+}

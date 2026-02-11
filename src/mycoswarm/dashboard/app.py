@@ -1,0 +1,164 @@
+"""mycoSwarm Dashboard — web UI for swarm monitoring.
+
+Queries the existing daemon API (/status + /peers) and renders
+a live-updating dashboard with node cards.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import time
+from pathlib import Path
+
+import httpx
+from fastapi import FastAPI
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from starlette.requests import Request
+
+HERE = Path(__file__).parent
+TEMPLATES_DIR = HERE / "templates"
+STATIC_DIR = HERE / "static"
+
+
+def create_app(daemon_port: int = 7890) -> FastAPI:
+    """Create the dashboard FastAPI application."""
+
+    app = FastAPI(title="mycoSwarm Dashboard", version="0.1.0")
+
+    templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+    daemon_url = f"http://localhost:{daemon_port}"
+
+    @app.get("/", response_class=HTMLResponse)
+    async def index(request: Request):
+        return templates.TemplateResponse("index.html", {"request": request})
+
+    @app.get("/api/status")
+    async def api_status():
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                status_resp = await client.get(f"{daemon_url}/status")
+                status = status_resp.json()
+
+                peers_resp = await client.get(f"{daemon_url}/peers")
+                peers_raw = peers_resp.json()
+        except (httpx.ConnectError, httpx.TimeoutException):
+            return {
+                "error": "Daemon not reachable",
+                "local": None,
+                "peers": [],
+                "summary": {
+                    "total_nodes": 0,
+                    "gpu_nodes": 0,
+                    "cpu_nodes": 0,
+                    "total_vram": 0,
+                    "total_ram": 0,
+                },
+            }
+
+        now = time.time()
+
+        # Query each peer's /status endpoint for system stats
+        async def _fetch_peer_status(client, ip, port):
+            try:
+                resp = await client.get(f"http://{ip}:{port}/status")
+                return resp.json()
+            except Exception:
+                return None
+
+        peer_statuses = []
+        if peers_raw:
+            async with httpx.AsyncClient(timeout=3.0) as peer_client:
+                peer_statuses = await asyncio.gather(
+                    *[
+                        _fetch_peer_status(peer_client, p["ip"], p["port"])
+                        for p in peers_raw
+                    ]
+                )
+
+        # Build peer list enriched with system stats
+        peers = []
+        for p, ps in zip(peers_raw, peer_statuses):
+            last_seen = p.get("last_seen", 0)
+            online = (now - last_seen) < 60
+            peer_data = {
+                "node_id": p.get("node_id", ""),
+                "hostname": p.get("hostname", ""),
+                "ip": p.get("ip", ""),
+                "port": p.get("port", 0),
+                "node_tier": p.get("node_tier", ""),
+                "gpu_name": p.get("gpu_name"),
+                "vram_total_mb": p.get("vram_total_mb", 0),
+                "models": p.get("available_models", []),
+                "last_seen": last_seen,
+                "online": online,
+            }
+
+            # Enrich with live system stats from peer's /status
+            if ps and not ps.get("error"):
+                peer_data.update({
+                    "vram_free_mb": ps.get("vram_free_mb", 0),
+                    "cpu_model": ps.get("cpu_model", ""),
+                    "cpu_cores": ps.get("cpu_cores", 0),
+                    "cpu_usage_percent": ps.get("cpu_usage_percent", 0),
+                    "ram_total_mb": ps.get("ram_total_mb", 0),
+                    "ram_used_mb": ps.get("ram_used_mb", 0),
+                    "disk_total_gb": ps.get("disk_total_gb", 0),
+                    "disk_used_gb": ps.get("disk_used_gb", 0),
+                    "os": ps.get("os", ""),
+                    "architecture": ps.get("architecture", ""),
+                    "uptime": ps.get("uptime_seconds", 0),
+                })
+
+            peers.append(peer_data)
+
+        local = {
+            "node_id": status.get("node_id", ""),
+            "hostname": status.get("hostname", ""),
+            "node_tier": status.get("node_tier", ""),
+            "gpu": status.get("gpu"),
+            "vram_total_mb": status.get("vram_total_mb", 0),
+            "vram_free_mb": status.get("vram_free_mb", 0),
+            "models": status.get("ollama_models", []),
+            "uptime": status.get("uptime_seconds", 0),
+            "cpu_model": status.get("cpu_model", ""),
+            "cpu_cores": status.get("cpu_cores", 0),
+            "cpu_usage_percent": status.get("cpu_usage_percent", 0),
+            "ram_total_mb": status.get("ram_total_mb", 0),
+            "ram_used_mb": status.get("ram_used_mb", 0),
+            "disk_total_gb": status.get("disk_total_gb", 0),
+            "disk_used_gb": status.get("disk_used_gb", 0),
+            "os": status.get("os", ""),
+            "architecture": status.get("architecture", ""),
+            "ip": status.get("ip", ""),
+            "port": status.get("port", 0),
+        }
+
+        # Summary
+        total_nodes = 1 + len(peers)
+        gpu_nodes = (1 if local["gpu"] else 0) + sum(
+            1 for p in peers if p["gpu_name"]
+        )
+        total_vram = local["vram_total_mb"] + sum(
+            p["vram_total_mb"] for p in peers
+        )
+        total_ram = local["ram_total_mb"] + sum(
+            p.get("ram_total_mb", 0) for p in peers
+        )
+
+        return {
+            "local": local,
+            "peers": peers,
+            "summary": {
+                "total_nodes": total_nodes,
+                "gpu_nodes": gpu_nodes,
+                "cpu_nodes": total_nodes - gpu_nodes,
+                "total_vram": total_vram,
+                "total_ram": total_ram,
+            },
+        }
+
+    return app

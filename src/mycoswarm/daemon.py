@@ -147,7 +147,7 @@ async def run_daemon(port: int = DEFAULT_PORT, verbose: bool = False):
     orchestrator = Orchestrator(identity, registry)
 
     # Create FastAPI app
-    app = create_api(identity, registry, task_queue, start_time, orchestrator)
+    app = create_api(identity, registry, task_queue, start_time, orchestrator, port=port)
 
     # Handle shutdown
     stop_event = asyncio.Event()

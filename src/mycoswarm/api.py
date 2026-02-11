@@ -14,11 +14,13 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import platform as _platform
 import time
 from enum import Enum
 from typing import TYPE_CHECKING
 
 import httpx
+import psutil
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
@@ -207,6 +209,7 @@ def create_api(
     task_queue: TaskQueue,
     start_time: float,
     orchestrator: Orchestrator | None = None,
+    port: int = 7890,
 ) -> FastAPI:
     """Create the FastAPI application for this node."""
 
@@ -504,9 +507,26 @@ def create_api(
             },
         )
 
+    # Prime cpu_percent so subsequent calls return meaningful values
+    psutil.cpu_percent(interval=None)
+
     @app.get("/status")
     async def status():
         peers = await registry.get_all()
+
+        # Live system stats
+        mem = psutil.virtual_memory()
+        cpu_pct = psutil.cpu_percent(interval=None)
+
+        # Disk totals
+        try:
+            disk = psutil.disk_usage("/")
+            disk_total_gb = round(disk.total / (1024**3), 1)
+            disk_used_gb = round(disk.used / (1024**3), 1)
+        except Exception:
+            disk_total_gb = 0.0
+            disk_used_gb = 0.0
+
         return {
             "node_id": identity.node_id,
             "hostname": identity.hostname,
@@ -520,6 +540,17 @@ def create_api(
             "tasks_pending": task_queue.pending_count,
             "tasks_active": task_queue.active_count,
             "uptime_seconds": round(time.time() - start_time, 1),
+            "cpu_model": identity.cpu_model,
+            "cpu_cores": identity.cpu_cores,
+            "cpu_usage_percent": round(cpu_pct, 1),
+            "ram_total_mb": identity.ram_total_mb,
+            "ram_used_mb": mem.used // (1024 * 1024),
+            "disk_total_gb": disk_total_gb,
+            "disk_used_gb": disk_used_gb,
+            "os": _platform.system(),
+            "architecture": _platform.machine(),
+            "ip": identity.lan_ip,
+            "port": port,
         }
 
     return app
