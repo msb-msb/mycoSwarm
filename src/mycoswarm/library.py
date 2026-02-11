@@ -269,6 +269,95 @@ def _get_collection(model: str = EMBEDDING_MODEL):
     )
 
 
+def _get_session_collection():
+    """Get or create the ChromaDB collection for session memory."""
+    import chromadb
+
+    CHROMA_DIR.mkdir(parents=True, exist_ok=True)
+    client = chromadb.PersistentClient(path=str(CHROMA_DIR))
+    return client.get_or_create_collection(
+        name="session_memory",
+        metadata={"hnsw:space": "cosine"},
+    )
+
+
+def index_session_summary(
+    session_id: str,
+    summary: str,
+    date: str,
+    model: str | None = None,
+) -> bool:
+    """Index a session summary into the session_memory ChromaDB collection.
+
+    Returns True if indexed successfully, False on failure.
+    """
+    model = _get_embedding_model(model)
+    embedding = embed_text(summary, model)
+    if embedding is None:
+        return False
+
+    # Extract topic keywords: first 5 significant words (>3 chars)
+    words = summary.split()
+    keywords = [w.strip(".,;:!?\"'()") for w in words if len(w) > 3][:10]
+    topic_keywords = " ".join(keywords)
+
+    collection = _get_session_collection()
+    collection.upsert(
+        ids=[session_id],
+        documents=[summary],
+        embeddings=[embedding],
+        metadatas=[{
+            "session_id": session_id,
+            "date": date,
+            "topic_keywords": topic_keywords,
+            "embedding_model": model,
+        }],
+    )
+    return True
+
+
+def search_sessions(
+    query: str, n_results: int = 3, model: str | None = None,
+) -> list[dict]:
+    """Search session memory for summaries matching a query.
+
+    Returns [{"summary": text, "session_id": id, "date": str, "score": float}].
+    """
+    model = _get_embedding_model(model)
+    query_embedding = embed_text(query, model)
+    if query_embedding is None:
+        return []
+
+    try:
+        collection = _get_session_collection()
+    except Exception:
+        return []
+
+    count = collection.count()
+    if count == 0:
+        return []
+    n = min(n_results, count)
+
+    results = collection.query(
+        query_embeddings=[query_embedding],
+        n_results=n,
+    )
+
+    hits: list[dict] = []
+    if results and results["documents"]:
+        for i, doc in enumerate(results["documents"][0]):
+            meta = results["metadatas"][0][i] if results["metadatas"] else {}
+            distance = results["distances"][0][i] if results["distances"] else 0.0
+            hits.append({
+                "summary": doc,
+                "session_id": meta.get("session_id", ""),
+                "date": meta.get("date", ""),
+                "score": round(distance, 4),
+            })
+
+    return hits
+
+
 # --- Embedding Model Tracking ---
 
 _MODEL_FILE = CHROMA_DIR / "embedding_model.json"

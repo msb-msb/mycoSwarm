@@ -10,13 +10,22 @@ from mycoswarm import memory
 
 @pytest.fixture(autouse=True)
 def temp_memory_dir(tmp_path, monkeypatch):
-    """Redirect all memory I/O to a temp directory."""
+    """Redirect all memory I/O to a temp directory and mock ChromaDB indexing."""
     mem_dir = tmp_path / "memory"
     mem_dir.mkdir()
     monkeypatch.setattr(memory, "MEMORY_DIR", mem_dir)
     monkeypatch.setattr(memory, "FACTS_PATH", mem_dir / "facts.json")
     monkeypatch.setattr(memory, "SESSIONS_PATH", mem_dir / "sessions.jsonl")
     return mem_dir
+
+
+@pytest.fixture(autouse=True)
+def mock_index_session(monkeypatch):
+    """Mock out ChromaDB session indexing so tests don't need Ollama."""
+    monkeypatch.setattr(
+        "mycoswarm.library.index_session_summary",
+        lambda **kwargs: True,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -245,3 +254,30 @@ class TestPromptBuilder:
         assert "persistent memory across conversations" in prompt
         assert "Known facts about the user:" in prompt
         assert "Previous conversations:" in prompt
+
+    @patch("mycoswarm.library.search_sessions")
+    def test_semantic_query_uses_session_search(self, mock_search):
+        mock_search.return_value = [
+            {"summary": "Discussed GPU inference", "date": "2026-02-08", "session_id": "s1", "score": 0.1},
+            {"summary": "Talked about RAG pipelines", "date": "2026-02-09", "session_id": "s2", "score": 0.2},
+        ]
+        prompt = memory.build_memory_system_prompt(query="How do I use my GPU?")
+        assert "Relevant past conversations:" in prompt
+        assert "Discussed GPU inference" in prompt
+        assert "Talked about RAG pipelines" in prompt
+        assert "Previous conversations:" not in prompt  # semantic replaces chronological
+        mock_search.assert_called_once_with("How do I use my GPU?", n_results=3)
+
+    @patch("mycoswarm.library.search_sessions")
+    def test_falls_back_to_chronological_on_empty_search(self, mock_search):
+        mock_search.return_value = []
+        memory.save_session_summary("s1", "m", "Old session talk", 5)
+        prompt = memory.build_memory_system_prompt(query="random topic")
+        assert "Previous conversations:" in prompt
+        assert "Old session talk" in prompt
+
+    def test_no_query_uses_chronological(self):
+        memory.save_session_summary("s1", "m", "Chronological session", 5)
+        prompt = memory.build_memory_system_prompt()
+        assert "Previous conversations:" in prompt
+        assert "Chronological session" in prompt

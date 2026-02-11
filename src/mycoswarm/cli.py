@@ -1230,6 +1230,11 @@ def cmd_chat(args):
                 print(f"   Unknown command: {cmd}")
                 continue
 
+        # --- Refresh memory with semantic session search ---
+        refreshed = build_memory_system_prompt(query=user_input)
+        if refreshed and messages and messages[0].get("role") == "system":
+            messages[0] = {"role": "system", "content": refreshed}
+
         # --- Agentic classification + tool gathering ---
         tool_context = ""
         tool_sources: list[str] = []

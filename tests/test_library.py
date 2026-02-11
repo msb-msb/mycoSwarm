@@ -11,7 +11,9 @@ from mycoswarm.library import (
     extract_file_text,
     embed_text,
     ingest_file,
+    index_session_summary,
     search,
+    search_sessions,
     list_documents,
     remove_document,
     reindex,
@@ -518,3 +520,83 @@ class TestEmbeddingModelTracking:
         assert len(results) == 1
         assert not model_file.exists()
         mock_ingest.assert_called_once()
+
+
+# --- session memory ---
+
+
+class TestSessionMemory:
+    @patch("mycoswarm.library._get_session_collection")
+    @patch("mycoswarm.library.embed_text")
+    @patch("mycoswarm.library._get_embedding_model")
+    def test_index_session_summary(self, mock_get_model, mock_embed, mock_collection):
+        mock_get_model.return_value = "nomic-embed-text"
+        mock_embed.return_value = [0.1, 0.2, 0.3]
+        mock_col = MagicMock()
+        mock_collection.return_value = mock_col
+
+        result = index_session_summary(
+            session_id="chat-20260210",
+            summary="Discussed GPU clustering and distributed inference",
+            date="2026-02-10",
+        )
+        assert result is True
+        mock_col.upsert.assert_called_once()
+
+        upsert_kwargs = mock_col.upsert.call_args[1]
+        assert upsert_kwargs["ids"] == ["chat-20260210"]
+        assert "GPU clustering" in upsert_kwargs["documents"][0]
+        meta = upsert_kwargs["metadatas"][0]
+        assert meta["session_id"] == "chat-20260210"
+        assert meta["date"] == "2026-02-10"
+        assert "topic_keywords" in meta
+        assert "embedding_model" in meta
+
+    @patch("mycoswarm.library.embed_text")
+    @patch("mycoswarm.library._get_embedding_model")
+    def test_index_session_embed_failure(self, mock_get_model, mock_embed):
+        mock_get_model.return_value = "nomic-embed-text"
+        mock_embed.return_value = None
+
+        result = index_session_summary("s1", "some summary", "2026-02-10")
+        assert result is False
+
+    @patch("mycoswarm.library._get_session_collection")
+    @patch("mycoswarm.library.embed_text")
+    @patch("mycoswarm.library._get_embedding_model")
+    def test_search_sessions_returns_hits(self, mock_get_model, mock_embed, mock_collection):
+        mock_get_model.return_value = "nomic-embed-text"
+        mock_embed.return_value = [0.1, 0.2, 0.3]
+
+        mock_col = MagicMock()
+        mock_col.count.return_value = 2
+        mock_col.query.return_value = {
+            "documents": [["Discussed GPUs", "Talked about RAG"]],
+            "metadatas": [[
+                {"session_id": "s1", "date": "2026-02-08"},
+                {"session_id": "s2", "date": "2026-02-09"},
+            ]],
+            "distances": [[0.1, 0.3]],
+        }
+        mock_collection.return_value = mock_col
+
+        hits = search_sessions("GPU inference")
+        assert len(hits) == 2
+        assert hits[0]["summary"] == "Discussed GPUs"
+        assert hits[0]["session_id"] == "s1"
+        assert hits[0]["date"] == "2026-02-08"
+        assert hits[0]["score"] == 0.1
+
+    @patch("mycoswarm.library._get_session_collection")
+    @patch("mycoswarm.library.embed_text")
+    @patch("mycoswarm.library._get_embedding_model")
+    def test_search_sessions_empty(self, mock_get_model, mock_embed, mock_collection):
+        mock_get_model.return_value = "nomic-embed-text"
+        mock_embed.return_value = [0.1, 0.2]
+
+        mock_col = MagicMock()
+        mock_col.count.return_value = 0
+        mock_collection.return_value = mock_col
+
+        hits = search_sessions("anything")
+        assert hits == []

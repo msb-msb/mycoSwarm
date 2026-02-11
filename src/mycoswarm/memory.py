@@ -113,17 +113,29 @@ def load_session_summaries(limit: int = 10) -> list[dict]:
 def save_session_summary(
     name: str, model: str, summary: str, count: int,
 ) -> None:
-    """Append one session summary to the JSONL file."""
+    """Append one session summary to the JSONL file and index into ChromaDB."""
     _ensure_dir()
+    timestamp = datetime.now().isoformat()
     entry = {
         "session_name": name,
         "model": model,
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": timestamp,
         "summary": summary,
         "message_count": count,
     }
     with open(SESSIONS_PATH, "a") as f:
         f.write(json.dumps(entry) + "\n")
+
+    # Index into session_memory ChromaDB collection for semantic search
+    try:
+        from mycoswarm.library import index_session_summary
+        index_session_summary(
+            session_id=name,
+            summary=summary,
+            date=timestamp[:10],
+        )
+    except Exception as e:
+        logger.debug("Failed to index session summary: %s", e)
 
 
 def summarize_session(messages: list[dict], model: str) -> str | None:
@@ -193,8 +205,11 @@ def format_summaries_for_prompt(summaries: list[dict]) -> str:
 # Prompt Builder
 # ---------------------------------------------------------------------------
 
-def build_memory_system_prompt() -> str:
-    """Build a combined memory prompt from facts + summaries.
+def build_memory_system_prompt(query: str | None = None) -> str:
+    """Build a combined memory prompt from facts + session summaries.
+
+    When *query* is provided, uses semantic search to find the most
+    relevant past sessions instead of just the last 10 chronological ones.
 
     Always returns a system prompt string — includes capability boundaries
     to prevent hallucination of real-time data, plus any memory content.
@@ -220,9 +235,25 @@ def build_memory_system_prompt() -> str:
     if facts_text:
         parts.append(facts_text)
 
-    summaries = load_session_summaries()
-    summaries_text = format_summaries_for_prompt(summaries)
-    if summaries_text:
-        parts.append(summaries_text)
+    # Try semantic session search first, fall back to chronological
+    session_text = ""
+    if query:
+        try:
+            from mycoswarm.library import search_sessions
+            hits = search_sessions(query, n_results=3)
+            if hits:
+                lines = ["Relevant past conversations:"]
+                for h in hits:
+                    lines.append(f"- [{h['date']}] {h['summary']}")
+                session_text = "\n".join(lines)
+        except Exception:
+            pass  # fall through to chronological
+
+    if not session_text:
+        summaries = load_session_summaries()
+        session_text = format_summaries_for_prompt(summaries)
+
+    if session_text:
+        parts.append(session_text)
 
     return "\n\n".join(parts)
