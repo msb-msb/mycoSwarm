@@ -1,5 +1,17 @@
 /* mycoSwarm Dashboard — auto-refreshing node status */
 
+window.__toggleModels = function (el) {
+  var expanded = el.nextElementSibling;
+  if (expanded.style.display === "none") {
+    expanded.style.display = "inline";
+    el.textContent = "collapse";
+  } else {
+    expanded.style.display = "none";
+    var count = expanded.textContent.split(",").length;
+    el.textContent = "+" + count + " more";
+  }
+};
+
 (function () {
   var REFRESH_MS = 5000;
 
@@ -73,12 +85,16 @@
         first +
         "</span></div>"
       );
+    var rest = models.slice(1).map(esc);
     return (
       '<div class="node-models">Models: <span class="model-primary">' +
       first +
-      "</span> +" +
-      (models.length - 1) +
-      " more</div>"
+      '</span> <span class="model-toggle" onclick="window.__toggleModels(this)">+' +
+      rest.length +
+      " more</span>" +
+      '<span class="model-expanded" style="display:none">, ' +
+      rest.join(", ") +
+      "</span></div>"
     );
   }
 

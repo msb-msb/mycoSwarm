@@ -207,6 +207,21 @@ header h1 {
     color: #a0a0cc;
 }
 
+.node-models .model-toggle {
+    color: #7878cc;
+    cursor: pointer;
+    text-decoration: underline;
+    text-decoration-style: dotted;
+}
+
+.node-models .model-toggle:hover {
+    color: #9898ee;
+}
+
+.node-models .model-expanded {
+    color: #a0a0cc;
+}
+
 /* Footer */
 footer {
     display: flex;
