@@ -198,6 +198,15 @@
 - [ ] Auto-update pipeline: detect changed files in ~/mycoswarm-docs/ and re-index
 - [ ] RAG eval set: gold standard questions with known answers to measure quality
 
+### Phase 20: Human Gap Architecture (Pre-Processing Gates)
+- [ ] Timing Gate: Wu Wei module — should I act now, later, or not at all?
+- [ ] Intent Resolution: parse ambiguity, check reversibility, clarify when needed
+- [ ] Confidence Calibration: hedge spectrum instead of uniform confidence
+- [ ] Emotional Trajectory: rolling state vector from interaction metadata
+- [ ] Graceful Degradation: fail gracefully with partial help, not errors
+- [ ] Social Field Awareness: group dynamics, authority, visibility
+- [ ] Productive Friction: trust-gated pushback on user decisions
+
 ## Next
 
 ### Phase 5b: Cross-Node Inference (remaining)
