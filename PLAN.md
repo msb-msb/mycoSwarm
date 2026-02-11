@@ -192,6 +192,7 @@
 - [x] Metadata on chunks: source filename, section heading, file date, document type
 - [x] Text cleaning before chunking: strip headers/footers, normalize whitespace, remove boilerplate
 - [x] Embedding model version tracking: store model name in metadata, warn on mismatch
+- [x] Embedding model tag normalization: strip `:latest` suffix so "nomic-embed-text" matches "nomic-embed-text:latest" (2026-02-11)
 - [x] Session-as-RAG: index session summaries into ChromaDB for semantic memory search
 - [ ] Hybrid search: BM25 keyword matching alongside vector similarity
 - [ ] Re-ranking: LLM ranks retrieved chunks by relevance before generating answer
