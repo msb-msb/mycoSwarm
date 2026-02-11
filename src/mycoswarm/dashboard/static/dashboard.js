@@ -1,14 +1,20 @@
 /* mycoSwarm Dashboard — auto-refreshing node status */
 
+var __expandedModels = {};
+
 window.__toggleModels = function (el) {
   var expanded = el.nextElementSibling;
+  var card = el.closest(".node-card");
+  var host = card ? card.getAttribute("data-hostname") : "";
   if (expanded.style.display === "none") {
     expanded.style.display = "inline";
     el.textContent = "collapse";
+    if (host) __expandedModels[host] = true;
   } else {
     expanded.style.display = "none";
     var count = expanded.textContent.split(",").length;
     el.textContent = "+" + count + " more";
+    if (host) delete __expandedModels[host];
   }
 };
 
@@ -186,6 +192,8 @@ window.__toggleModels = function (el) {
     var html =
       '<div class="node-card' +
       (isLocal ? " local" : "") +
+      '" data-hostname="' +
+      esc(node.hostname) +
       '">' +
       '<div class="node-header">' +
       '<span class="node-hostname">' +
@@ -265,6 +273,16 @@ window.__toggleModels = function (el) {
       });
 
       $nodes.innerHTML = html || '<p class="placeholder">No nodes found.</p>';
+
+      // Restore expanded model lists
+      $nodes.querySelectorAll(".node-card").forEach(function (card) {
+        var host = card.getAttribute("data-hostname");
+        if (host && __expandedModels[host]) {
+          var toggle = card.querySelector(".model-toggle");
+          if (toggle) window.__toggleModels(toggle);
+        }
+      });
+
       $lastUpdate.textContent =
         "Updated: " + new Date().toLocaleTimeString();
     } catch (e) {
