@@ -157,6 +157,7 @@
 - [x] Auto-summarize sessions on exit via Ollama
 - [x] build_memory_system_prompt() injects facts + summaries into chat system prompt
 - [x] Hallucination mitigation: capability boundary text prevents fabrication of real-time data
+- [x] Session memory citation: model cites dates, gracefully handles misses, distinguishes facts vs session history (2026-02-11)
 
 ### Phase 16: Document Library with RAG (2026-02-09)
 - [x] library.py: ChromaDB vector storage, document ingestion, chunking, embedding via Ollama
