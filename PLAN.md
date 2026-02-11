@@ -207,6 +207,39 @@
 - [ ] Social Field Awareness: group dynamics, authority, visibility
 - [ ] Productive Friction: trust-gated pushback on user decisions
 
+### Phase 21: Memory Architecture
+Reference: docs/ARCHITECTURE-MEMORY.md
+
+#### 21a: Fact Lifecycle Tags
+- [ ] Add `type` field to facts: preference, fact, project, ephemeral
+- [ ] Different retention rules per type
+- [ ] Staleness detection: flag facts unreferenced in N sessions
+
+#### 21b: Decay Scoring
+- [ ] Session memories get recency-weighted scores
+- [ ] Referenced-again sessions get boosted
+- [ ] Old unreferenced sessions decay in retrieval priority
+- [ ] "Forgetting as technology"
+
+#### 21c: Mode-Aware Retrieval
+- [ ] Connect intent gates (Phase 20) to memory retrieval
+- [ ] Brainstorm/planning → broad retrieval, more results
+- [ ] Execution → narrow retrieval, precise constraints
+
+#### 21d: Procedural Memory
+- [ ] New memory type: exemplar store
+- [ ] "How we solved X before" — success/fail patterns
+- [ ] Stored separately from episodic and factual memory
+
+#### 21e: Two-Stage Document Ingest
+- [ ] Extract structured entities/facts first, then chunk for semantic
+- [ ] Cross-reference RAG results against facts store
+
+#### 21f: Memory Review & Pruning
+- [ ] Periodic prompts to review stale facts
+- [ ] Fact versioning with change history
+- [ ] Dashboard UI for memory management
+
 ## Next
 
 ### Phase 5b: Cross-Node Inference (remaining)
