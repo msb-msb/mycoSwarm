@@ -251,7 +251,10 @@ def detect_cpu() -> CpuInfo:
         except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
             pass
 
-    freq = psutil.cpu_freq()
+    try:
+        freq = psutil.cpu_freq()
+    except AttributeError:
+        freq = None  # psutil.cpu_freq() unavailable on macOS ARM
 
     return CpuInfo(
         model=model,
