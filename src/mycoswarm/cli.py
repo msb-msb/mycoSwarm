@@ -1438,11 +1438,11 @@ def cmd_chat(args):
 
 
 def cmd_library(args):
-    """Manage the document library (ingest, search, list, remove, reindex)."""
+    """Manage the document library (ingest, search, list, remove, reindex, reindex-sessions)."""
     from pathlib import Path
     from mycoswarm.library import (
         ingest_file, ingest_directory, search, list_documents, remove_document,
-        reindex, LIBRARY_DIR,
+        reindex, reindex_sessions, LIBRARY_DIR,
     )
 
     action = args.action
@@ -1531,6 +1531,13 @@ def cmd_library(args):
                 print(f"  ✅ {r['file']} — {r['chunks']} chunks")
                 total_chunks += r["chunks"]
         print(f"\n  📊 {len(results)} file(s), {total_chunks} total chunks (reindexed)")
+
+    elif action == "reindex-sessions":
+        print("🔄 Dropping session_memory and re-indexing from sessions.jsonl...")
+        stats = reindex_sessions(model=args.model)
+        print(f"  📊 {stats['sessions']} session(s), {stats['topics']} topic chunk(s) indexed")
+        if stats["failed"]:
+            print(f"  ⚠️  {stats['failed']} chunk(s) failed to embed")
 
 
 def cmd_rag(args):
@@ -1814,10 +1821,10 @@ def main():
 
     # library
     library_parser = subparsers.add_parser(
-        "library", help="Manage the document library (ingest, search, list, remove, reindex)"
+        "library", help="Manage the document library (ingest, search, list, remove, reindex, reindex-sessions)"
     )
     library_parser.add_argument(
-        "action", choices=["ingest", "search", "list", "remove", "reindex"],
+        "action", choices=["ingest", "search", "list", "remove", "reindex", "reindex-sessions"],
         help="Action to perform",
     )
     library_parser.add_argument(

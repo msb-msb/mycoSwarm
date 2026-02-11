@@ -12,6 +12,7 @@ from mycoswarm.library import (
     embed_text,
     ingest_file,
     index_session_summary,
+    reindex_sessions,
     search,
     search_sessions,
     list_documents,
@@ -616,3 +617,94 @@ class TestSessionMemory:
 
         hits = search_sessions("anything")
         assert hits == []
+
+
+# --- reindex_sessions ---
+
+
+class TestReindexSessions:
+    @patch("mycoswarm.library.index_session_summary")
+    @patch("mycoswarm.library._get_embedding_model")
+    def test_reindex_splits_and_indexes(self, mock_get_model, mock_index, tmp_path, monkeypatch):
+        """reindex_sessions reads JSONL, splits topics, indexes each chunk."""
+        import json as _json
+        import chromadb
+
+        mock_get_model.return_value = "nomic-embed-text"
+        mock_index.return_value = True
+
+        # Set up temp ChromaDB + sessions.jsonl
+        chroma_dir = tmp_path / "chroma"
+        chroma_dir.mkdir()
+        monkeypatch.setattr("mycoswarm.library.CHROMA_DIR", chroma_dir)
+
+        sessions_path = tmp_path / "sessions.jsonl"
+        entries = [
+            {"session_name": "s1", "model": "gemma3:27b", "timestamp": "2026-02-09T10:00:00", "summary": "Talked about bees", "message_count": 5},
+            {"session_name": "s2", "model": "gemma3:27b", "timestamp": "2026-02-10T12:00:00", "summary": "Discussed crypto and tai chi", "message_count": 8},
+        ]
+        sessions_path.write_text("\n".join(_json.dumps(e) for e in entries) + "\n")
+
+        from mycoswarm import memory
+        monkeypatch.setattr(memory, "SESSIONS_PATH", sessions_path)
+
+        # Mock split: s1 returns 1 topic, s2 returns 2
+        def fake_split(summary, model):
+            if "bees" in summary:
+                return [{"topic": "bees", "summary": "Talked about bees"}]
+            return [
+                {"topic": "crypto", "summary": "Discussed crypto"},
+                {"topic": "tai chi", "summary": "Discussed tai chi"},
+            ]
+        monkeypatch.setattr("mycoswarm.memory.split_session_topics", fake_split)
+
+        stats = reindex_sessions(model="nomic-embed-text")
+
+        assert stats["sessions"] == 2
+        assert stats["topics"] == 3
+        assert stats["failed"] == 0
+
+        # Verify the 3 index calls
+        assert mock_index.call_count == 3
+        calls = [c[1] for c in mock_index.call_args_list]  # kwargs
+        assert calls[0]["session_id"] == "s1::topic_0"
+        assert calls[0]["topic"] == "bees"
+        assert calls[0]["date"] == "2026-02-09"
+        assert calls[1]["session_id"] == "s2::topic_0"
+        assert calls[1]["topic"] == "crypto"
+        assert calls[2]["session_id"] == "s2::topic_1"
+        assert calls[2]["topic"] == "tai chi"
+
+    @patch("mycoswarm.library.index_session_summary")
+    @patch("mycoswarm.library._get_embedding_model")
+    def test_reindex_drops_collection(self, mock_get_model, mock_index, tmp_path, monkeypatch):
+        """reindex_sessions drops the existing session_memory collection."""
+        import chromadb
+
+        mock_get_model.return_value = "nomic-embed-text"
+        mock_index.return_value = True
+
+        chroma_dir = tmp_path / "chroma"
+        chroma_dir.mkdir()
+        monkeypatch.setattr("mycoswarm.library.CHROMA_DIR", chroma_dir)
+
+        # Create a pre-existing collection with stale data
+        client = chromadb.PersistentClient(path=str(chroma_dir))
+        col = client.get_or_create_collection("session_memory")
+        col.add(ids=["stale"], documents=["old data"], metadatas=[{"session_id": "stale"}])
+        assert col.count() == 1
+
+        # Empty JSONL
+        sessions_path = tmp_path / "sessions.jsonl"
+        sessions_path.write_text("")
+        from mycoswarm import memory
+        monkeypatch.setattr(memory, "SESSIONS_PATH", sessions_path)
+        monkeypatch.setattr("mycoswarm.memory.split_session_topics", lambda s, m: [{"topic": "general", "summary": s}])
+
+        stats = reindex_sessions()
+
+        # Collection was dropped and recreated empty
+        client2 = chromadb.PersistentClient(path=str(chroma_dir))
+        col2 = client2.get_or_create_collection("session_memory")
+        assert col2.count() == 0
+        assert stats["topics"] == 0

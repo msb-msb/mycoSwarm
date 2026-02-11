@@ -321,6 +321,57 @@ def index_session_summary(
     return True
 
 
+def reindex_sessions(model: str | None = None) -> dict:
+    """Drop the session_memory collection and reindex from sessions.jsonl.
+
+    Reads all entries from the JSONL file, splits multi-topic summaries,
+    and indexes each topic chunk individually.
+
+    Returns {"sessions": count, "topics": count, "failed": count}.
+    """
+    import chromadb
+    from mycoswarm.memory import load_session_summaries, split_session_topics
+
+    CHROMA_DIR.mkdir(parents=True, exist_ok=True)
+    client = chromadb.PersistentClient(path=str(CHROMA_DIR))
+
+    # Drop the session_memory collection
+    try:
+        client.delete_collection("session_memory")
+    except (ValueError, Exception):
+        pass  # collection didn't exist
+
+    model = _get_embedding_model(model)
+    summaries = load_session_summaries(limit=10000)
+    stats = {"sessions": len(summaries), "topics": 0, "failed": 0}
+
+    for entry in summaries:
+        name = entry.get("session_name", "")
+        summary = entry.get("summary", "")
+        ts = entry.get("timestamp", "")
+        chat_model = entry.get("model", "")
+        date = ts[:10] if ts else ""
+
+        if not summary:
+            continue
+
+        topics = split_session_topics(summary, chat_model)
+        for i, t in enumerate(topics):
+            ok = index_session_summary(
+                session_id=f"{name}::topic_{i}",
+                summary=t["summary"],
+                date=date,
+                model=model,
+                topic=t["topic"],
+            )
+            if ok:
+                stats["topics"] += 1
+            else:
+                stats["failed"] += 1
+
+    return stats
+
+
 def search_sessions(
     query: str, n_results: int = 3, model: str | None = None,
 ) -> list[dict]:
@@ -600,7 +651,7 @@ def reindex(model: str | None = None, path: Path | None = None) -> list[dict]:
     # Drop the collection entirely
     try:
         client.delete_collection("mycoswarm_docs")
-    except ValueError:
+    except (ValueError, Exception):
         pass  # collection didn't exist
 
     # Remove stale model file so it gets rewritten on ingest
