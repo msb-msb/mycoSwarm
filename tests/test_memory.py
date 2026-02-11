@@ -233,6 +233,8 @@ class TestPromptBuilder:
         prompt = memory.build_memory_system_prompt()
         assert prompt is not None
         assert "persistent memory across conversations" in prompt
+        assert "FACTS" in prompt
+        assert "SESSION HISTORY" in prompt
         assert "Known facts about the user:" in prompt
         assert "Likes coffee" in prompt
         assert "Previous conversations:" not in prompt
@@ -242,6 +244,8 @@ class TestPromptBuilder:
         prompt = memory.build_memory_system_prompt()
         assert prompt is not None
         assert "persistent memory across conversations" in prompt
+        assert "FACTS" in prompt
+        assert "SESSION HISTORY" in prompt
         assert "Previous conversations:" in prompt
         assert "Talked about coffee" in prompt
         assert "Known facts" not in prompt
@@ -252,6 +256,8 @@ class TestPromptBuilder:
         prompt = memory.build_memory_system_prompt()
         assert prompt is not None
         assert "persistent memory across conversations" in prompt
+        assert "FACTS" in prompt
+        assert "SESSION HISTORY" in prompt
         assert "Known facts about the user:" in prompt
         assert "Previous conversations:" in prompt
 
@@ -275,6 +281,17 @@ class TestPromptBuilder:
         prompt = memory.build_memory_system_prompt(query="random topic")
         assert "Previous conversations:" in prompt
         assert "Old session talk" in prompt
+
+    def test_session_memory_instructions(self):
+        """Prompt instructs the model to cite dates and handle misses gracefully."""
+        prompt = memory.build_memory_system_prompt()
+        # Date citation guidance
+        assert "On [date], we discussed" in prompt
+        # Graceful miss
+        assert "I don't recall us discussing that" in prompt
+        # Distinguish facts vs sessions
+        assert "FACTS" in prompt
+        assert "SESSION HISTORY" in prompt
 
     def test_no_query_uses_chronological(self):
         memory.save_session_summary("s1", "m", "Chronological session", 5)

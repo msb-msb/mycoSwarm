@@ -225,9 +225,17 @@ def build_memory_system_prompt(query: str | None = None) -> str:
         "You DO have access to: persistent memory (facts the user has "
         "stored), session history, and your training knowledge.",
 
-        "You have persistent memory across conversations. When the user "
-        "asks what you know about them, state the facts naturally without "
-        "disclaimers about memory limitations.",
+        "You have persistent memory across conversations. Your memory has "
+        "two distinct sources:\n"
+        "  1. FACTS — things the user explicitly told you to remember via "
+        "/remember. State these naturally as known preferences or details.\n"
+        "  2. SESSION HISTORY — summaries of past conversations with dates. "
+        "When referencing these, always cite the date naturally: "
+        "\"On [date], we discussed...\" or \"Back on [date], you asked about...\"\n"
+        "If the session summaries below don't contain anything relevant to "
+        "the user's current question, say something like: \"I don't recall "
+        "us discussing that — could you remind me?\" Never fabricate or "
+        "guess at past conversations that aren't in your session history.",
     ]
 
     facts = load_facts()
