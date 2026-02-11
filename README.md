@@ -15,6 +15,14 @@ That's it. Two commands. You're running local AI.
 
 ---
 
+## Dashboard
+
+![mycoSwarm Dashboard](assets/dashboard.png)
+
+*Live swarm monitoring — 5 nodes, 86.6 GB RAM, all from rescued hardware under $1,100.*
+
+---
+
 ## What It Does
 
 **One machine?** Chat with local models instantly — no daemon, no config.
