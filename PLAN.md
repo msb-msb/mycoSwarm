@@ -240,6 +240,38 @@ Reference: docs/ARCHITECTURE-MEMORY.md
 - [ ] Fact versioning with change history
 - [ ] Dashboard UI for memory management
 
+### Phase 22: RAG Architecture
+Reference: docs/ARCHITECTURE-RAG.md
+
+#### 22a: Hybrid Search (Level 2)
+- [ ] BM25 keyword search alongside vector semantic search
+- [ ] Combine scores for better relevance
+- [ ] "Find the document where we decided X" queries
+
+#### 22b: Re-Ranking
+- [ ] LLM re-ranks retrieved chunks by relevance to query
+- [ ] Filter out noise before injecting into context
+
+#### 22c: RAG Eval Set
+- [ ] Gold standard question/answer pairs
+- [ ] Measure retrieval quality over time
+- [ ] Regression testing for RAG changes
+
+#### 22d: Auto-Update Pipeline
+- [ ] File watcher for changed documents
+- [ ] Re-ingest modified files automatically
+- [ ] Staleness detection on indexed documents
+
+#### 22e: Agentic RAG (Level 4)
+- [ ] Multi-step reasoning over retrieved documents
+- [ ] Reformulate query and search again if first pass insufficient
+- [ ] Chain-of-retrieval for complex questions
+
+#### 22f: Graph RAG
+- [ ] Entity relationship extraction across documents
+- [ ] Knowledge graph for cross-document connections
+- [ ] "How does X relate to Y" queries
+
 ## Next
 
 ### Phase 5b: Cross-Node Inference (remaining)
