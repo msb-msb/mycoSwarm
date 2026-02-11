@@ -70,7 +70,7 @@ def ask_direct(prompt: str, model: str) -> None:
     datetime_line = _datetime_string()
     payload = {
         "model": model,
-        "prompt": f"{datetime_line}\n\n{prompt}",
+        "prompt": f"{datetime_line}\nAlways respond in English unless the user explicitly asks for another language.\n\n{prompt}",
         "options": {"temperature": 0.7, "num_predict": 2048},
         "stream": True,
     }
@@ -185,10 +185,10 @@ def chat_stream(
     if msgs and msgs[0].get("role") == "system":
         msgs[0] = {
             **msgs[0],
-            "content": f"{datetime_line}\n\n{msgs[0]['content']}",
+            "content": f"{datetime_line}\nAlways respond in English unless the user explicitly asks for another language.\n\n{msgs[0]['content']}",
         }
     else:
-        msgs.insert(0, {"role": "system", "content": datetime_line})
+        msgs.insert(0, {"role": "system", "content": f"{datetime_line}\nAlways respond in English unless the user explicitly asks for another language."})
 
     payload = {
         "model": model,
