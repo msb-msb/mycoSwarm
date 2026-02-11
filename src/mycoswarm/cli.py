@@ -1421,11 +1421,11 @@ def cmd_chat(args):
 
 
 def cmd_library(args):
-    """Manage the document library (ingest, search, list, remove)."""
+    """Manage the document library (ingest, search, list, remove, reindex)."""
     from pathlib import Path
     from mycoswarm.library import (
         ingest_file, ingest_directory, search, list_documents, remove_document,
-        LIBRARY_DIR,
+        reindex, LIBRARY_DIR,
     )
 
     action = args.action
@@ -1498,6 +1498,22 @@ def cmd_library(args):
             print(f"✅ Removed: {filename}")
         else:
             print(f"❌ Not found in index: {filename}")
+
+    elif action == "reindex":
+        target = Path(args.path).expanduser() if args.path else LIBRARY_DIR
+        print(f"🔄 Dropping all chunks and re-indexing from {target}...")
+        results = reindex(model=args.model, path=target)
+        if not results:
+            print(f"  No supported files found in {target}")
+            return
+        total_chunks = 0
+        for r in results:
+            if r.get("skipped"):
+                print(f"  ⏭  {r['file']} (unsupported)")
+            else:
+                print(f"  ✅ {r['file']} — {r['chunks']} chunks")
+                total_chunks += r["chunks"]
+        print(f"\n  📊 {len(results)} file(s), {total_chunks} total chunks (reindexed)")
 
 
 def cmd_rag(args):
@@ -1768,10 +1784,10 @@ def main():
 
     # library
     library_parser = subparsers.add_parser(
-        "library", help="Manage the document library (ingest, search, list, remove)"
+        "library", help="Manage the document library (ingest, search, list, remove, reindex)"
     )
     library_parser.add_argument(
-        "action", choices=["ingest", "search", "list", "remove"],
+        "action", choices=["ingest", "search", "list", "remove", "reindex"],
         help="Action to perform",
     )
     library_parser.add_argument(

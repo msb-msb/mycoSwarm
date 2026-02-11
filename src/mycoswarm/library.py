@@ -7,6 +7,7 @@ via ChromaDB. Documents are stored in ~/mycoswarm-docs/ and indexed into
 Supports: PDF, TXT, MD, HTML, CSV, JSON.
 """
 
+import json
 import logging
 import os
 import re
@@ -268,6 +269,41 @@ def _get_collection(model: str = EMBEDDING_MODEL):
     )
 
 
+# --- Embedding Model Tracking ---
+
+_MODEL_FILE = CHROMA_DIR / "embedding_model.json"
+
+
+def _save_embedding_model(model: str) -> None:
+    """Record which embedding model was used for indexing."""
+    _MODEL_FILE.parent.mkdir(parents=True, exist_ok=True)
+    _MODEL_FILE.write_text(json.dumps({"embedding_model": model}))
+
+
+def _load_embedding_model() -> str | None:
+    """Load the stored embedding model name, or None if not set."""
+    try:
+        data = json.loads(_MODEL_FILE.read_text())
+        return data.get("embedding_model")
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return None
+
+
+def check_embedding_model(current_model: str) -> str | None:
+    """Check if current model matches the stored index model.
+
+    Returns a warning string if there's a mismatch, None if OK.
+    """
+    stored = _load_embedding_model()
+    if stored is None or stored == current_model:
+        return None
+    return (
+        f"⚠️  Library was indexed with {stored} but current model is "
+        f"{current_model}. Results may be inaccurate. "
+        f"Run: mycoswarm library reindex"
+    )
+
+
 # --- Public API ---
 
 
@@ -328,6 +364,7 @@ def ingest_file(path: Path, model: str | None = None) -> dict:
             embeddings=embeddings,
             metadatas=metadatas,
         )
+        _save_embedding_model(model)
 
     return {"file": path.name, "chunks": len(ids), "model": model}
 
@@ -359,6 +396,12 @@ def search(
     Returns [{"text": chunk, "source": filename, "score": distance, "chunk_index": i}].
     """
     model = _get_embedding_model(model)
+
+    # Warn on model mismatch
+    mismatch_warning = check_embedding_model(model)
+    if mismatch_warning:
+        print(mismatch_warning)
+
     query_embedding = embed_text(query, model)
     if query_embedding is None:
         return []
@@ -441,3 +484,28 @@ def remove_document(filename: str) -> bool:
 
     collection.delete(ids=ids_to_delete)
     return True
+
+
+def reindex(model: str | None = None, path: Path | None = None) -> list[dict]:
+    """Drop all chunks and re-ingest everything from the docs directory.
+
+    Returns the ingest results list.
+    """
+    import chromadb
+
+    CHROMA_DIR.mkdir(parents=True, exist_ok=True)
+    client = chromadb.PersistentClient(path=str(CHROMA_DIR))
+
+    # Drop the collection entirely
+    try:
+        client.delete_collection("mycoswarm_docs")
+    except ValueError:
+        pass  # collection didn't exist
+
+    # Remove stale model file so it gets rewritten on ingest
+    try:
+        _MODEL_FILE.unlink()
+    except FileNotFoundError:
+        pass
+
+    return ingest_directory(path, model)

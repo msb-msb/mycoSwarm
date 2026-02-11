@@ -14,7 +14,12 @@ from mycoswarm.library import (
     search,
     list_documents,
     remove_document,
+    reindex,
+    check_embedding_model,
     _extract_chunk_sections,
+    _save_embedding_model,
+    _load_embedding_model,
+    _MODEL_FILE,
     EMBEDDING_MODEL,
 )
 
@@ -313,10 +318,11 @@ class TestIngestFile:
 
 
 class TestSearch:
+    @patch("mycoswarm.library.check_embedding_model", return_value=None)
     @patch("mycoswarm.library._get_collection")
     @patch("mycoswarm.library.embed_text")
     @patch("mycoswarm.library._get_embedding_model")
-    def test_search_returns_results(self, mock_get_model, mock_embed, mock_collection):
+    def test_search_returns_results(self, mock_get_model, mock_embed, mock_collection, _mock_check):
         mock_get_model.return_value = "nomic-embed-text"
         mock_embed.return_value = [0.1, 0.2, 0.3]
 
@@ -344,19 +350,21 @@ class TestSearch:
         assert results[0]["embedding_model"] == "nomic-embed-text"
         assert results[1]["section"] == "Details"
 
+    @patch("mycoswarm.library.check_embedding_model", return_value=None)
     @patch("mycoswarm.library.embed_text")
     @patch("mycoswarm.library._get_embedding_model")
-    def test_search_no_embedding(self, mock_get_model, mock_embed):
+    def test_search_no_embedding(self, mock_get_model, mock_embed, _mock_check):
         mock_get_model.return_value = "nomic-embed-text"
         mock_embed.return_value = None
 
         results = search("test query")
         assert results == []
 
+    @patch("mycoswarm.library.check_embedding_model", return_value=None)
     @patch("mycoswarm.library._get_collection")
     @patch("mycoswarm.library.embed_text")
     @patch("mycoswarm.library._get_embedding_model")
-    def test_search_empty_collection(self, mock_get_model, mock_embed, mock_collection):
+    def test_search_empty_collection(self, mock_get_model, mock_embed, mock_collection, _mock_check):
         mock_get_model.return_value = "nomic-embed-text"
         mock_embed.return_value = [0.1, 0.2]
 
@@ -444,3 +452,69 @@ class TestRemoveDocument:
 
         result = remove_document("test.txt")
         assert result is False
+
+
+# --- embedding model tracking ---
+
+
+class TestEmbeddingModelTracking:
+    def test_save_and_load(self, tmp_path, monkeypatch):
+        model_file = tmp_path / "embedding_model.json"
+        monkeypatch.setattr("mycoswarm.library._MODEL_FILE", model_file)
+
+        _save_embedding_model("nomic-embed-text")
+        assert _load_embedding_model() == "nomic-embed-text"
+
+    def test_load_missing_file(self, tmp_path, monkeypatch):
+        model_file = tmp_path / "nonexistent" / "embedding_model.json"
+        monkeypatch.setattr("mycoswarm.library._MODEL_FILE", model_file)
+
+        assert _load_embedding_model() is None
+
+    def test_check_no_mismatch(self, tmp_path, monkeypatch):
+        model_file = tmp_path / "embedding_model.json"
+        monkeypatch.setattr("mycoswarm.library._MODEL_FILE", model_file)
+
+        _save_embedding_model("nomic-embed-text")
+        assert check_embedding_model("nomic-embed-text") is None
+
+    def test_check_mismatch_warns(self, tmp_path, monkeypatch):
+        model_file = tmp_path / "embedding_model.json"
+        monkeypatch.setattr("mycoswarm.library._MODEL_FILE", model_file)
+
+        _save_embedding_model("nomic-embed-text")
+        warning = check_embedding_model("mxbai-embed-large")
+        assert warning is not None
+        assert "nomic-embed-text" in warning
+        assert "mxbai-embed-large" in warning
+        assert "reindex" in warning
+
+    def test_check_no_stored_model(self, tmp_path, monkeypatch):
+        model_file = tmp_path / "nonexistent" / "embedding_model.json"
+        monkeypatch.setattr("mycoswarm.library._MODEL_FILE", model_file)
+
+        # No stored model = no warning (first-time use)
+        assert check_embedding_model("nomic-embed-text") is None
+
+    @patch("mycoswarm.library.ingest_directory")
+    def test_reindex_deletes_collection_and_model_file(self, mock_ingest, tmp_path, monkeypatch):
+        import chromadb
+
+        chroma_dir = tmp_path / "chroma"
+        chroma_dir.mkdir()
+        monkeypatch.setattr("mycoswarm.library.CHROMA_DIR", chroma_dir)
+
+        model_file = chroma_dir / "embedding_model.json"
+        monkeypatch.setattr("mycoswarm.library._MODEL_FILE", model_file)
+        model_file.write_text('{"embedding_model": "old-model"}')
+
+        # Create a collection so delete_collection has something to drop
+        client = chromadb.PersistentClient(path=str(chroma_dir))
+        client.get_or_create_collection("mycoswarm_docs")
+
+        mock_ingest.return_value = [{"file": "a.txt", "chunks": 3, "model": "new-model"}]
+
+        results = reindex(model="new-model")
+        assert len(results) == 1
+        assert not model_file.exists()
+        mock_ingest.assert_called_once()
