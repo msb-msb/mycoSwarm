@@ -28,6 +28,15 @@ def mock_index_session(monkeypatch):
     )
 
 
+@pytest.fixture(autouse=True)
+def mock_split_topics(monkeypatch):
+    """Mock out topic splitting so tests don't need Ollama by default."""
+    monkeypatch.setattr(
+        memory, "split_session_topics",
+        lambda summary, model: [{"topic": "general", "summary": summary}],
+    )
+
+
 # ---------------------------------------------------------------------------
 # Fact Store
 # ---------------------------------------------------------------------------
@@ -298,3 +307,61 @@ class TestPromptBuilder:
         prompt = memory.build_memory_system_prompt()
         assert "Previous conversations:" in prompt
         assert "Chronological session" in prompt
+
+
+# ---------------------------------------------------------------------------
+# Topic Splitting
+# ---------------------------------------------------------------------------
+
+class TestTopicSplitting:
+    def test_multi_topic_split_indexes_separately(self, monkeypatch):
+        """Multiple topics produce separate index_session_summary calls."""
+        multi_topics = [
+            {"topic": "bees", "summary": "Discussed bee biology and pollination."},
+            {"topic": "crypto", "summary": "Talked about Bitcoin mining efficiency."},
+            {"topic": "tai chi", "summary": "Explored Tai Chi forms and breathing."},
+        ]
+        monkeypatch.setattr(
+            memory, "split_session_topics",
+            lambda summary, model: multi_topics,
+        )
+
+        calls = []
+        monkeypatch.setattr(
+            "mycoswarm.library.index_session_summary",
+            lambda **kwargs: calls.append(kwargs) or True,
+        )
+
+        memory.save_session_summary("chat-multi", "gemma3:27b", "Full summary", 20)
+
+        assert len(calls) == 3
+        assert calls[0]["session_id"] == "chat-multi::topic_0"
+        assert calls[0]["topic"] == "bees"
+        assert calls[0]["summary"] == "Discussed bee biology and pollination."
+        assert calls[1]["session_id"] == "chat-multi::topic_1"
+        assert calls[1]["topic"] == "crypto"
+        assert calls[2]["session_id"] == "chat-multi::topic_2"
+        assert calls[2]["topic"] == "tai chi"
+        # All share the same date
+        assert calls[0]["date"] == calls[1]["date"] == calls[2]["date"]
+
+    def test_split_fallback_on_failure(self, monkeypatch):
+        """When Ollama fails, falls back to single-chunk indexing."""
+        monkeypatch.setattr(
+            memory, "split_session_topics",
+            lambda summary, model: [{"topic": "general", "summary": summary}],
+        )
+
+        calls = []
+        monkeypatch.setattr(
+            "mycoswarm.library.index_session_summary",
+            lambda **kwargs: calls.append(kwargs) or True,
+        )
+
+        memory.save_session_summary("chat-fallback", "gemma3:27b", "Single topic summary", 5)
+
+        assert len(calls) == 1
+        assert calls[0]["session_id"] == "chat-fallback::topic_0"
+        assert calls[0]["topic"] == "general"
+        assert calls[0]["summary"] == "Single topic summary"
+

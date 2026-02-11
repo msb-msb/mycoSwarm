@@ -286,6 +286,7 @@ def index_session_summary(
     summary: str,
     date: str,
     model: str | None = None,
+    topic: str | None = None,
 ) -> bool:
     """Index a session summary into the session_memory ChromaDB collection.
 
@@ -301,17 +302,21 @@ def index_session_summary(
     keywords = [w.strip(".,;:!?\"'()") for w in words if len(w) > 3][:10]
     topic_keywords = " ".join(keywords)
 
+    metadata = {
+        "session_id": session_id,
+        "date": date,
+        "topic_keywords": topic_keywords,
+        "embedding_model": model,
+    }
+    if topic is not None:
+        metadata["topic"] = topic
+
     collection = _get_session_collection()
     collection.upsert(
         ids=[session_id],
         documents=[summary],
         embeddings=[embedding],
-        metadatas=[{
-            "session_id": session_id,
-            "date": date,
-            "topic_keywords": topic_keywords,
-            "embedding_model": model,
-        }],
+        metadatas=[metadata],
     )
     return True
 

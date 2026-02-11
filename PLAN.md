@@ -185,9 +185,9 @@
 - [x] Unit tests for worker handlers — 8 tests
 - [x] Unit tests for plugin system — 5 tests
 - [x] Unit tests for document library/RAG — 23 tests
-- [x] Unit tests for persistent memory — 21 tests
+- [x] Unit tests for persistent memory — 21 tests → 30 tests (added topic splitting tests)
 - [x] Unit tests for agentic chat classification — 9 tests
-- [x] 94 tests passing total
+- [x] 127 tests passing total
 
 ### Phase 19: RAG Level 2 Improvements
 - [x] Metadata on chunks: source filename, section heading, file date, document type
@@ -195,6 +195,7 @@
 - [x] Embedding model version tracking: store model name in metadata, warn on mismatch
 - [x] Embedding model tag normalization: strip `:latest` suffix so "nomic-embed-text" matches "nomic-embed-text:latest" (2026-02-11)
 - [x] Session-as-RAG: index session summaries into ChromaDB for semantic memory search
+- [x] Per-topic session splitting: split multi-topic summaries into separate ChromaDB entries for better retrieval precision (2026-02-11)
 - [ ] Hybrid search: BM25 keyword matching alongside vector similarity
 - [ ] Re-ranking: LLM ranks retrieved chunks by relevance before generating answer
 - [ ] Auto-update pipeline: detect changed files in ~/mycoswarm-docs/ and re-index

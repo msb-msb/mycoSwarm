@@ -126,14 +126,17 @@ def save_session_summary(
     with open(SESSIONS_PATH, "a") as f:
         f.write(json.dumps(entry) + "\n")
 
-    # Index into session_memory ChromaDB collection for semantic search
+    # Split into per-topic chunks and index each separately
     try:
         from mycoswarm.library import index_session_summary
-        index_session_summary(
-            session_id=name,
-            summary=summary,
-            date=timestamp[:10],
-        )
+        topics = split_session_topics(summary, model)
+        for i, t in enumerate(topics):
+            index_session_summary(
+                session_id=f"{name}::topic_{i}",
+                summary=t["summary"],
+                date=timestamp[:10],
+                topic=t["topic"],
+            )
     except Exception as e:
         logger.debug("Failed to index session summary: %s", e)
 
@@ -187,6 +190,76 @@ def summarize_session(messages: list[dict], model: str) -> str | None:
     except Exception as e:
         logger.debug("Session summarization failed: %s", e)
         return None
+
+
+def split_session_topics(
+    summary: str, model: str,
+) -> list[dict]:
+    """Split a session summary into per-topic chunks via Ollama.
+
+    Returns [{"topic": "short label", "summary": "paragraph"}, ...].
+    Falls back to the full summary as a single topic on any failure.
+    """
+    fallback = [{"topic": "general", "summary": summary}]
+
+    try:
+        with httpx.Client(timeout=httpx.Timeout(5.0, read=30.0)) as client:
+            resp = client.post(
+                f"{OLLAMA_BASE}/api/chat",
+                json={
+                    "model": model,
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": (
+                                "Split the following session summary into distinct "
+                                "topics. Respond with ONLY JSON, no explanation:\n"
+                                '{"topics": [{"topic": "short label", '
+                                '"summary": "paragraph about that topic"}]}\n'
+                                "Each topic should be a separate subject discussed "
+                                "in the session. If there is only one topic, return "
+                                "a single-element list."
+                            ),
+                        },
+                        {"role": "user", "content": summary},
+                    ],
+                    "options": {"temperature": 0.3, "num_predict": 500},
+                    "stream": False,
+                },
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            raw = data.get("message", {}).get("content", "").strip()
+            if not raw:
+                return fallback
+    except Exception as e:
+        logger.debug("Topic splitting failed: %s", e)
+        return fallback
+
+    # Extract JSON (model might wrap in markdown fences)
+    json_str = raw
+    if "```" in json_str:
+        for block in json_str.split("```"):
+            block = block.strip()
+            if block.startswith("json"):
+                block = block[4:].strip()
+            if block.startswith("{"):
+                json_str = block
+                break
+
+    try:
+        parsed = json.loads(json_str)
+        topics = parsed.get("topics", [])
+        if not isinstance(topics, list) or not topics:
+            return fallback
+        # Validate each entry has the required keys
+        result = []
+        for t in topics:
+            if isinstance(t, dict) and "topic" in t and "summary" in t:
+                result.append({"topic": str(t["topic"]), "summary": str(t["summary"])})
+        return result if result else fallback
+    except (json.JSONDecodeError, KeyError, TypeError):
+        return fallback
 
 
 def format_summaries_for_prompt(summaries: list[dict]) -> str:
