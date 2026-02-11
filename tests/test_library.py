@@ -7,6 +7,7 @@ import pytest
 
 from mycoswarm.library import (
     chunk_text,
+    clean_text,
     extract_file_text,
     embed_text,
     ingest_file,
@@ -16,6 +17,75 @@ from mycoswarm.library import (
     _extract_chunk_sections,
     EMBEDDING_MODEL,
 )
+
+
+# --- clean_text ---
+
+
+class TestCleanText:
+    def test_collapses_multiple_newlines(self):
+        text = "Hello\n\n\n\n\nWorld"
+        result = clean_text(text)
+        assert result == "Hello\n\nWorld"
+
+    def test_collapses_multiple_spaces(self):
+        text = "Hello    world   here"
+        result = clean_text(text)
+        assert result == "Hello world here"
+
+    def test_strips_line_whitespace(self):
+        text = "  hello  \n  world  "
+        result = clean_text(text)
+        assert result == "hello\nworld"
+
+    def test_removes_standalone_page_numbers(self):
+        text = "Some text\n42\nMore text\n123\nEnd"
+        result = clean_text(text)
+        assert result == "Some text\nMore text\nEnd"
+
+    def test_removes_page_x_of_y(self):
+        text = "Content here\nPage 3 of 10\nMore content"
+        result = clean_text(text)
+        assert result == "Content here\nMore content"
+
+    def test_removes_copyright_notices(self):
+        text = "Good content\n© 2024 Acme Corp. All rights reserved.\nMore content"
+        result = clean_text(text)
+        assert result == "Good content\nMore content"
+
+    def test_removes_copyright_with_c(self):
+        text = "Good content\nCopyright 2024 Acme Corp\nMore content"
+        result = clean_text(text)
+        assert result == "Good content\nMore content"
+
+    def test_removes_confidential_watermark(self):
+        text = "Intro\nConfidential\nReal content\nCONFIDENTIAL\nMore"
+        result = clean_text(text)
+        assert result == "Intro\nReal content\nMore"
+
+    def test_removes_repeated_headers_footers(self):
+        header = "ACME CORP INTERNAL DOCUMENT"
+        text = f"{header}\nPage one content\n{header}\nPage two content\n{header}\nPage three"
+        result = clean_text(text)
+        assert header not in result
+        assert "Page one content" in result
+        assert "Page two content" in result
+
+    def test_preserves_markdown_headings(self):
+        text = "# Introduction\nSome text\n## Details\nMore text"
+        result = clean_text(text)
+        assert "# Introduction" in result
+        assert "## Details" in result
+
+    def test_preserves_repeated_headings(self):
+        """Markdown headings should survive even if they appear 3+ times."""
+        text = "# Section\nA\n# Section\nB\n# Section\nC"
+        result = clean_text(text)
+        assert result.count("# Section") == 3
+
+    def test_empty_text(self):
+        assert clean_text("") == ""
+        assert clean_text("   \n  \n  ") == ""
 
 
 # --- chunk_text ---

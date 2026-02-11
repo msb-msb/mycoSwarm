@@ -41,6 +41,84 @@ def extract_file_text(path: Path) -> str:
     return _extract_text(raw, filetype)
 
 
+# --- Text Cleaning ---
+
+# Patterns for boilerplate removal
+_PAGE_NUM_LINE_RE = re.compile(r"^\s*\d{1,4}\s*$")
+_PAGE_X_OF_Y_RE = re.compile(r"(?i)\bpage\s+\d+\s+of\s+\d+\b")
+_COPYRIGHT_RE = re.compile(
+    r"(?i)^.*(?:©|copyright|\(c\))\s*\d{4}.*$", re.MULTILINE
+)
+_CONFIDENTIAL_RE = re.compile(r"(?i)^\s*confidential\s*$")
+
+
+def clean_text(text: str, doc_type: str = "") -> str:
+    """Clean extracted text before chunking.
+
+    - Strips leading/trailing whitespace per line
+    - Removes repeated headers/footers (lines appearing 3+ times)
+    - Removes standalone page numbers, "Page X of Y", copyright lines,
+      "Confidential" watermarks
+    - Collapses multiple blank lines to at most two newlines
+    - Collapses multiple spaces to one
+    - Preserves markdown headings for section extraction
+    """
+    lines = text.splitlines()
+
+    # --- Strip each line ---
+    lines = [line.strip() for line in lines]
+
+    # --- Detect repeated headers/footers ---
+    # Count exact occurrences; lines appearing 3+ times are boilerplate.
+    # Skip blank lines and markdown headings.
+    line_counts: dict[str, int] = {}
+    for line in lines:
+        if not line or line.startswith("#"):
+            continue
+        line_counts[line] = line_counts.get(line, 0) + 1
+    repeated = {line for line, count in line_counts.items() if count >= 3}
+
+    # --- Filter lines ---
+    cleaned: list[str] = []
+    for line in lines:
+        # Preserve markdown headings unconditionally
+        if line.startswith("#"):
+            cleaned.append(line)
+            continue
+
+        # Remove repeated boilerplate
+        if line in repeated:
+            continue
+
+        # Remove standalone page numbers
+        if _PAGE_NUM_LINE_RE.match(line):
+            continue
+
+        # Remove "Page X of Y"
+        if _PAGE_X_OF_Y_RE.search(line):
+            continue
+
+        # Remove copyright notices
+        if _COPYRIGHT_RE.match(line):
+            continue
+
+        # Remove "Confidential" watermarks
+        if _CONFIDENTIAL_RE.match(line):
+            continue
+
+        cleaned.append(line)
+
+    text = "\n".join(cleaned)
+
+    # --- Normalize whitespace ---
+    # Collapse 3+ consecutive newlines to 2 (preserving paragraph breaks)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    # Collapse multiple spaces to one
+    text = re.sub(r" {2,}", " ", text)
+
+    return text.strip()
+
+
 # --- Chunking ---
 
 
@@ -203,6 +281,8 @@ def ingest_file(path: Path, model: str | None = None) -> dict:
 
     model = _get_embedding_model(model)
     text = extract_file_text(path)
+    doc_type = path.suffix.lower()
+    text = clean_text(text, doc_type)
     chunks = chunk_text(text)
 
     if not chunks:
@@ -216,7 +296,6 @@ def ingest_file(path: Path, model: str | None = None) -> dict:
         file_date = os.path.getmtime(path)
     except OSError:
         file_date = 0.0
-    doc_type = path.suffix.lower()
 
     ids: list[str] = []
     documents: list[str] = []
