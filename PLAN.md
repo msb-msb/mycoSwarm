@@ -192,7 +192,7 @@
 - [x] Metadata on chunks: source filename, section heading, file date, document type
 - [x] Text cleaning before chunking: strip headers/footers, normalize whitespace, remove boilerplate
 - [x] Embedding model version tracking: store model name in metadata, warn on mismatch
-- [ ] Session-as-RAG: index session summaries into ChromaDB for semantic memory search
+- [x] Session-as-RAG: index session summaries into ChromaDB for semantic memory search
 - [ ] Hybrid search: BM25 keyword matching alongside vector similarity
 - [ ] Re-ranking: LLM ranks retrieved chunks by relevance before generating answer
 - [ ] Auto-update pipeline: detect changed files in ~/mycoswarm-docs/ and re-index
