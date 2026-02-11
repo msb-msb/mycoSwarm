@@ -1,0 +1,24 @@
+name: Test Linux
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install mycoswarm
+        run: pip install mycoswarm
+
+      - name: CLI smoke test
+        run: mycoswarm detect
+
+      - name: Import smoke test
+        run: python -c "from mycoswarm import hardware; print('import OK')"
