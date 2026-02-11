@@ -188,6 +188,16 @@
 - [x] Unit tests for agentic chat classification — 9 tests
 - [x] 94 tests passing total
 
+### Phase 19: RAG Level 2 Improvements
+- [ ] Metadata on chunks: source filename, section heading, file date, document type
+- [ ] Text cleaning before chunking: strip headers/footers, normalize whitespace, remove boilerplate
+- [ ] Embedding model version tracking: store model name in metadata, warn on mismatch
+- [ ] Session-as-RAG: index session summaries into ChromaDB for semantic memory search
+- [ ] Hybrid search: BM25 keyword matching alongside vector similarity
+- [ ] Re-ranking: LLM ranks retrieved chunks by relevance before generating answer
+- [ ] Auto-update pipeline: detect changed files in ~/mycoswarm-docs/ and re-index
+- [ ] RAG eval set: gold standard questions with known answers to measure quality
+
 ## Next
 
 ### Phase 5b: Cross-Node Inference (remaining)
