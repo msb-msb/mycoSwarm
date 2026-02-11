@@ -378,13 +378,20 @@ def _load_embedding_model() -> str | None:
         return None
 
 
+def _normalize_model_name(name: str) -> str:
+    """Strip the ':latest' default tag suffix from an Ollama model name."""
+    return name.removesuffix(":latest")
+
+
 def check_embedding_model(current_model: str) -> str | None:
     """Check if current model matches the stored index model.
 
     Returns a warning string if there's a mismatch, None if OK.
     """
     stored = _load_embedding_model()
-    if stored is None or stored == current_model:
+    if stored is None:
+        return None
+    if _normalize_model_name(stored) == _normalize_model_name(current_model):
         return None
     return (
         f"⚠️  Library was indexed with {stored} but current model is "

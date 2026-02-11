@@ -480,6 +480,22 @@ class TestEmbeddingModelTracking:
         _save_embedding_model("nomic-embed-text")
         assert check_embedding_model("nomic-embed-text") is None
 
+    def test_check_normalizes_latest_tag(self, tmp_path, monkeypatch):
+        """'nomic-embed-text' and 'nomic-embed-text:latest' are the same model."""
+        model_file = tmp_path / "embedding_model.json"
+        monkeypatch.setattr("mycoswarm.library._MODEL_FILE", model_file)
+
+        # Stored without tag, queried with :latest
+        _save_embedding_model("nomic-embed-text")
+        assert check_embedding_model("nomic-embed-text:latest") is None
+
+        # Stored with :latest, queried without tag
+        _save_embedding_model("nomic-embed-text:latest")
+        assert check_embedding_model("nomic-embed-text") is None
+
+        # Both with :latest
+        assert check_embedding_model("nomic-embed-text:latest") is None
+
     def test_check_mismatch_warns(self, tmp_path, monkeypatch):
         model_file = tmp_path / "embedding_model.json"
         monkeypatch.setattr("mycoswarm.library._MODEL_FILE", model_file)
