@@ -1327,15 +1327,17 @@ def cmd_chat(args):
                     + "\n\n".join(context_sections)
                 )
 
-        # --- Inject tool context as a one-off system message ---
-        if tool_context:
-            messages.append({"role": "system", "content": tool_context})
-
         # --- Send message ---
         messages.append({"role": "user", "content": user_input})
 
         # Swap "no internet" boundary when web results are present
         _send_msgs = list(messages)
+
+        # --- Inject tool context into send copy only (not persistent history) ---
+        # Insert before the final user message so the model sees context for this turn.
+        # Previous turns' RAG/web results are NOT carried forward.
+        if tool_context:
+            _send_msgs.insert(-1, {"role": "system", "content": tool_context})
         if "web" in tool_sources and _send_msgs and _send_msgs[0].get("role") == "system":
             _no_net = (
                 "You are running locally with NO internet access during chat. "
