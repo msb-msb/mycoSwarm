@@ -1162,28 +1162,42 @@ def cmd_chat(args):
                     print("   Usage: /rag <question>")
                     continue
                 rag_query = parts[1]
-                from mycoswarm.library import search as lib_search
-                rag_hits = lib_search(rag_query, n_results=5)
-                if not rag_hits:
-                    print("   No documents indexed. Try: mycoswarm library ingest")
+                from mycoswarm.library import search_all
+                doc_hits, session_hits = search_all(rag_query, n_results=5)
+                if not doc_hits and not session_hits:
+                    print("   No documents or sessions indexed. Try: mycoswarm library ingest")
                     continue
-                # Build context
+                # Build context with distinct labels
                 rag_parts = []
-                for ri, hit in enumerate(rag_hits, 1):
+                for ri, hit in enumerate(doc_hits, 1):
                     section = hit.get("section", "untitled")
-                    rag_parts.append(f"[{ri}] ({hit['source']} > {section}) {hit['text']}")
+                    rag_parts.append(f"[D{ri}] (From: {hit['source']} > {section}) {hit['text']}")
+                for si, hit in enumerate(session_hits, 1):
+                    date = hit.get("date", "unknown")
+                    topic = hit.get("topic", "")
+                    label = f"conversation on {date}"
+                    if topic:
+                        label += f" — {topic}"
+                    rag_parts.append(f"[S{si}] (From {label}) {hit['summary']}")
                 rag_context = "\n\n".join(rag_parts)
+                cite_parts = []
+                if doc_hits:
+                    cite_parts.append("[D1], [D2] for documents")
+                if session_hits:
+                    cite_parts.append("[S1], [S2] for past conversations")
+                cite_hint = "Cite using " + " and ".join(cite_parts) + "." if cite_parts else ""
                 rag_system = (
-                    "Answer using the provided document excerpts. Cite sources using "
-                    "[1], [2] etc. If the excerpts don't contain enough information, "
-                    "say so.\n\nDOCUMENT EXCERPTS:\n" + rag_context
+                    f"Answer using the provided context. {cite_hint} "
+                    "If the excerpts don't contain enough information, "
+                    "say so.\n\nRETRIEVED CONTEXT:\n" + rag_context
                 )
                 # Inject as a one-off system message for this turn
                 rag_messages = list(messages) + [
                     {"role": "system", "content": rag_system},
                     {"role": "user", "content": rag_query},
                 ]
-                print(f"   📚 {len(rag_hits)} document excerpts found.\n")
+                total_hits = len(doc_hits) + len(session_hits)
+                print(f"   📚 {total_hits} excerpts found ({len(doc_hits)} docs, {len(session_hits)} sessions).\n")
                 if not daemon_up:
                     full_text, metrics = chat_stream(rag_messages, model)
                 else:
@@ -1212,12 +1226,14 @@ def cmd_chat(args):
                 if full_text:
                     messages.append({"role": "user", "content": rag_query})
                     messages.append({"role": "assistant", "content": full_text})
-                    rag_sources = sorted({h["source"] for h in rag_hits})
+                    source_labels = sorted({h["source"] for h in doc_hits})
+                    if session_hits:
+                        source_labels.append("sessions")
                     tps = metrics.get("tokens_per_second", 0)
                     duration = metrics.get("duration_seconds", 0)
                     print(
                         f"\n\n{'─' * 50}\n"
-                        f"  📚 {', '.join(rag_sources)} | "
+                        f"  📚 {', '.join(source_labels)} | "
                         f"⏱  {duration:.1f}s | {tps:.1f} tok/s | {model}"
                     )
                 continue
@@ -1288,17 +1304,27 @@ def cmd_chat(args):
                 else:
                     print(" no results", flush=True)
 
-            # --- RAG search ---
+            # --- RAG search (documents + session memory) ---
             if need_rag:
                 print("   📚 Checking your documents...", end="", flush=True)
-                from mycoswarm.library import search as lib_search
-                rag_hits = lib_search(user_input, n_results=5)
-                if rag_hits:
-                    print(f" {len(rag_hits)} excerpts", flush=True)
-                    for ri, hit in enumerate(rag_hits, 1):
+                from mycoswarm.library import search_all
+                doc_hits, session_hits = search_all(user_input, n_results=5)
+                total = len(doc_hits) + len(session_hits)
+                if total:
+                    print(f" {total} excerpts", flush=True)
+                    for ri, hit in enumerate(doc_hits, 1):
                         section = hit.get("section", "untitled")
                         rag_context_parts.append(
-                            f"[D{ri}] ({hit['source']} > {section}) {hit['text']}"
+                            f"[D{ri}] (From: {hit['source']} > {section}) {hit['text']}"
+                        )
+                    for si, hit in enumerate(session_hits, 1):
+                        date = hit.get("date", "unknown")
+                        topic = hit.get("topic", "")
+                        label = f"conversation on {date}"
+                        if topic:
+                            label += f" — {topic}"
+                        rag_context_parts.append(
+                            f"[S{si}] (From {label}) {hit['summary']}"
                         )
                     tool_sources.append("docs")
                 else:
@@ -1312,16 +1338,16 @@ def cmd_chat(args):
                 )
             if rag_context_parts:
                 context_sections.append(
-                    "DOCUMENT EXCERPTS:\n" + "\n\n".join(rag_context_parts)
+                    "RETRIEVED CONTEXT (documents and past conversations):\n"
+                    + "\n\n".join(rag_context_parts)
                 )
             if context_sections:
-                cite_hint = ""
-                if web_context_parts and rag_context_parts:
-                    cite_hint = "Cite web sources as [W1], [W2] and documents as [D1], [D2]."
-                elif web_context_parts:
-                    cite_hint = "Cite sources as [W1], [W2] etc."
-                elif rag_context_parts:
-                    cite_hint = "Cite sources as [D1], [D2] etc."
+                cite_parts: list[str] = []
+                if web_context_parts:
+                    cite_parts.append("[W1], [W2] for web sources")
+                if rag_context_parts:
+                    cite_parts.append("[D1], [D2] for documents, [S1], [S2] for past conversations")
+                cite_hint = "Cite using " + " and ".join(cite_parts) + "." if cite_parts else ""
                 tool_context = (
                     f"Use the following context to answer. {cite_hint}\n\n"
                     + "\n\n".join(context_sections)
@@ -1545,38 +1571,54 @@ def cmd_library(args):
 def cmd_rag(args):
     """Ask a question with document context via RAG."""
     from mycoswarm.solo import check_daemon, check_ollama, pick_model, chat_stream
-    from mycoswarm.library import search as lib_search
+    from mycoswarm.library import search_all
 
     question = " ".join(args.question)
 
-    # Search library for relevant chunks
+    # Search both document library and session memory
     print(f"🔍 Searching library...", end=" ", flush=True)
-    hits = lib_search(question, n_results=5)
+    doc_hits, session_hits = search_all(question, n_results=5)
 
-    if not hits:
+    if not doc_hits and not session_hits:
         print("no results.")
-        print("   No documents indexed. Try: mycoswarm library ingest")
+        print("   No documents or sessions indexed. Try: mycoswarm library ingest")
         return
 
-    print(f"{len(hits)} result(s) found.\n")
+    total = len(doc_hits) + len(session_hits)
+    print(f"{total} result(s) found ({len(doc_hits)} docs, {len(session_hits)} sessions).\n")
 
-    # Build context from hits
+    # Build context from hits with distinct labels
     context_parts: list[str] = []
     sources: list[str] = []
     seen_sources: set[str] = set()
-    for i, hit in enumerate(hits, 1):
+    for i, hit in enumerate(doc_hits, 1):
         section = hit.get("section", "untitled")
-        context_parts.append(f"[{i}] ({hit['source']} > {section}) {hit['text']}")
+        context_parts.append(f"[D{i}] (From: {hit['source']} > {section}) {hit['text']}")
         if hit["source"] not in seen_sources:
             sources.append(hit["source"])
             seen_sources.add(hit["source"])
+    for i, hit in enumerate(session_hits, 1):
+        date = hit.get("date", "unknown")
+        topic = hit.get("topic", "")
+        label = f"conversation on {date}"
+        if topic:
+            label += f" — {topic}"
+        context_parts.append(f"[S{i}] (From {label}) {hit['summary']}")
+    if session_hits:
+        sources.append("sessions")
 
     context_block = "\n\n".join(context_parts)
+    cite_parts = []
+    if doc_hits:
+        cite_parts.append("[D1], [D2] for documents")
+    if session_hits:
+        cite_parts.append("[S1], [S2] for past conversations")
+    cite_hint = "Cite using " + " and ".join(cite_parts) + "." if cite_parts else ""
     system_prompt = (
-        "Answer using the provided document excerpts. Cite sources using "
-        "[1], [2] etc. If the excerpts don't contain enough information, "
+        f"Answer using the provided context. {cite_hint} "
+        "If the excerpts don't contain enough information, "
         "say so.\n\n"
-        f"DOCUMENT EXCERPTS:\n{context_block}"
+        f"RETRIEVED CONTEXT:\n{context_block}"
     )
 
     messages = [

@@ -414,6 +414,82 @@ def search_sessions(
     return hits
 
 
+def search_all(
+    query: str, n_results: int = 5, model: str | None = None,
+) -> tuple[list[dict], list[dict]]:
+    """Search BOTH document library and session memory for a query.
+
+    Embeds the query once and queries both ChromaDB collections.
+    Returns (doc_hits, session_hits) so callers can format them
+    with distinct labels ([D1]… vs [S1]…).
+    """
+    model = _get_embedding_model(model)
+
+    # Warn on model mismatch
+    mismatch_warning = check_embedding_model(model)
+    if mismatch_warning:
+        print(mismatch_warning)
+
+    query_embedding = embed_text(query, model)
+    if query_embedding is None:
+        return [], []
+
+    # --- Document collection ---
+    doc_hits: list[dict] = []
+    try:
+        doc_col = _get_collection(model)
+        doc_count = doc_col.count()
+        if doc_count > 0:
+            n_doc = min(n_results, doc_count)
+            doc_results = doc_col.query(
+                query_embeddings=[query_embedding],
+                n_results=n_doc,
+            )
+            if doc_results and doc_results["documents"]:
+                for i, doc in enumerate(doc_results["documents"][0]):
+                    meta = doc_results["metadatas"][0][i] if doc_results["metadatas"] else {}
+                    distance = doc_results["distances"][0][i] if doc_results["distances"] else 0.0
+                    doc_hits.append({
+                        "text": doc,
+                        "source": meta.get("source", ""),
+                        "score": round(distance, 4),
+                        "chunk_index": meta.get("chunk_index", 0),
+                        "section": meta.get("section", "untitled"),
+                        "doc_type": meta.get("doc_type", ""),
+                        "file_date": meta.get("file_date", 0.0),
+                        "embedding_model": meta.get("embedding_model", ""),
+                    })
+    except Exception:
+        pass
+
+    # --- Session memory collection ---
+    session_hits: list[dict] = []
+    try:
+        sess_col = _get_session_collection()
+        sess_count = sess_col.count()
+        if sess_count > 0:
+            n_sess = min(n_results, sess_count)
+            sess_results = sess_col.query(
+                query_embeddings=[query_embedding],
+                n_results=n_sess,
+            )
+            if sess_results and sess_results["documents"]:
+                for i, doc in enumerate(sess_results["documents"][0]):
+                    meta = sess_results["metadatas"][0][i] if sess_results["metadatas"] else {}
+                    distance = sess_results["distances"][0][i] if sess_results["distances"] else 0.0
+                    session_hits.append({
+                        "summary": doc,
+                        "session_id": meta.get("session_id", ""),
+                        "date": meta.get("date", ""),
+                        "topic": meta.get("topic", ""),
+                        "score": round(distance, 4),
+                    })
+    except Exception:
+        pass
+
+    return doc_hits, session_hits
+
+
 # --- Embedding Model Tracking ---
 
 _MODEL_FILE = CHROMA_DIR / "embedding_model.json"

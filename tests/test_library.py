@@ -14,6 +14,7 @@ from mycoswarm.library import (
     index_session_summary,
     reindex_sessions,
     search,
+    search_all,
     search_sessions,
     list_documents,
     remove_document,
@@ -708,3 +709,125 @@ class TestReindexSessions:
         col2 = client2.get_or_create_collection("session_memory")
         assert col2.count() == 0
         assert stats["topics"] == 0
+
+
+# --- search_all ---
+
+
+class TestSearchAll:
+    @patch("mycoswarm.library.check_embedding_model", return_value=None)
+    @patch("mycoswarm.library._get_session_collection")
+    @patch("mycoswarm.library._get_collection")
+    @patch("mycoswarm.library.embed_text")
+    @patch("mycoswarm.library._get_embedding_model")
+    def test_returns_both_doc_and_session_hits(
+        self, mock_get_model, mock_embed, mock_doc_col, mock_sess_col, _mock_check,
+    ):
+        mock_get_model.return_value = "nomic-embed-text"
+        mock_embed.return_value = [0.1, 0.2, 0.3]
+
+        # Document collection
+        doc_col = MagicMock()
+        doc_col.count.return_value = 2
+        doc_col.query.return_value = {
+            "documents": [["chunk about tai chi benefits"]],
+            "metadatas": [[{
+                "source": "health.pdf", "chunk_index": 0, "section": "Tai Chi",
+                "doc_type": ".pdf", "file_date": 1700000000.0,
+                "embedding_model": "nomic-embed-text",
+            }]],
+            "distances": [[0.12]],
+        }
+        mock_doc_col.return_value = doc_col
+
+        # Session collection
+        sess_col = MagicMock()
+        sess_col.count.return_value = 3
+        sess_col.query.return_value = {
+            "documents": [["Discussed tai chi for ADHD management"]],
+            "metadatas": [[{
+                "session_id": "chat-20260211::topic_0",
+                "date": "2026-02-11",
+                "topic": "tai chi ADHD",
+            }]],
+            "distances": [[0.08]],
+        }
+        mock_sess_col.return_value = sess_col
+
+        doc_hits, session_hits = search_all("tai chi ADHD")
+
+        assert len(doc_hits) == 1
+        assert doc_hits[0]["source"] == "health.pdf"
+        assert doc_hits[0]["text"] == "chunk about tai chi benefits"
+
+        assert len(session_hits) == 1
+        assert session_hits[0]["summary"] == "Discussed tai chi for ADHD management"
+        assert session_hits[0]["date"] == "2026-02-11"
+        assert session_hits[0]["topic"] == "tai chi ADHD"
+
+    @patch("mycoswarm.library.check_embedding_model", return_value=None)
+    @patch("mycoswarm.library._get_session_collection")
+    @patch("mycoswarm.library._get_collection")
+    @patch("mycoswarm.library.embed_text")
+    @patch("mycoswarm.library._get_embedding_model")
+    def test_returns_sessions_even_when_no_docs(
+        self, mock_get_model, mock_embed, mock_doc_col, mock_sess_col, _mock_check,
+    ):
+        mock_get_model.return_value = "nomic-embed-text"
+        mock_embed.return_value = [0.1, 0.2]
+
+        # Empty document collection
+        doc_col = MagicMock()
+        doc_col.count.return_value = 0
+        mock_doc_col.return_value = doc_col
+
+        # Session collection with hits
+        sess_col = MagicMock()
+        sess_col.count.return_value = 1
+        sess_col.query.return_value = {
+            "documents": [["We talked about meditation"]],
+            "metadatas": [[{"session_id": "s1", "date": "2026-02-10", "topic": "meditation"}]],
+            "distances": [[0.15]],
+        }
+        mock_sess_col.return_value = sess_col
+
+        doc_hits, session_hits = search_all("meditation")
+
+        assert len(doc_hits) == 0
+        assert len(session_hits) == 1
+        assert session_hits[0]["summary"] == "We talked about meditation"
+
+    @patch("mycoswarm.library.check_embedding_model", return_value=None)
+    @patch("mycoswarm.library.embed_text")
+    @patch("mycoswarm.library._get_embedding_model")
+    def test_returns_empty_when_no_embedding(self, mock_get_model, mock_embed, _mock_check):
+        mock_get_model.return_value = "nomic-embed-text"
+        mock_embed.return_value = None
+
+        doc_hits, session_hits = search_all("anything")
+        assert doc_hits == []
+        assert session_hits == []
+
+    @patch("mycoswarm.library.check_embedding_model", return_value=None)
+    @patch("mycoswarm.library._get_session_collection")
+    @patch("mycoswarm.library._get_collection")
+    @patch("mycoswarm.library.embed_text")
+    @patch("mycoswarm.library._get_embedding_model")
+    def test_embeds_query_only_once(
+        self, mock_get_model, mock_embed, mock_doc_col, mock_sess_col, _mock_check,
+    ):
+        """search_all should call embed_text exactly once, not twice."""
+        mock_get_model.return_value = "nomic-embed-text"
+        mock_embed.return_value = [0.1, 0.2]
+
+        doc_col = MagicMock()
+        doc_col.count.return_value = 0
+        mock_doc_col.return_value = doc_col
+
+        sess_col = MagicMock()
+        sess_col.count.return_value = 0
+        mock_sess_col.return_value = sess_col
+
+        search_all("test query")
+
+        assert mock_embed.call_count == 1
