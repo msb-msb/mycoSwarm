@@ -408,6 +408,7 @@ def search_sessions(
                 "summary": doc,
                 "session_id": meta.get("session_id", ""),
                 "date": meta.get("date", ""),
+                "topic": meta.get("topic", ""),
                 "score": round(distance, 4),
             })
 

@@ -136,7 +136,7 @@ def classify_query(query: str, model: str) -> str:
                                 "Categories:\n"
                                 "- answer: can be answered from general knowledge, math, coding, creative writing, or conversation\n"
                                 "- web_search: needs current/real-time info (news, weather, prices, sports, recent events, current status of things)\n"
-                                "- rag: asks about the user's own documents, files, notes, or stored library content\n"
+                                "- rag: asks about the user's own documents, files, notes, stored library content, or past conversations\n"
                                 "- web_and_rag: needs both web info and the user's documents"
                             ),
                         },

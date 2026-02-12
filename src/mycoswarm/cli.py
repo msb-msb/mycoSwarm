@@ -1304,31 +1304,41 @@ def cmd_chat(args):
                 else:
                     print(" no results", flush=True)
 
-            # --- RAG search (documents + session memory) ---
+            # --- RAG search (documents — only when classified as rag) ---
+            doc_hits: list[dict] = []
             if need_rag:
                 print("   📚 Checking your documents...", end="", flush=True)
-                from mycoswarm.library import search_all
-                doc_hits, session_hits = search_all(user_input, n_results=5)
-                total = len(doc_hits) + len(session_hits)
-                if total:
-                    print(f" {total} excerpts", flush=True)
-                    for ri, hit in enumerate(doc_hits, 1):
-                        section = hit.get("section", "untitled")
-                        rag_context_parts.append(
-                            f"[D{ri}] (From: {hit['source']} > {section}) {hit['text']}"
-                        )
-                    for si, hit in enumerate(session_hits, 1):
-                        date = hit.get("date", "unknown")
-                        topic = hit.get("topic", "")
-                        label = f"conversation on {date}"
-                        if topic:
-                            label += f" — {topic}"
-                        rag_context_parts.append(
-                            f"[S{si}] (From {label}) {hit['summary']}"
-                        )
-                    tool_sources.append("docs")
+                from mycoswarm.library import search as lib_search
+                doc_hits = lib_search(user_input, n_results=5)
+                if doc_hits:
+                    print(f" {len(doc_hits)} excerpts", flush=True)
                 else:
                     print(" no results", flush=True)
+
+            # --- Session memory search (always — not gated by classifier) ---
+            from mycoswarm.library import search_sessions
+            session_hits = search_sessions(user_input, n_results=5)
+
+            # --- Format results ---
+            for ri, hit in enumerate(doc_hits, 1):
+                section = hit.get("section", "untitled")
+                rag_context_parts.append(
+                    f"[D{ri}] (From: {hit['source']} > {section}) {hit['text']}"
+                )
+            for si, hit in enumerate(session_hits, 1):
+                date = hit.get("date", "unknown")
+                topic = hit.get("topic", "")
+                label = f"conversation on {date}"
+                if topic:
+                    label += f" — {topic}"
+                rag_context_parts.append(
+                    f"[S{si}] (From {label}) {hit['summary']}"
+                )
+
+            if doc_hits or session_hits:
+                tool_sources.append("docs")
+                if session_hits:
+                    print(f"   💬 {len(session_hits)} past conversation(s) found", flush=True)
 
             # --- Build combined context ---
             context_sections: list[str] = []
@@ -1345,8 +1355,10 @@ def cmd_chat(args):
                 cite_parts: list[str] = []
                 if web_context_parts:
                     cite_parts.append("[W1], [W2] for web sources")
-                if rag_context_parts:
-                    cite_parts.append("[D1], [D2] for documents, [S1], [S2] for past conversations")
+                if doc_hits:
+                    cite_parts.append("[D1], [D2] for documents")
+                if session_hits:
+                    cite_parts.append("[S1], [S2] for past conversations")
                 cite_hint = "Cite using " + " and ".join(cite_parts) + "." if cite_parts else ""
                 tool_context = (
                     f"Use the following context to answer. {cite_hint}\n\n"
