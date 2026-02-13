@@ -1054,6 +1054,8 @@ def cmd_chat(args):
         else:
             print("   (too short to summarize)")
 
+    intent_result = None  # Updated each turn by auto-tools classification
+
     while True:
         try:
             sys.stdout.flush()
@@ -1167,6 +1169,7 @@ def cmd_chat(args):
                 _past = _dpr(rag_query)
                 doc_hits, session_hits = search_all(
                     rag_query, n_results=5, session_boost=_past,
+                    intent=intent_result,
                 )
                 if not doc_hits and not session_hits:
                     print("   No documents or sessions indexed. Try: mycoswarm library ingest")
@@ -1272,7 +1275,7 @@ def cmd_chat(args):
         tool_sources: list[str] = []
 
         if auto_tools and len(user_input.split()) >= 5:
-            print("   🤔 Classifying...", end="", flush=True)
+            print("   🤔 Classifying...", end="\r", flush=True)
 
             if daemon_up:
                 # Daemon mode: submit intent_classify as distributed task
@@ -1309,17 +1312,17 @@ def cmd_chat(args):
                     intent_result = None
 
                 if intent_result is None:
-                    intent_result = {"tool": "answer", "scope": "general", "confidence": 0.0}
+                    intent_result = {"tool": "answer", "scope": "all", "confidence": 0.0}
             else:
                 # Solo mode: call intent_classify() directly
                 from mycoswarm.solo import intent_classify
                 intent_result = intent_classify(user_input)
 
-            # Clear the thinking indicator
-            print("\r                      \r", end="", flush=True)
+            # Show intent debug line (replaces "Classifying..." indicator)
+            print(f"\r   🤔 intent: {intent_result['tool']}/{intent_result.get('mode', '?')}/{intent_result.get('scope', '?')}", flush=True)
 
             classification = intent_result["tool"]
-            past_ref = intent_result.get("scope") == "personal"
+            past_ref = intent_result.get("scope") in ("personal", "session")
             # Secondary signal: regex check in case LLM missed it
             if not past_ref:
                 from mycoswarm.solo import detect_past_reference
