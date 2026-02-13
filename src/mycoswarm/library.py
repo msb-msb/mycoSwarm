@@ -4,8 +4,13 @@ Local document ingestion, chunking, embedding via Ollama, and vector search
 via ChromaDB. Documents are stored in ~/mycoswarm-docs/ and indexed into
 ~/.config/mycoswarm/library/ for retrieval at query time.
 
+Hybrid retrieval: BM25 keyword search + vector similarity, merged via
+Reciprocal Rank Fusion (RRF).
+
 Supports: PDF, TXT, MD, HTML, CSV, JSON.
 """
+
+from __future__ import annotations
 
 import json
 import logging
@@ -281,6 +286,123 @@ def _get_session_collection():
     )
 
 
+# --- BM25 Keyword Index ---
+
+
+class BM25Index:
+    """BM25 keyword index over a ChromaDB collection.
+
+    Lazy-builds on first search, caches until invalidate() is called.
+    """
+
+    def __init__(self, collection_name: str):
+        self._collection_name = collection_name
+        self._built = False
+        self._index = None  # BM25Okapi | None
+        self._doc_ids: list[str] = []
+        self._documents: list[str] = []
+        self._metadatas: list[dict] = []
+
+    @staticmethod
+    def _tokenize(text: str) -> list[str]:
+        """Simple whitespace + lowercase tokenization."""
+        return text.lower().split()
+
+    def _build(self) -> None:
+        """Fetch all documents from collection and build BM25 index."""
+        self._doc_ids = []
+        self._documents = []
+        self._metadatas = []
+        self._index = None
+        self._built = True
+
+        try:
+            from rank_bm25 import BM25Okapi
+        except ImportError:
+            logger.debug("rank-bm25 not installed, BM25 search disabled")
+            return
+
+        try:
+            if self._collection_name == "mycoswarm_docs":
+                collection = _get_collection()
+            else:
+                collection = _get_session_collection()
+
+            all_data = collection.get(include=["documents", "metadatas"])
+        except Exception:
+            return
+
+        if not all_data or not all_data.get("ids"):
+            return
+
+        self._doc_ids = all_data["ids"]
+        self._documents = all_data["documents"]
+        self._metadatas = all_data.get("metadatas") or [{} for _ in self._doc_ids]
+
+        corpus = [self._tokenize(doc) for doc in self._documents]
+        if corpus:
+            self._index = BM25Okapi(corpus)
+
+    def search(self, query: str, n_results: int = 5) -> list[dict]:
+        """Return ranked results: [{id, document, metadata, bm25_score}]."""
+        if not self._built:
+            self._build()
+
+        if self._index is None or not self._doc_ids:
+            return []
+
+        tokenized_query = self._tokenize(query)
+        if not tokenized_query:
+            return []
+
+        scores = self._index.get_scores(tokenized_query)
+
+        indexed_scores = sorted(
+            ((i, float(scores[i])) for i in range(len(scores))),
+            key=lambda x: x[1],
+            reverse=True,
+        )
+
+        results: list[dict] = []
+        for idx, score in indexed_scores[:n_results]:
+            results.append({
+                "id": self._doc_ids[idx],
+                "document": self._documents[idx],
+                "metadata": self._metadatas[idx],
+                "bm25_score": score,
+            })
+        return results
+
+    def invalidate(self) -> None:
+        """Force rebuild on next search."""
+        self._built = False
+        self._index = None
+        self._doc_ids = []
+        self._documents = []
+        self._metadatas = []
+
+
+# Module-level BM25 index instances (lazy-built, cached)
+_bm25_docs = BM25Index("mycoswarm_docs")
+_bm25_sessions = BM25Index("session_memory")
+
+
+def _rrf_fuse(
+    vector_ids: list[str], bm25_ids: list[str], k: int = 60,
+) -> dict[str, float]:
+    """Reciprocal Rank Fusion of two ranked ID lists.
+
+    score(d) = sum(1 / (k + rank)) for each list containing d.
+    Higher score = better.  k=60 is the standard default.
+    """
+    scores: dict[str, float] = {}
+    for rank, doc_id in enumerate(vector_ids, start=1):
+        scores[doc_id] = scores.get(doc_id, 0.0) + 1.0 / (k + rank)
+    for rank, doc_id in enumerate(bm25_ids, start=1):
+        scores[doc_id] = scores.get(doc_id, 0.0) + 1.0 / (k + rank)
+    return scores
+
+
 def index_session_summary(
     session_id: str,
     summary: str,
@@ -318,6 +440,7 @@ def index_session_summary(
         embeddings=[embedding],
         metadatas=[metadata],
     )
+    _bm25_sessions.invalidate()
     return True
 
 
@@ -340,6 +463,8 @@ def reindex_sessions(model: str | None = None) -> dict:
         client.delete_collection("session_memory")
     except (ValueError, Exception):
         pass  # collection didn't exist
+
+    _bm25_sessions.invalidate()
 
     model = _get_embedding_model(model)
     summaries = load_session_summaries(limit=10000)
@@ -418,11 +543,12 @@ def search_sessions(
 def search_all(
     query: str, n_results: int = 5, model: str | None = None,
 ) -> tuple[list[dict], list[dict]]:
-    """Search BOTH document library and session memory for a query.
+    """Search BOTH document library and session memory with hybrid retrieval.
 
-    Embeds the query once and queries both ChromaDB collections.
+    Uses vector similarity (ChromaDB) + BM25 keyword matching, merged via
+    Reciprocal Rank Fusion (RRF).  Embeds the query once.
     Returns (doc_hits, session_hits) so callers can format them
-    with distinct labels ([D1]… vs [S1]…).
+    with distinct labels ([D1]... vs [S1]...).
     """
     model = _get_embedding_model(model)
 
@@ -435,23 +561,34 @@ def search_all(
     if query_embedding is None:
         return [], []
 
-    # --- Document collection ---
+    # --- Document collection: hybrid search ---
     doc_hits: list[dict] = []
     try:
         doc_col = _get_collection(model)
         doc_count = doc_col.count()
         if doc_count > 0:
-            n_doc = min(n_results, doc_count)
-            doc_results = doc_col.query(
+            n_fetch = min(n_results * 2, doc_count)
+
+            # Vector search
+            vec_results = doc_col.query(
                 query_embeddings=[query_embedding],
-                n_results=n_doc,
+                n_results=n_fetch,
             )
-            if doc_results and doc_results["documents"]:
-                for i, doc in enumerate(doc_results["documents"][0]):
-                    meta = doc_results["metadatas"][0][i] if doc_results["metadatas"] else {}
-                    distance = doc_results["distances"][0][i] if doc_results["distances"] else 0.0
-                    doc_hits.append({
-                        "text": doc,
+
+            # BM25 search
+            bm25_results = _bm25_docs.search(query, n_results=n_fetch)
+
+            # Build lookup: id -> result dict
+            doc_data: dict[str, dict] = {}
+            vec_ids: list[str] = []
+
+            if vec_results and vec_results["ids"]:
+                for i, doc_id in enumerate(vec_results["ids"][0]):
+                    vec_ids.append(doc_id)
+                    meta = vec_results["metadatas"][0][i] if vec_results["metadatas"] else {}
+                    distance = vec_results["distances"][0][i] if vec_results["distances"] else 0.0
+                    doc_data[doc_id] = {
+                        "text": vec_results["documents"][0][i],
                         "source": meta.get("source", ""),
                         "score": round(distance, 4),
                         "chunk_index": meta.get("chunk_index", 0),
@@ -459,32 +596,94 @@ def search_all(
                         "doc_type": meta.get("doc_type", ""),
                         "file_date": meta.get("file_date", 0.0),
                         "embedding_model": meta.get("embedding_model", ""),
-                    })
+                    }
+
+            bm25_ids: list[str] = []
+            for hit in bm25_results:
+                bm25_ids.append(hit["id"])
+                if hit["id"] not in doc_data:
+                    meta = hit["metadata"]
+                    doc_data[hit["id"]] = {
+                        "text": hit["document"],
+                        "source": meta.get("source", ""),
+                        "score": 0.0,
+                        "chunk_index": meta.get("chunk_index", 0),
+                        "section": meta.get("section", "untitled"),
+                        "doc_type": meta.get("doc_type", ""),
+                        "file_date": meta.get("file_date", 0.0),
+                        "embedding_model": meta.get("embedding_model", ""),
+                    }
+
+            # RRF fusion
+            rrf_scores = _rrf_fuse(vec_ids, bm25_ids)
+            sorted_ids = sorted(
+                rrf_scores, key=lambda x: rrf_scores[x], reverse=True,
+            )[:n_results]
+
+            for doc_id in sorted_ids:
+                hit = doc_data[doc_id]
+                hit["rrf_score"] = round(rrf_scores[doc_id], 6)
+                doc_hits.append(hit)
     except Exception:
         pass
 
-    # --- Session memory collection ---
+    # --- Session memory collection: hybrid search ---
     session_hits: list[dict] = []
     try:
         sess_col = _get_session_collection()
         sess_count = sess_col.count()
         if sess_count > 0:
-            n_sess = min(n_results, sess_count)
-            sess_results = sess_col.query(
+            n_fetch = min(n_results * 2, sess_count)
+
+            # Vector search
+            vec_results = sess_col.query(
                 query_embeddings=[query_embedding],
-                n_results=n_sess,
+                n_results=n_fetch,
             )
-            if sess_results and sess_results["documents"]:
-                for i, doc in enumerate(sess_results["documents"][0]):
-                    meta = sess_results["metadatas"][0][i] if sess_results["metadatas"] else {}
-                    distance = sess_results["distances"][0][i] if sess_results["distances"] else 0.0
-                    session_hits.append({
-                        "summary": doc,
+
+            # BM25 search
+            bm25_results = _bm25_sessions.search(query, n_results=n_fetch)
+
+            # Build lookup
+            sess_data: dict[str, dict] = {}
+            vec_ids_s: list[str] = []
+
+            if vec_results and vec_results["ids"]:
+                for i, doc_id in enumerate(vec_results["ids"][0]):
+                    vec_ids_s.append(doc_id)
+                    meta = vec_results["metadatas"][0][i] if vec_results["metadatas"] else {}
+                    distance = vec_results["distances"][0][i] if vec_results["distances"] else 0.0
+                    sess_data[doc_id] = {
+                        "summary": vec_results["documents"][0][i],
                         "session_id": meta.get("session_id", ""),
                         "date": meta.get("date", ""),
                         "topic": meta.get("topic", ""),
                         "score": round(distance, 4),
-                    })
+                    }
+
+            bm25_ids_s: list[str] = []
+            for hit in bm25_results:
+                bm25_ids_s.append(hit["id"])
+                if hit["id"] not in sess_data:
+                    meta = hit["metadata"]
+                    sess_data[hit["id"]] = {
+                        "summary": hit["document"],
+                        "session_id": meta.get("session_id", ""),
+                        "date": meta.get("date", ""),
+                        "topic": meta.get("topic", ""),
+                        "score": 0.0,
+                    }
+
+            # RRF fusion
+            rrf_scores = _rrf_fuse(vec_ids_s, bm25_ids_s)
+            sorted_ids = sorted(
+                rrf_scores, key=lambda x: rrf_scores[x], reverse=True,
+            )[:n_results]
+
+            for doc_id in sorted_ids:
+                hit = sess_data[doc_id]
+                hit["rrf_score"] = round(rrf_scores[doc_id], 6)
+                session_hits.append(hit)
     except Exception:
         pass
 
@@ -594,6 +793,7 @@ def ingest_file(path: Path, model: str | None = None) -> dict:
             metadatas=metadatas,
         )
         _save_embedding_model(model)
+        _bm25_docs.invalidate()
 
     return {"file": path.name, "chunks": len(ids), "model": model}
 
@@ -712,6 +912,7 @@ def remove_document(filename: str) -> bool:
         return False
 
     collection.delete(ids=ids_to_delete)
+    _bm25_docs.invalidate()
     return True
 
 
@@ -730,6 +931,8 @@ def reindex(model: str | None = None, path: Path | None = None) -> list[dict]:
         client.delete_collection("mycoswarm_docs")
     except (ValueError, Exception):
         pass  # collection didn't exist
+
+    _bm25_docs.invalidate()
 
     # Remove stale model file so it gets rewritten on ingest
     try:

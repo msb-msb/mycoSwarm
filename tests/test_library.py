@@ -23,6 +23,10 @@ from mycoswarm.library import (
     _extract_chunk_sections,
     _save_embedding_model,
     _load_embedding_model,
+    _rrf_fuse,
+    BM25Index,
+    _bm25_docs,
+    _bm25_sessions,
     _MODEL_FILE,
     EMBEDDING_MODEL,
 )
@@ -716,12 +720,15 @@ class TestReindexSessions:
 
 class TestSearchAll:
     @patch("mycoswarm.library.check_embedding_model", return_value=None)
+    @patch("mycoswarm.library._bm25_sessions")
+    @patch("mycoswarm.library._bm25_docs")
     @patch("mycoswarm.library._get_session_collection")
     @patch("mycoswarm.library._get_collection")
     @patch("mycoswarm.library.embed_text")
     @patch("mycoswarm.library._get_embedding_model")
     def test_returns_both_doc_and_session_hits(
-        self, mock_get_model, mock_embed, mock_doc_col, mock_sess_col, _mock_check,
+        self, mock_get_model, mock_embed, mock_doc_col, mock_sess_col,
+        mock_bm25_docs, mock_bm25_sess, _mock_check,
     ):
         mock_get_model.return_value = "nomic-embed-text"
         mock_embed.return_value = [0.1, 0.2, 0.3]
@@ -730,6 +737,7 @@ class TestSearchAll:
         doc_col = MagicMock()
         doc_col.count.return_value = 2
         doc_col.query.return_value = {
+            "ids": [["health.pdf::chunk_0"]],
             "documents": [["chunk about tai chi benefits"]],
             "metadatas": [[{
                 "source": "health.pdf", "chunk_index": 0, "section": "Tai Chi",
@@ -739,11 +747,13 @@ class TestSearchAll:
             "distances": [[0.12]],
         }
         mock_doc_col.return_value = doc_col
+        mock_bm25_docs.search.return_value = []
 
         # Session collection
         sess_col = MagicMock()
         sess_col.count.return_value = 3
         sess_col.query.return_value = {
+            "ids": [["chat-20260211::topic_0"]],
             "documents": [["Discussed tai chi for ADHD management"]],
             "metadatas": [[{
                 "session_id": "chat-20260211::topic_0",
@@ -753,6 +763,7 @@ class TestSearchAll:
             "distances": [[0.08]],
         }
         mock_sess_col.return_value = sess_col
+        mock_bm25_sess.search.return_value = []
 
         doc_hits, session_hits = search_all("tai chi ADHD")
 
@@ -766,12 +777,15 @@ class TestSearchAll:
         assert session_hits[0]["topic"] == "tai chi ADHD"
 
     @patch("mycoswarm.library.check_embedding_model", return_value=None)
+    @patch("mycoswarm.library._bm25_sessions")
+    @patch("mycoswarm.library._bm25_docs")
     @patch("mycoswarm.library._get_session_collection")
     @patch("mycoswarm.library._get_collection")
     @patch("mycoswarm.library.embed_text")
     @patch("mycoswarm.library._get_embedding_model")
     def test_returns_sessions_even_when_no_docs(
-        self, mock_get_model, mock_embed, mock_doc_col, mock_sess_col, _mock_check,
+        self, mock_get_model, mock_embed, mock_doc_col, mock_sess_col,
+        mock_bm25_docs, mock_bm25_sess, _mock_check,
     ):
         mock_get_model.return_value = "nomic-embed-text"
         mock_embed.return_value = [0.1, 0.2]
@@ -780,16 +794,19 @@ class TestSearchAll:
         doc_col = MagicMock()
         doc_col.count.return_value = 0
         mock_doc_col.return_value = doc_col
+        mock_bm25_docs.search.return_value = []
 
         # Session collection with hits
         sess_col = MagicMock()
         sess_col.count.return_value = 1
         sess_col.query.return_value = {
+            "ids": [["s1"]],
             "documents": [["We talked about meditation"]],
             "metadatas": [[{"session_id": "s1", "date": "2026-02-10", "topic": "meditation"}]],
             "distances": [[0.15]],
         }
         mock_sess_col.return_value = sess_col
+        mock_bm25_sess.search.return_value = []
 
         doc_hits, session_hits = search_all("meditation")
 
@@ -809,12 +826,15 @@ class TestSearchAll:
         assert session_hits == []
 
     @patch("mycoswarm.library.check_embedding_model", return_value=None)
+    @patch("mycoswarm.library._bm25_sessions")
+    @patch("mycoswarm.library._bm25_docs")
     @patch("mycoswarm.library._get_session_collection")
     @patch("mycoswarm.library._get_collection")
     @patch("mycoswarm.library.embed_text")
     @patch("mycoswarm.library._get_embedding_model")
     def test_embeds_query_only_once(
-        self, mock_get_model, mock_embed, mock_doc_col, mock_sess_col, _mock_check,
+        self, mock_get_model, mock_embed, mock_doc_col, mock_sess_col,
+        mock_bm25_docs, mock_bm25_sess, _mock_check,
     ):
         """search_all should call embed_text exactly once, not twice."""
         mock_get_model.return_value = "nomic-embed-text"
@@ -823,11 +843,319 @@ class TestSearchAll:
         doc_col = MagicMock()
         doc_col.count.return_value = 0
         mock_doc_col.return_value = doc_col
+        mock_bm25_docs.search.return_value = []
 
         sess_col = MagicMock()
         sess_col.count.return_value = 0
         mock_sess_col.return_value = sess_col
+        mock_bm25_sess.search.return_value = []
 
         search_all("test query")
 
         assert mock_embed.call_count == 1
+
+
+# --- BM25Index ---
+
+
+class TestBM25Index:
+    @patch("mycoswarm.library._get_collection")
+    def test_builds_from_collection_documents(self, mock_get_col):
+        """BM25 index should build from all documents in a collection."""
+        mock_col = MagicMock()
+        mock_col.get.return_value = {
+            "ids": ["doc1::chunk_0", "doc1::chunk_1", "doc2::chunk_0"],
+            "documents": [
+                "the quick brown fox jumps over the lazy dog",
+                "lorem ipsum dolor sit amet consectetur",
+                "the fox ran quickly across the field",
+            ],
+            "metadatas": [
+                {"source": "doc1.txt", "chunk_index": 0},
+                {"source": "doc1.txt", "chunk_index": 1},
+                {"source": "doc2.txt", "chunk_index": 0},
+            ],
+        }
+        mock_get_col.return_value = mock_col
+
+        idx = BM25Index("mycoswarm_docs")
+        idx._build()
+
+        assert idx._built is True
+        assert len(idx._doc_ids) == 3
+        assert len(idx._documents) == 3
+        assert idx._index is not None
+
+    @patch("mycoswarm.library._get_collection")
+    def test_search_returns_ranked_results(self, mock_get_col):
+        """BM25 search should return results ranked by keyword relevance."""
+        mock_col = MagicMock()
+        mock_col.get.return_value = {
+            "ids": ["a::0", "b::0", "c::0"],
+            "documents": [
+                "machine learning algorithms for classification",
+                "the weather is sunny and warm today",
+                "deep learning and machine learning models",
+            ],
+            "metadatas": [
+                {"source": "a.txt"}, {"source": "b.txt"}, {"source": "c.txt"},
+            ],
+        }
+        mock_get_col.return_value = mock_col
+
+        idx = BM25Index("mycoswarm_docs")
+        results = idx.search("machine learning", n_results=3)
+
+        assert len(results) >= 2
+        # The two ML docs should rank above the weather doc
+        result_ids = [r["id"] for r in results]
+        assert "a::0" in result_ids
+        assert "c::0" in result_ids
+        # Weather doc either absent or ranked last
+        if "b::0" in result_ids:
+            assert result_ids.index("b::0") == len(result_ids) - 1
+
+    @patch("mycoswarm.library._get_collection")
+    def test_invalidate_forces_rebuild(self, mock_get_col):
+        """After invalidate(), next search should re-fetch and rebuild."""
+        mock_col = MagicMock()
+        mock_col.get.return_value = {
+            "ids": ["x::0"],
+            "documents": ["original content about bees"],
+            "metadatas": [{"source": "x.txt"}],
+        }
+        mock_get_col.return_value = mock_col
+
+        idx = BM25Index("mycoswarm_docs")
+        results = idx.search("bees", n_results=5)
+        assert len(results) == 1
+        assert idx._built is True
+
+        # Invalidate
+        idx.invalidate()
+        assert idx._built is False
+
+        # Update mock to return different data
+        mock_col.get.return_value = {
+            "ids": ["x::0", "y::0"],
+            "documents": [
+                "original content about bees",
+                "new content about honey bees",
+            ],
+            "metadatas": [{"source": "x.txt"}, {"source": "y.txt"}],
+        }
+
+        results = idx.search("bees", n_results=5)
+        assert len(results) == 2
+        assert idx._built is True
+
+    def test_empty_collection(self):
+        """BM25 search on empty collection returns empty list."""
+        idx = BM25Index("mycoswarm_docs")
+        # Force build with no data
+        idx._built = True
+        idx._index = None
+        idx._doc_ids = []
+
+        results = idx.search("anything", n_results=5)
+        assert results == []
+
+
+# --- _rrf_fuse ---
+
+
+class TestRRFFuse:
+    def test_merges_scores_correctly(self):
+        """RRF should compute 1/(k+rank) for each list and sum."""
+        vec_ids = ["a", "b", "c"]
+        bm25_ids = ["b", "d", "a"]
+
+        scores = _rrf_fuse(vec_ids, bm25_ids, k=60)
+
+        # "a": vec rank 1 + bm25 rank 3 = 1/61 + 1/63
+        expected_a = 1.0 / 61 + 1.0 / 63
+        assert abs(scores["a"] - expected_a) < 1e-10
+
+        # "b": vec rank 2 + bm25 rank 1 = 1/62 + 1/61
+        expected_b = 1.0 / 62 + 1.0 / 61
+        assert abs(scores["b"] - expected_b) < 1e-10
+
+        # "c": only vec rank 3 = 1/63
+        expected_c = 1.0 / 63
+        assert abs(scores["c"] - expected_c) < 1e-10
+
+        # "d": only bm25 rank 2 = 1/62
+        expected_d = 1.0 / 62
+        assert abs(scores["d"] - expected_d) < 1e-10
+
+    def test_items_in_both_lists_score_higher(self):
+        """Documents appearing in both lists should have higher RRF scores."""
+        vec_ids = ["shared", "vec_only"]
+        bm25_ids = ["shared", "bm25_only"]
+
+        scores = _rrf_fuse(vec_ids, bm25_ids, k=60)
+
+        # "shared" appears in both at rank 1 -> highest score
+        assert scores["shared"] > scores["vec_only"]
+        assert scores["shared"] > scores["bm25_only"]
+
+    def test_empty_lists(self):
+        """RRF with empty lists returns empty dict."""
+        assert _rrf_fuse([], []) == {}
+
+    def test_single_list(self):
+        """RRF with one empty list degrades to single-list ranking."""
+        scores = _rrf_fuse(["a", "b"], [], k=60)
+        assert len(scores) == 2
+        assert scores["a"] > scores["b"]
+
+
+# --- Hybrid search_all ---
+
+
+class TestHybridSearchAll:
+    @patch("mycoswarm.library.check_embedding_model", return_value=None)
+    @patch("mycoswarm.library._bm25_sessions")
+    @patch("mycoswarm.library._bm25_docs")
+    @patch("mycoswarm.library._get_session_collection")
+    @patch("mycoswarm.library._get_collection")
+    @patch("mycoswarm.library.embed_text")
+    @patch("mycoswarm.library._get_embedding_model")
+    def test_hybrid_returns_bm25_only_hits(
+        self, mock_get_model, mock_embed, mock_doc_col, mock_sess_col,
+        mock_bm25_docs, mock_bm25_sess, _mock_check,
+    ):
+        """BM25-only hits (exact keyword match missed by vector) appear in results."""
+        mock_get_model.return_value = "nomic-embed-text"
+        mock_embed.return_value = [0.1, 0.2, 0.3]
+
+        # Vector search returns only doc A
+        doc_col = MagicMock()
+        doc_col.count.return_value = 3
+        doc_col.query.return_value = {
+            "ids": [["a::0"]],
+            "documents": [["semantic match about neural networks"]],
+            "metadatas": [[{"source": "a.txt", "chunk_index": 0, "section": "Intro",
+                           "doc_type": ".txt", "file_date": 0.0, "embedding_model": "nomic"}]],
+            "distances": [[0.1]],
+        }
+        mock_doc_col.return_value = doc_col
+
+        # BM25 returns doc A (also) and doc B (keyword-only hit)
+        mock_bm25_docs.search.return_value = [
+            {"id": "a::0", "document": "semantic match about neural networks",
+             "metadata": {"source": "a.txt", "chunk_index": 0, "section": "Intro",
+                         "doc_type": ".txt", "file_date": 0.0, "embedding_model": "nomic"},
+             "bm25_score": 2.5},
+            {"id": "b::0", "document": "the exact keyword xylophone appears here",
+             "metadata": {"source": "b.txt", "chunk_index": 0, "section": "untitled",
+                         "doc_type": ".txt", "file_date": 0.0, "embedding_model": "nomic"},
+             "bm25_score": 1.8},
+        ]
+
+        # Empty session collection
+        sess_col = MagicMock()
+        sess_col.count.return_value = 0
+        mock_sess_col.return_value = sess_col
+        mock_bm25_sess.search.return_value = []
+
+        doc_hits, session_hits = search_all("xylophone neural networks", n_results=5)
+
+        # Both docs should appear
+        sources = [h["source"] for h in doc_hits]
+        assert "a.txt" in sources, "Vector hit should be present"
+        assert "b.txt" in sources, "BM25-only hit should be present"
+
+        # doc A should rank higher (in both lists)
+        a_idx = sources.index("a.txt")
+        b_idx = sources.index("b.txt")
+        assert a_idx < b_idx
+
+    @patch("mycoswarm.library.check_embedding_model", return_value=None)
+    @patch("mycoswarm.library._bm25_sessions")
+    @patch("mycoswarm.library._bm25_docs")
+    @patch("mycoswarm.library._get_session_collection")
+    @patch("mycoswarm.library._get_collection")
+    @patch("mycoswarm.library.embed_text")
+    @patch("mycoswarm.library._get_embedding_model")
+    def test_rrf_score_in_results(
+        self, mock_get_model, mock_embed, mock_doc_col, mock_sess_col,
+        mock_bm25_docs, mock_bm25_sess, _mock_check,
+    ):
+        """Results should include rrf_score field."""
+        mock_get_model.return_value = "nomic-embed-text"
+        mock_embed.return_value = [0.1, 0.2]
+
+        doc_col = MagicMock()
+        doc_col.count.return_value = 1
+        doc_col.query.return_value = {
+            "ids": [["x::0"]],
+            "documents": [["test document"]],
+            "metadatas": [[{"source": "x.txt", "chunk_index": 0, "section": "untitled",
+                           "doc_type": ".txt", "file_date": 0.0, "embedding_model": "nomic"}]],
+            "distances": [[0.2]],
+        }
+        mock_doc_col.return_value = doc_col
+        mock_bm25_docs.search.return_value = []
+
+        sess_col = MagicMock()
+        sess_col.count.return_value = 0
+        mock_sess_col.return_value = sess_col
+        mock_bm25_sess.search.return_value = []
+
+        doc_hits, _ = search_all("test", n_results=5)
+
+        assert len(doc_hits) == 1
+        assert "rrf_score" in doc_hits[0]
+        assert doc_hits[0]["rrf_score"] > 0
+
+    @patch("mycoswarm.library.check_embedding_model", return_value=None)
+    @patch("mycoswarm.library._bm25_sessions")
+    @patch("mycoswarm.library._bm25_docs")
+    @patch("mycoswarm.library._get_session_collection")
+    @patch("mycoswarm.library._get_collection")
+    @patch("mycoswarm.library.embed_text")
+    @patch("mycoswarm.library._get_embedding_model")
+    def test_hybrid_session_search(
+        self, mock_get_model, mock_embed, mock_doc_col, mock_sess_col,
+        mock_bm25_docs, mock_bm25_sess, _mock_check,
+    ):
+        """Hybrid search works for session memory collection too."""
+        mock_get_model.return_value = "nomic-embed-text"
+        mock_embed.return_value = [0.1, 0.2]
+
+        # Empty doc collection
+        doc_col = MagicMock()
+        doc_col.count.return_value = 0
+        mock_doc_col.return_value = doc_col
+        mock_bm25_docs.search.return_value = []
+
+        # Session vector returns one hit
+        sess_col = MagicMock()
+        sess_col.count.return_value = 2
+        sess_col.query.return_value = {
+            "ids": [["s1::topic_0"]],
+            "documents": [["Discussed beekeeping techniques"]],
+            "metadatas": [[{"session_id": "s1::topic_0", "date": "2026-02-10", "topic": "beekeeping"}]],
+            "distances": [[0.15]],
+        }
+        mock_sess_col.return_value = sess_col
+
+        # BM25 returns same + another session hit
+        mock_bm25_sess.search.return_value = [
+            {"id": "s1::topic_0", "document": "Discussed beekeeping techniques",
+             "metadata": {"session_id": "s1::topic_0", "date": "2026-02-10", "topic": "beekeeping"},
+             "bm25_score": 3.0},
+            {"id": "s2::topic_0", "document": "Bees and honey production overview",
+             "metadata": {"session_id": "s2::topic_0", "date": "2026-02-11", "topic": "bees"},
+             "bm25_score": 1.5},
+        ]
+
+        _, session_hits = search_all("beekeeping", n_results=5)
+
+        assert len(session_hits) == 2
+        summaries = [h["summary"] for h in session_hits]
+        assert "Discussed beekeeping techniques" in summaries
+        assert "Bees and honey production overview" in summaries
+        # First hit (in both lists) should have higher rrf_score
+        assert session_hits[0]["rrf_score"] > session_hits[1]["rrf_score"]

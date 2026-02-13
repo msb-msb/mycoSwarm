@@ -276,6 +276,32 @@ Reference: docs/ARCHITECTURE-RAG.md
 - [ ] Knowledge graph for cross-document connections
 - [ ] "How does X relate to Y" queries
 
+### Phase 23: Enhanced Retrieval
+Reference: docs/adam-lucek-research-notes.md (Videos 1 + 2)
+
+- [ ] **Synthetic training data generation:** Script to generate question-chunk pairs from ChromaDB collections using gemma3
+- [ ] **Fine-tune nomic-embed-text:** sentence-transformers + MRL wrapper on 3090
+- [ ] **MRL truncation support:** Allow configurable embedding dimensions per node (128 for M710Q, 768 for 3090)
+- [ ] **Retrieval metrics dashboard:** Add NDCG@10, precision, recall tracking to dashboard
+- [ ] **A/B comparison tool:** Compare base vs fine-tuned embedding retrieval on same queries
+
+### Phase 24: Adaptive Context Strategy
+Reference: docs/adam-lucek-research-notes.md (Video 2)
+
+- [ ] **"We discussed" detection:** Boost session_memory weighting when user references past conversations
+- [ ] **Query complexity classifier:** Simple queries → single-pass RAG. Complex → multi-step navigation
+- [ ] **Fresh context sub-calls:** Route complex retrieval to separate LLM call for summarization before injection
+- [ ] **Progressive RAG disclosure:** Let model request deeper context from specific [S] or [D] sources
+- [ ] **Context budget tracking:** Monitor token usage per turn, warn when approaching rot threshold (~100K)
+
+### Phase 25: Skills System
+Reference: docs/adam-lucek-research-notes.md (Video 3)
+
+- [ ] **Package mycoSwarm as Claude Code skill:** SKILL.md + scripts for external agent interaction
+- [ ] **Internal skill discovery:** mycoSwarm agents discover and load domain-specific skills from a skills directory
+- [ ] **Progressive skill loading:** Skill descriptions in base prompt, full body loaded on-demand
+- [ ] **Skill authoring guide:** Documentation for users to create their own mycoSwarm skills
+
 ## Next
 
 ### Phase 5b: Cross-Node Inference (remaining)

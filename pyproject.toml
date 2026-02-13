@@ -45,13 +45,14 @@ mycoswarm = "mycoswarm.cli:main"
 
 [project.optional-dependencies]
 pdf = ["pymupdf>=1.24.0"]
-rag = ["chromadb>=0.4.0"]
-all = ["pymupdf>=1.24.0", "chromadb>=0.4.0"]
+rag = ["chromadb>=0.4.0", "rank-bm25>=0.2.2"]
+all = ["pymupdf>=1.24.0", "chromadb>=0.4.0", "rank-bm25>=0.2.2"]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.24",
     "pymupdf>=1.24.0",
     "chromadb>=0.4.0",
+    "rank-bm25>=0.2.2",
 ]
 
 [tool.pytest.ini_options]
