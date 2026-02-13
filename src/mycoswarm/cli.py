@@ -1312,7 +1312,7 @@ def cmd_chat(args):
                     intent_result = None
 
                 if intent_result is None:
-                    intent_result = {"tool": "answer", "scope": "all", "confidence": 0.0}
+                    intent_result = {"tool": "answer", "mode": "chat", "scope": "all"}
             else:
                 # Solo mode: call intent_classify() directly
                 from mycoswarm.solo import intent_classify

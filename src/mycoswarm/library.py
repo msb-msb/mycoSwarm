@@ -544,6 +544,9 @@ def search_sessions(
 # --- LLM Re-Ranking ---
 
 
+_EMBEDDING_ONLY = ("nomic-embed-text", "mxbai-embed", "all-minilm", "snowflake-arctic-embed")
+
+
 def _pick_rerank_model() -> str | None:
     """Pick a small, fast model for re-ranking. Returns None if unavailable."""
     try:
@@ -553,14 +556,17 @@ def _pick_rerank_model() -> str | None:
     except (httpx.ConnectError, httpx.TimeoutException, httpx.HTTPError):
         return None
 
-    # Prefer small models for speed
+    # Prefer small models for speed, skip embedding-only models
     for pattern in ("gemma3:1b", "gemma3:4b", "llama3.2:1b", "llama3.2:3b"):
         for m in models:
-            if pattern in m:
+            if pattern in m and not any(e in m.lower() for e in _EMBEDDING_ONLY):
                 return m
 
-    # Fall back to any available model
-    return models[0] if models else None
+    # Fall back to first non-embedding model
+    for m in models:
+        if not any(e in m.lower() for e in _EMBEDDING_ONLY):
+            return m
+    return None
 
 
 def _score_chunk(query: str, text: str, llm_model: str) -> float:

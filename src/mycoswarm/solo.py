@@ -131,11 +131,20 @@ def detect_past_reference(query: str) -> bool:
     return bool(_PAST_REFERENCE_RE.search(query))
 
 
+_EMBEDDING_ONLY = ("nomic-embed-text", "mxbai-embed", "all-minilm", "snowflake-arctic-embed")
+
+
+def _is_embedding_model(name: str) -> bool:
+    """Return True if the model name looks like an embedding-only model."""
+    lower = name.lower()
+    return any(pat in lower for pat in _EMBEDDING_ONLY)
+
+
 def _pick_gate_model() -> str | None:
     """Pick the smallest available model for gate tasks (classification, etc.).
 
     Preference order: gemma3:1b > llama3.2:1b > gemma3:4b > llama3.2:3b.
-    Falls back to first available model, or None if Ollama is unreachable.
+    Falls back to first available non-embedding model, or None.
     """
     try:
         with httpx.Client(timeout=5) as client:
@@ -147,15 +156,42 @@ def _pick_gate_model() -> str | None:
 
     for pattern in ("gemma3:1b", "llama3.2:1b", "gemma3:4b", "llama3.2:3b"):
         for m in models:
-            if pattern in m:
+            if pattern in m and not _is_embedding_model(m):
                 return m
 
-    return models[0] if models else None
+    # Fall back to first non-embedding model
+    for m in models:
+        if not _is_embedding_model(m):
+            return m
+    return None
 
 
-_INTENT_DEFAULT = {"tool": "answer", "scope": "general", "confidence": 0.0}
+_INTENT_SYSTEM_PROMPT = (
+    "You are an intent classifier. Analyze the user's message and respond "
+    "with ONLY a JSON object, no other text.\n\n"
+    '{"tool": "", "mode": "", "scope": ""}\n\n'
+    "tool — what tools are needed:\n"
+    "  answer: general knowledge, math, coding, creative, conversation\n"
+    "  web_search: current/real-time info (news, prices, weather)\n"
+    "  rag: user's documents, notes, library, or past conversations\n"
+    "  web_and_rag: needs both web and user's documents\n\n"
+    "mode — what kind of thinking:\n"
+    '  recall: remembering something specific ("what did we...", "where is...", "what does X say...")\n'
+    '  explore: open-ended research or brainstorming ("what are some...", "how might...")\n'
+    '  execute: precise action ("fix this code", "write the function")\n'
+    "  chat: casual conversation, greetings, small talk\n\n"
+    "scope — where to search (only matters when tool is rag or web_and_rag):\n"
+    "  session: past conversations, things we discussed\n"
+    "  docs: user's document library, files, notes, stored documents\n"
+    "  facts: stored user preferences and facts\n"
+    "  all: search everything\n\n"
+    'Example: {"tool": "rag", "mode": "recall", "scope": "session"}'
+)
+
+_INTENT_DEFAULT = {"tool": "answer", "mode": "chat", "scope": "all"}
 _VALID_TOOLS = {"answer", "web_search", "rag", "web_and_rag"}
-_VALID_SCOPES = {"general", "personal", "current_events", "documents"}
+_VALID_MODES = {"recall", "explore", "execute", "chat"}
+_VALID_SCOPES = {"session", "docs", "facts", "all"}
 
 
 def intent_classify(query: str, model: str | None = None) -> dict:
@@ -163,33 +199,15 @@ def intent_classify(query: str, model: str | None = None) -> dict:
 
     Returns: {
         "tool": "answer" | "web_search" | "rag" | "web_and_rag",
-        "scope": "general" | "personal" | "current_events" | "documents",
-        "confidence": 0.0-1.0
+        "mode": "recall" | "explore" | "execute" | "chat",
+        "scope": "session" | "docs" | "facts" | "all"
     }
-    Falls back to {"tool": "answer", "scope": "general", "confidence": 0.0} on error.
+    Falls back to {"tool": "answer", "mode": "chat", "scope": "all"} on error.
     """
     if model is None:
         model = _pick_gate_model()
     if model is None:
         return dict(_INTENT_DEFAULT)
-
-    system_prompt = (
-        "You are an intent classifier. Analyze the user's message and respond "
-        "with ONLY a JSON object, no other text.\n\n"
-        "Fields:\n"
-        '- "tool": one of "answer", "web_search", "rag", "web_and_rag"\n'
-        "  - answer: general knowledge, math, coding, creative writing, conversation\n"
-        "  - web_search: needs current/real-time info (news, weather, prices, recent events)\n"
-        "  - rag: asks about user's documents, files, notes, or past conversations\n"
-        "  - web_and_rag: needs both web info and user's documents\n"
-        '- "scope": one of "general", "personal", "current_events", "documents"\n'
-        "  - general: broad knowledge question\n"
-        "  - personal: references user's own data or past conversations\n"
-        "  - current_events: needs up-to-date information\n"
-        "  - documents: about user's stored files/library\n"
-        '- "confidence": float 0.0 to 1.0\n\n'
-        'Example: {"tool": "web_search", "scope": "current_events", "confidence": 0.85}'
-    )
 
     try:
         with httpx.Client(timeout=httpx.Timeout(5.0, read=15.0)) as client:
@@ -198,7 +216,7 @@ def intent_classify(query: str, model: str | None = None) -> dict:
                 json={
                     "model": model,
                     "messages": [
-                        {"role": "system", "content": system_prompt},
+                        {"role": "system", "content": _INTENT_SYSTEM_PROMPT},
                         {"role": "user", "content": query},
                     ],
                     "options": {"temperature": 0.0, "num_predict": 100},
@@ -232,17 +250,16 @@ def intent_classify(query: str, model: str | None = None) -> dict:
     tool = data.get("tool", "answer")
     if tool in _VALID_TOOLS:
         result["tool"] = tool
-    scope = data.get("scope", "general")
+    mode = data.get("mode", "chat")
+    if mode in _VALID_MODES:
+        result["mode"] = mode
+    scope = data.get("scope", "all")
     if scope in _VALID_SCOPES:
         result["scope"] = scope
-    try:
-        result["confidence"] = max(0.0, min(1.0, float(data.get("confidence", 0.0))))
-    except (TypeError, ValueError):
-        pass
 
-    # Override: regex-detected past reference forces personal scope
+    # Override: regex-detected past reference forces session scope
     if detect_past_reference(query):
-        result["scope"] = "personal"
+        result["scope"] = "session"
 
     return result
 

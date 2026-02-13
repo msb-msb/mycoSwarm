@@ -33,7 +33,7 @@ def _mock_ollama_chat(content: str):
 
 
 class TestPickGateModel:
-    """Test _pick_gate_model preference order."""
+    """Test _pick_gate_model preference order and embedding exclusion."""
 
     @patch("mycoswarm.solo.httpx.Client")
     def test_prefers_gemma3_1b(self, mock_client_cls):
@@ -64,10 +64,10 @@ class TestPickGateModel:
         assert result == "llama3.2:1b"
 
     @patch("mycoswarm.solo.httpx.Client")
-    def test_falls_back_to_first_model(self, mock_client_cls):
+    def test_falls_back_to_first_non_embedding_model(self, mock_client_cls):
         from mycoswarm.solo import _pick_gate_model
 
-        models = ["phi3:mini", "mistral:7b"]
+        models = ["nomic-embed-text:latest", "phi3:mini", "mistral:7b"]
         mock_client = MagicMock()
         mock_client.__enter__ = MagicMock(return_value=mock_client)
         mock_client.__exit__ = MagicMock(return_value=False)
@@ -76,6 +76,20 @@ class TestPickGateModel:
 
         result = _pick_gate_model()
         assert result == "phi3:mini"
+
+    @patch("mycoswarm.solo.httpx.Client")
+    def test_skips_embedding_only_models(self, mock_client_cls):
+        from mycoswarm.solo import _pick_gate_model
+
+        models = ["nomic-embed-text:latest", "mxbai-embed-large", "all-minilm:v2"]
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_client.get.return_value = _mock_ollama_tags(models)
+        mock_client_cls.return_value = mock_client
+
+        result = _pick_gate_model()
+        assert result is None
 
     @patch("mycoswarm.solo.httpx.Client")
     def test_returns_none_on_connection_error(self, mock_client_cls):
@@ -119,8 +133,8 @@ class TestIntentClassify:
 
         ollama_reply = json.dumps({
             "tool": "web_search",
-            "scope": "current_events",
-            "confidence": 0.92,
+            "mode": "explore",
+            "scope": "all",
         })
 
         mock_client = MagicMock()
@@ -131,8 +145,8 @@ class TestIntentClassify:
 
         result = intent_classify("What's the weather today?", model="gemma3:1b")
         assert result["tool"] == "web_search"
-        assert result["scope"] == "current_events"
-        assert result["confidence"] == 0.92
+        assert result["mode"] == "explore"
+        assert result["scope"] == "all"
 
     @patch("mycoswarm.solo.httpx.Client")
     def test_fallback_on_connection_error(self, mock_client_cls):
@@ -147,8 +161,8 @@ class TestIntentClassify:
 
         result = intent_classify("hello", model="gemma3:1b")
         assert result["tool"] == "answer"
-        assert result["scope"] == "general"
-        assert result["confidence"] == 0.0
+        assert result["mode"] == "chat"
+        assert result["scope"] == "all"
 
     @patch("mycoswarm.solo.httpx.Client")
     def test_fallback_on_malformed_json(self, mock_client_cls):
@@ -162,7 +176,7 @@ class TestIntentClassify:
 
         result = intent_classify("hello", model="gemma3:1b")
         assert result["tool"] == "answer"
-        assert result["confidence"] == 0.0
+        assert result["mode"] == "chat"
 
     @patch("mycoswarm.solo.httpx.Client")
     def test_extracts_tool_from_plaintext_fallback(self, mock_client_cls):
@@ -179,13 +193,13 @@ class TestIntentClassify:
         assert result["tool"] == "web_search"
 
     @patch("mycoswarm.solo.httpx.Client")
-    def test_past_reference_overrides_scope(self, mock_client_cls):
+    def test_past_reference_overrides_scope_to_session(self, mock_client_cls):
         from mycoswarm.solo import intent_classify
 
         ollama_reply = json.dumps({
             "tool": "rag",
-            "scope": "documents",
-            "confidence": 0.8,
+            "mode": "recall",
+            "scope": "docs",
         })
 
         mock_client = MagicMock()
@@ -194,9 +208,9 @@ class TestIntentClassify:
         mock_client.post.return_value = _mock_ollama_chat(ollama_reply)
         mock_client_cls.return_value = mock_client
 
-        # "we discussed" triggers past-reference regex → scope becomes "personal"
+        # "we discussed" triggers past-reference regex → scope becomes "session"
         result = intent_classify("What did we discussed yesterday?", model="gemma3:1b")
-        assert result["scope"] == "personal"
+        assert result["scope"] == "session"
 
     def test_returns_default_when_no_model(self):
         from mycoswarm.solo import intent_classify
@@ -204,16 +218,35 @@ class TestIntentClassify:
         # No model arg, and _pick_gate_model returns None
         with patch("mycoswarm.solo._pick_gate_model", return_value=None):
             result = intent_classify("test query")
-        assert result == {"tool": "answer", "scope": "general", "confidence": 0.0}
+        assert result == {"tool": "answer", "mode": "chat", "scope": "all"}
 
     @patch("mycoswarm.solo.httpx.Client")
-    def test_clamps_confidence(self, mock_client_cls):
+    def test_validates_mode_field(self, mock_client_cls):
+        from mycoswarm.solo import intent_classify
+
+        ollama_reply = json.dumps({
+            "tool": "rag",
+            "mode": "recall",
+            "scope": "session",
+        })
+
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_client.post.return_value = _mock_ollama_chat(ollama_reply)
+        mock_client_cls.return_value = mock_client
+
+        result = intent_classify("what did we say about X?", model="gemma3:1b")
+        assert result["mode"] == "recall"
+
+    @patch("mycoswarm.solo.httpx.Client")
+    def test_invalid_mode_uses_default(self, mock_client_cls):
         from mycoswarm.solo import intent_classify
 
         ollama_reply = json.dumps({
             "tool": "answer",
-            "scope": "general",
-            "confidence": 5.0,  # out of range
+            "mode": "flying",
+            "scope": "all",
         })
 
         mock_client = MagicMock()
@@ -223,7 +256,7 @@ class TestIntentClassify:
         mock_client_cls.return_value = mock_client
 
         result = intent_classify("hello", model="gemma3:1b")
-        assert result["confidence"] == 1.0
+        assert result["mode"] == "chat"
 
     @patch("mycoswarm.solo.httpx.Client")
     def test_invalid_tool_uses_default(self, mock_client_cls):
@@ -231,8 +264,8 @@ class TestIntentClassify:
 
         ollama_reply = json.dumps({
             "tool": "magic_tool",
-            "scope": "general",
-            "confidence": 0.5,
+            "mode": "explore",
+            "scope": "all",
         })
 
         mock_client = MagicMock()
@@ -272,8 +305,8 @@ class TestHandleIntentClassify:
 
         ollama_reply = json.dumps({
             "tool": "web_search",
-            "scope": "current_events",
-            "confidence": 0.9,
+            "mode": "explore",
+            "scope": "all",
         })
 
         mock_resp = MagicMock()
@@ -290,8 +323,8 @@ class TestHandleIntentClassify:
 
         assert result.status == TaskStatus.COMPLETED
         assert result.result["tool"] == "web_search"
-        assert result.result["scope"] == "current_events"
-        assert result.result["confidence"] == 0.9
+        assert result.result["mode"] == "explore"
+        assert result.result["scope"] == "all"
 
     @pytest.mark.asyncio
     async def test_missing_query_fails(self, make_task):
@@ -347,8 +380,8 @@ class TestHandleIntentClassify:
 
         ollama_reply = json.dumps({
             "tool": "answer",
-            "scope": "general",
-            "confidence": 0.95,
+            "mode": "explore",
+            "scope": "all",
         })
 
         mock_resp = MagicMock()
@@ -365,8 +398,8 @@ class TestHandleIntentClassify:
 
         assert result.status == TaskStatus.COMPLETED
         assert "tool" in result.result
+        assert "mode" in result.result
         assert "scope" in result.result
-        assert "confidence" in result.result
 
     @pytest.mark.asyncio
     async def test_no_model_picks_gate_model(self, make_task):
@@ -375,7 +408,7 @@ class TestHandleIntentClassify:
         task = make_task({"query": "hello world"})  # no model
 
         ollama_reply = json.dumps({
-            "tool": "answer", "scope": "general", "confidence": 0.8,
+            "tool": "answer", "mode": "chat", "scope": "all",
         })
 
         mock_resp = MagicMock()
@@ -424,8 +457,8 @@ class TestClassifyQueryBackcompat:
 
         mock_intent.return_value = {
             "tool": "web_search",
-            "scope": "current_events",
-            "confidence": 0.9,
+            "mode": "explore",
+            "scope": "all",
         }
         result = classify_query("weather today", "gemma3:1b")
         assert isinstance(result, str)
@@ -436,7 +469,7 @@ class TestClassifyQueryBackcompat:
         from mycoswarm.solo import classify_query
 
         for tool in ("answer", "web_search", "rag", "web_and_rag"):
-            mock_intent.return_value = {"tool": tool, "scope": "general", "confidence": 0.5}
+            mock_intent.return_value = {"tool": tool, "mode": "chat", "scope": "all"}
             result = classify_query("test", "model")
             assert result == tool
             assert result in {"answer", "web_search", "rag", "web_and_rag"}
