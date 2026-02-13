@@ -211,7 +211,8 @@
 - [x] CLI chat pipeline updated: daemon mode submits intent_classify as distributed task; solo mode calls directly
 - [x] Scope-driven session boost: `scope == "personal"` replaces separate `detect_past_reference()` call (with regex fallback)
 - [x] 25 tests in tests/test_intent.py (gate model picker, intent classify, worker handler, backcompat, routing registration)
-- [x] Full suite: 226 tests passing
+- [x] Intent-aware retrieval: `search_all()` accepts `intent=` dict — mode=chat skips RAG, scope=session/personal boosts sessions & reduces docs, scope=docs reduces sessions (2026-02-13)
+- [x] Full suite: 230 tests passing
 
 ### Phase 20b: Human Gap Architecture (Pre-Processing Gates)
 - [ ] Timing Gate: Wu Wei module — should I act now, later, or not at all?
@@ -237,7 +238,7 @@ Reference: docs/ARCHITECTURE-MEMORY.md
 - [ ] "Forgetting as technology"
 
 #### 21c: Mode-Aware Retrieval
-- [ ] Connect intent gates (Phase 20) to memory retrieval
+- [x] Connect intent gates (Phase 20) to memory retrieval — `search_all(intent=)` adjusts candidates by mode/scope (2026-02-13)
 - [ ] Brainstorm/planning → broad retrieval, more results
 - [ ] Execution → narrow retrieval, precise constraints
 
