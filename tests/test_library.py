@@ -1,5 +1,6 @@
 """Tests for the mycoSwarm document library (RAG)."""
 
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
@@ -20,6 +21,8 @@ from mycoswarm.library import (
     remove_document,
     reindex,
     check_embedding_model,
+    check_stale_documents,
+    auto_update,
     _extract_chunk_sections,
     _save_embedding_model,
     _load_embedding_model,
@@ -29,6 +32,7 @@ from mycoswarm.library import (
     _bm25_sessions,
     _MODEL_FILE,
     EMBEDDING_MODEL,
+    SUPPORTED_EXTENSIONS,
 )
 
 
@@ -1159,3 +1163,149 @@ class TestHybridSearchAll:
         assert "Bees and honey production overview" in summaries
         # First hit (in both lists) should have higher rrf_score
         assert session_hits[0]["rrf_score"] > session_hits[1]["rrf_score"]
+
+
+# --- check_stale_documents ---
+
+
+class TestCheckStaleDocuments:
+    def test_stale_file_detected(self, tmp_path, monkeypatch):
+        """File with mtime newer than indexed_at is stale."""
+        docs_dir = tmp_path / "docs"
+        docs_dir.mkdir()
+        (docs_dir / "notes.txt").write_text("hello world")
+
+        # indexed_at is in the past
+        old_ts = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+
+        mock_col = MagicMock()
+        mock_col.get.return_value = {
+            "metadatas": [
+                {"source": "notes.txt", "indexed_at": old_ts},
+            ],
+        }
+
+        monkeypatch.setattr("mycoswarm.library.LIBRARY_DIR", docs_dir)
+        with patch("mycoswarm.library._get_collection", return_value=mock_col):
+            result = check_stale_documents(docs_dir)
+
+        assert "notes.txt" in result["stale"]
+        assert result["new"] == []
+        assert result["removed"] == []
+
+    def test_new_file_detected(self, tmp_path, monkeypatch):
+        """File on disk with no indexed chunks is new."""
+        docs_dir = tmp_path / "docs"
+        docs_dir.mkdir()
+        (docs_dir / "new_doc.md").write_text("# New")
+
+        mock_col = MagicMock()
+        mock_col.get.return_value = {"metadatas": []}
+
+        monkeypatch.setattr("mycoswarm.library.LIBRARY_DIR", docs_dir)
+        with patch("mycoswarm.library._get_collection", return_value=mock_col):
+            result = check_stale_documents(docs_dir)
+
+        assert "new_doc.md" in result["new"]
+        assert result["stale"] == []
+        assert result["removed"] == []
+
+    def test_removed_file_detected(self, tmp_path, monkeypatch):
+        """Source in collection with no file on disk is removed."""
+        docs_dir = tmp_path / "docs"
+        docs_dir.mkdir()
+        # No files on disk
+
+        now_ts = datetime.now(timezone.utc).isoformat()
+        mock_col = MagicMock()
+        mock_col.get.return_value = {
+            "metadatas": [
+                {"source": "deleted.txt", "indexed_at": now_ts},
+            ],
+        }
+
+        monkeypatch.setattr("mycoswarm.library.LIBRARY_DIR", docs_dir)
+        with patch("mycoswarm.library._get_collection", return_value=mock_col):
+            result = check_stale_documents(docs_dir)
+
+        assert "deleted.txt" in result["removed"]
+        assert result["stale"] == []
+        assert result["new"] == []
+
+    def test_up_to_date_file(self, tmp_path, monkeypatch):
+        """File indexed after its mtime should not be stale."""
+        docs_dir = tmp_path / "docs"
+        docs_dir.mkdir()
+        (docs_dir / "current.txt").write_text("content")
+
+        # indexed_at is in the future relative to the file
+        future_ts = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+        mock_col = MagicMock()
+        mock_col.get.return_value = {
+            "metadatas": [
+                {"source": "current.txt", "indexed_at": future_ts},
+            ],
+        }
+
+        monkeypatch.setattr("mycoswarm.library.LIBRARY_DIR", docs_dir)
+        with patch("mycoswarm.library._get_collection", return_value=mock_col):
+            result = check_stale_documents(docs_dir)
+
+        assert result["stale"] == []
+        assert result["new"] == []
+        assert result["removed"] == []
+
+
+# --- auto_update ---
+
+
+class TestAutoUpdate:
+    @patch("mycoswarm.library.ingest_file")
+    @patch("mycoswarm.library.remove_document")
+    @patch("mycoswarm.library.check_stale_documents")
+    def test_reingest_stale_files(self, mock_check, mock_remove, mock_ingest, tmp_path):
+        """auto_update re-ingests stale files."""
+        docs_dir = tmp_path / "docs"
+        docs_dir.mkdir()
+        (docs_dir / "stale.txt").write_text("updated content")
+
+        mock_check.return_value = {"stale": ["stale.txt"], "new": [], "removed": []}
+        mock_ingest.return_value = {"file": "stale.txt", "chunks": 2, "model": "nomic"}
+
+        result = auto_update(docs_dir)
+
+        assert result["updated"] == ["stale.txt"]
+        assert result["added"] == []
+        assert result["removed"] == []
+        mock_remove.assert_called_once_with("stale.txt")
+        mock_ingest.assert_called_once()
+
+    @patch("mycoswarm.library.ingest_file")
+    @patch("mycoswarm.library.check_stale_documents")
+    def test_adds_new_files(self, mock_check, mock_ingest, tmp_path):
+        """auto_update ingests new files."""
+        docs_dir = tmp_path / "docs"
+        docs_dir.mkdir()
+        (docs_dir / "fresh.md").write_text("# Fresh")
+
+        mock_check.return_value = {"stale": [], "new": ["fresh.md"], "removed": []}
+        mock_ingest.return_value = {"file": "fresh.md", "chunks": 1, "model": "nomic"}
+
+        result = auto_update(docs_dir)
+
+        assert result["added"] == ["fresh.md"]
+        assert result["updated"] == []
+        mock_ingest.assert_called_once()
+
+    @patch("mycoswarm.library.remove_document")
+    @patch("mycoswarm.library.check_stale_documents")
+    def test_removes_orphaned_chunks(self, mock_check, mock_remove):
+        """auto_update removes chunks for files no longer on disk."""
+        mock_check.return_value = {"stale": [], "new": [], "removed": ["gone.pdf"]}
+
+        result = auto_update()
+
+        assert result["removed"] == ["gone.pdf"]
+        assert result["updated"] == []
+        assert result["added"] == []
+        mock_remove.assert_called_once_with("gone.pdf")

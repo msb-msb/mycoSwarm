@@ -16,6 +16,7 @@ import json
 import logging
 import os
 import re
+from datetime import datetime, timezone
 from pathlib import Path
 
 import httpx
@@ -761,6 +762,8 @@ def ingest_file(path: Path, model: str | None = None) -> dict:
     except OSError:
         file_date = 0.0
 
+    indexed_at = datetime.now(timezone.utc).isoformat()
+
     ids: list[str] = []
     documents: list[str] = []
     embeddings: list[list[float]] = []
@@ -783,6 +786,7 @@ def ingest_file(path: Path, model: str | None = None) -> dict:
             "file_date": file_date,
             "doc_type": doc_type,
             "embedding_model": model,
+            "indexed_at": indexed_at,
         })
 
     if ids:
@@ -941,3 +945,114 @@ def reindex(model: str | None = None, path: Path | None = None) -> list[dict]:
         pass
 
     return ingest_directory(path, model)
+
+
+# --- Auto-Update Pipeline ---
+
+
+def check_stale_documents(
+    docs_dir: Path | None = None,
+) -> dict[str, list[str]]:
+    """Compare files on disk against indexed metadata in ChromaDB.
+
+    Returns {"stale": [...], "new": [...], "removed": [...]}.
+    - stale:   files whose mtime is newer than their indexed_at timestamp
+    - new:     files on disk that have no chunks in the collection
+    - removed: sources in the collection with no file on disk
+    """
+    if docs_dir is None:
+        docs_dir = LIBRARY_DIR
+    docs_dir.mkdir(parents=True, exist_ok=True)
+
+    # Files on disk
+    disk_files: dict[str, Path] = {}
+    for fp in sorted(docs_dir.rglob("*")):
+        if fp.is_file() and fp.suffix.lower() in SUPPORTED_EXTENSIONS:
+            disk_files[fp.name] = fp
+
+    # Indexed sources and their indexed_at timestamps
+    try:
+        collection = _get_collection()
+        all_data = collection.get(include=["metadatas"])
+    except Exception:
+        # No collection yet — everything on disk is new
+        return {
+            "stale": [],
+            "new": list(disk_files.keys()),
+            "removed": [],
+        }
+
+    # Build mapping: source -> latest indexed_at (ISO string)
+    indexed: dict[str, str] = {}
+    if all_data and all_data.get("metadatas"):
+        for meta in all_data["metadatas"]:
+            source = meta.get("source", "")
+            ts = meta.get("indexed_at", "")
+            if source and ts:
+                # Keep the latest indexed_at per source
+                if source not in indexed or ts > indexed[source]:
+                    indexed[source] = ts
+
+    stale: list[str] = []
+    new: list[str] = []
+    removed: list[str] = []
+
+    # Check each disk file
+    for name, fp in disk_files.items():
+        if name not in indexed:
+            new.append(name)
+        else:
+            # Compare file mtime against indexed_at
+            try:
+                mtime = datetime.fromtimestamp(
+                    os.path.getmtime(fp), tz=timezone.utc,
+                )
+                indexed_at = datetime.fromisoformat(indexed[name])
+                if mtime > indexed_at:
+                    stale.append(name)
+            except (OSError, ValueError):
+                stale.append(name)
+
+    # Check for removed files (indexed but not on disk)
+    for source in indexed:
+        if source not in disk_files:
+            removed.append(source)
+
+    return {"stale": stale, "new": new, "removed": removed}
+
+
+def auto_update(
+    docs_dir: Path | None = None, model: str | None = None,
+) -> dict[str, list[str]]:
+    """Detect changed/new/removed files and update the index accordingly.
+
+    Returns {"updated": [...], "added": [...], "removed": [...]}.
+    """
+    if docs_dir is None:
+        docs_dir = LIBRARY_DIR
+
+    changes = check_stale_documents(docs_dir)
+    result: dict[str, list[str]] = {"updated": [], "added": [], "removed": []}
+
+    # Re-ingest stale files
+    for name in changes["stale"]:
+        fp = docs_dir / name
+        if fp.exists():
+            # Remove old chunks first
+            remove_document(name)
+            ingest_file(fp, model=model)
+            result["updated"].append(name)
+
+    # Ingest new files
+    for name in changes["new"]:
+        fp = docs_dir / name
+        if fp.exists():
+            ingest_file(fp, model=model)
+            result["added"].append(name)
+
+    # Remove orphaned chunks
+    for name in changes["removed"]:
+        remove_document(name)
+        result["removed"].append(name)
+
+    return result

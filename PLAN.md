@@ -197,9 +197,9 @@
 - [x] Session-as-RAG: index session summaries into ChromaDB for semantic memory search
 - [x] Per-topic session splitting: split multi-topic summaries into separate ChromaDB entries for better retrieval precision (2026-02-11)
 - [x] Session reindex command: `mycoswarm library reindex-sessions` drops + rebuilds session_memory from sessions.jsonl with topic splitting (2026-02-11)
-- [ ] Hybrid search: BM25 keyword matching alongside vector similarity
+- [x] Hybrid search: BM25 keyword matching alongside vector similarity (2026-02-12)
 - [ ] Re-ranking: LLM ranks retrieved chunks by relevance before generating answer
-- [ ] Auto-update pipeline: detect changed files in ~/mycoswarm-docs/ and re-index
+- [x] Auto-update pipeline: detect changed files in ~/mycoswarm-docs/ and re-index (2026-02-13)
 - [ ] RAG eval set: gold standard questions with known answers to measure quality
 
 ### Phase 20: Human Gap Architecture (Pre-Processing Gates)
@@ -263,8 +263,8 @@ Reference: docs/ARCHITECTURE-RAG.md
 
 #### 22d: Auto-Update Pipeline
 - [ ] File watcher for changed documents
-- [ ] Re-ingest modified files automatically
-- [ ] Staleness detection on indexed documents
+- [x] Re-ingest modified files automatically (2026-02-13)
+- [x] Staleness detection on indexed documents (2026-02-13)
 
 #### 22e: Agentic RAG (Level 4)
 - [ ] Multi-step reasoning over retrieved documents

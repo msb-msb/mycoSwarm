@@ -11,6 +11,7 @@ Usage:
 
 import asyncio
 import logging
+import os
 import signal
 import sys
 import time
@@ -135,6 +136,18 @@ async def run_daemon(port: int = DEFAULT_PORT, verbose: bool = False):
     registered = register_plugins(plugins, HANDLERS, identity.capabilities)
     if registered:
         logger.info(f"🔌 {len(registered)} plugin(s) loaded")
+
+    # Auto-update document index on startup (disabled by default)
+    # To enable: set MYCOSWARM_AUTO_UPDATE=1 in environment
+    if os.environ.get("MYCOSWARM_AUTO_UPDATE") == "1":
+        try:
+            from mycoswarm.library import auto_update
+            result = auto_update()
+            changes = len(result["updated"]) + len(result["added"]) + len(result["removed"])
+            if changes:
+                logger.info(f"📚 Auto-update: {changes} document change(s) applied")
+        except Exception as e:
+            logger.warning(f"📚 Auto-update failed: {e}")
 
     _print_banner(identity, port)
 

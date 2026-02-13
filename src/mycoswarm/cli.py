@@ -1482,7 +1482,7 @@ def cmd_library(args):
     from pathlib import Path
     from mycoswarm.library import (
         ingest_file, ingest_directory, search, list_documents, remove_document,
-        reindex, reindex_sessions, LIBRARY_DIR,
+        reindex, reindex_sessions, auto_update, LIBRARY_DIR,
     )
 
     action = args.action
@@ -1578,6 +1578,22 @@ def cmd_library(args):
         print(f"  📊 {stats['sessions']} session(s), {stats['topics']} topic chunk(s) indexed")
         if stats["failed"]:
             print(f"  ⚠️  {stats['failed']} chunk(s) failed to embed")
+
+    elif action == "auto-update":
+        target = Path(args.path).expanduser() if args.path else LIBRARY_DIR
+        print(f"🔄 Checking for changes in {target}...")
+        result = auto_update(docs_dir=target, model=args.model)
+        if not result["updated"] and not result["added"] and not result["removed"]:
+            print("  ✅ Everything up to date.")
+        else:
+            for name in result["updated"]:
+                print(f"  🔄 Updated: {name}")
+            for name in result["added"]:
+                print(f"  ➕ Added: {name}")
+            for name in result["removed"]:
+                print(f"  🗑  Removed: {name}")
+            total = len(result["updated"]) + len(result["added"]) + len(result["removed"])
+            print(f"\n  📊 {total} change(s) applied")
 
 
 def cmd_rag(args):
@@ -1877,10 +1893,10 @@ def main():
 
     # library
     library_parser = subparsers.add_parser(
-        "library", help="Manage the document library (ingest, search, list, remove, reindex, reindex-sessions)"
+        "library", help="Manage the document library (ingest, search, list, remove, reindex, reindex-sessions, auto-update)"
     )
     library_parser.add_argument(
-        "action", choices=["ingest", "search", "list", "remove", "reindex", "reindex-sessions"],
+        "action", choices=["ingest", "search", "list", "remove", "reindex", "reindex-sessions", "auto-update"],
         help="Action to perform",
     )
     library_parser.add_argument(
