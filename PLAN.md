@@ -302,6 +302,30 @@ Reference: docs/adam-lucek-research-notes.md (Video 3)
 - [ ] **Progressive skill loading:** Skill descriptions in base prompt, full body loaded on-demand
 - [ ] **Skill authoring guide:** Documentation for users to create their own mycoSwarm skills
 
+### Phase 26: Chart & Visualization Tool
+
+- [ ] `mycoswarm chart` CLI command: generate charts from data
+- [ ] Input: JSON data file or inline key=value pairs
+- [ ] Chart types: line, bar, comparison table, before/after
+- [ ] Output: PNG saved to specified path
+- [ ] matplotlib as optional dependency (not required for core)
+- [ ] Integration with code_run handler for sandboxed rendering
+- [ ] InsiderLLM asset pipeline: generate article visuals from benchmark data
+- [ ] Style template matching InsiderLLM brand (dark theme, clean, minimal)
+
+Example usage:
+```
+mycoswarm chart line \
+  --title "RWKV-7 vs gemma3: tok/s Over 10 Turns" \
+  --data bench_results.json \
+  --output article-assets/benchmark-chart.png
+
+mycoswarm chart bar \
+  --title "VRAM Usage by Model Size" \
+  --data vram_data.json \
+  --output article-assets/vram-chart.png
+```
+
 ## Next
 
 ### Phase 5b: Cross-Node Inference (remaining)
