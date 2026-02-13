@@ -288,7 +288,7 @@ Reference: docs/adam-lucek-research-notes.md (Videos 1 + 2)
 ### Phase 24: Adaptive Context Strategy
 Reference: docs/adam-lucek-research-notes.md (Video 2)
 
-- [ ] **"We discussed" detection:** Boost session_memory weighting when user references past conversations
+- [x] **"We discussed" detection:** Boost session_memory weighting when user references past conversations (2026-02-13)
 - [ ] **Query complexity classifier:** Simple queries → single-pass RAG. Complex → multi-step navigation
 - [ ] **Fresh context sub-calls:** Route complex retrieval to separate LLM call for summarization before injection
 - [ ] **Progressive RAG disclosure:** Let model request deeper context from specific [S] or [D] sources
