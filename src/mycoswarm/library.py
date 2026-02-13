@@ -638,6 +638,7 @@ def search_all(
     rerank_model: str | None = None,
     do_rerank: bool = False,
     session_boost: bool = False,
+    intent: dict | None = None,
 ) -> tuple[list[dict], list[dict]]:
     """Search BOTH document library and session memory with hybrid retrieval.
 
@@ -645,9 +646,16 @@ def search_all(
     Reciprocal Rank Fusion (RRF).  Embeds the query once.
     When do_rerank=True, passes candidates through LLM re-ranking.
     When session_boost=True, fetches 2x session results (for past-reference queries).
+    When intent is provided, adjusts candidate counts based on mode/scope.
     Returns (doc_hits, session_hits) so callers can format them
     with distinct labels ([D1]... vs [S1]...).
     """
+    # --- Intent-driven early exits and candidate adjustments ---
+    if intent is not None:
+        mode = intent.get("mode", "explore")
+        if mode == "chat":
+            return [], []
+
     model = _get_embedding_model(model)
 
     # Warn on model mismatch
@@ -663,6 +671,20 @@ def search_all(
     n_candidates = n_results * 2 if do_rerank else n_results
     # When session_boost is active, fetch 2x session candidates
     n_session_candidates = n_candidates * 2 if session_boost else n_candidates
+
+    # Intent-driven candidate adjustments (applied after base calculation)
+    if intent is not None:
+        mode = intent.get("mode", "explore")
+        scope = intent.get("scope", "all")
+
+        if mode == "recall":
+            n_session_candidates = n_candidates * 3
+
+        if scope in ("session", "personal"):
+            n_session_candidates = n_candidates * 3
+            n_candidates = max(2, n_candidates // 2)
+        elif scope == "docs" or scope == "documents":
+            n_session_candidates = max(2, n_candidates // 2)
 
     # --- Document collection: hybrid search ---
     doc_hits: list[dict] = []

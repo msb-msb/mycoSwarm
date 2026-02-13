@@ -1839,3 +1839,161 @@ class TestSessionBoost:
 
         _, hits = search_all("test", n_results=5, session_boost=False)
         assert len(hits) == 3  # all 3 available, within n_results
+
+
+# --- search_all with intent ---
+
+
+class TestSearchAllIntent:
+    def test_chat_mode_skips_rag(self):
+        """intent mode=chat should return empty results without touching ChromaDB."""
+        doc_hits, session_hits = search_all(
+            "hello there", intent={"mode": "chat"}
+        )
+        assert doc_hits == []
+        assert session_hits == []
+
+    @patch("mycoswarm.library.check_embedding_model", return_value=None)
+    @patch("mycoswarm.library._bm25_sessions")
+    @patch("mycoswarm.library._bm25_docs")
+    @patch("mycoswarm.library._get_session_collection")
+    @patch("mycoswarm.library._get_collection")
+    @patch("mycoswarm.library.embed_text")
+    @patch("mycoswarm.library._get_embedding_model")
+    def test_scope_session_boosts_sessions_reduces_docs(
+        self, mock_get_model, mock_embed, mock_doc_col, mock_sess_col,
+        mock_bm25_docs, mock_bm25_sess, _mock_check,
+    ):
+        """scope=session should triple session candidates and halve doc candidates."""
+        mock_get_model.return_value = "nomic-embed-text"
+        mock_embed.return_value = [0.1, 0.2]
+
+        # Doc collection with multiple results
+        doc_col = MagicMock()
+        doc_col.count.return_value = 10
+        doc_col.query.return_value = {
+            "ids": [["d1", "d2", "d3", "d4", "d5"]],
+            "documents": [["doc1", "doc2", "doc3", "doc4", "doc5"]],
+            "metadatas": [[{"source": f"f{i}.txt"} for i in range(5)]],
+            "distances": [[0.1, 0.2, 0.3, 0.4, 0.5]],
+        }
+        mock_doc_col.return_value = doc_col
+        mock_bm25_docs.search.return_value = []
+
+        # Session collection with multiple results
+        sess_col = MagicMock()
+        sess_col.count.return_value = 20
+        sess_col.query.return_value = {
+            "ids": [["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10",
+                     "s11", "s12", "s13", "s14", "s15"]],
+            "documents": [[f"session {i}" for i in range(15)]],
+            "metadatas": [[{"session_id": f"s{i}", "date": "2026-01-01", "topic": f"t{i}"} for i in range(15)]],
+            "distances": [[0.05 * i for i in range(15)]],
+        }
+        mock_sess_col.return_value = sess_col
+        mock_bm25_sess.search.return_value = []
+
+        # Without intent
+        doc_normal, sess_normal = search_all("test", n_results=5)
+        # With scope=session intent
+        doc_scoped, sess_scoped = search_all(
+            "test", n_results=5, intent={"scope": "session"}
+        )
+
+        # Session results should be boosted (more results)
+        assert len(sess_scoped) >= len(sess_normal)
+        # Doc results should be reduced
+        assert len(doc_scoped) <= len(doc_normal)
+
+    @patch("mycoswarm.library.check_embedding_model", return_value=None)
+    @patch("mycoswarm.library._bm25_sessions")
+    @patch("mycoswarm.library._bm25_docs")
+    @patch("mycoswarm.library._get_session_collection")
+    @patch("mycoswarm.library._get_collection")
+    @patch("mycoswarm.library.embed_text")
+    @patch("mycoswarm.library._get_embedding_model")
+    def test_scope_personal_same_as_session(
+        self, mock_get_model, mock_embed, mock_doc_col, mock_sess_col,
+        mock_bm25_docs, mock_bm25_sess, _mock_check,
+    ):
+        """scope=personal should behave identically to scope=session."""
+        mock_get_model.return_value = "nomic-embed-text"
+        mock_embed.return_value = [0.1, 0.2]
+
+        doc_col = MagicMock()
+        doc_col.count.return_value = 10
+        doc_col.query.return_value = {
+            "ids": [["d1", "d2", "d3", "d4", "d5"]],
+            "documents": [["doc1", "doc2", "doc3", "doc4", "doc5"]],
+            "metadatas": [[{"source": f"f{i}.txt"} for i in range(5)]],
+            "distances": [[0.1, 0.2, 0.3, 0.4, 0.5]],
+        }
+        mock_doc_col.return_value = doc_col
+        mock_bm25_docs.search.return_value = []
+
+        sess_col = MagicMock()
+        sess_col.count.return_value = 20
+        sess_col.query.return_value = {
+            "ids": [["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10",
+                     "s11", "s12", "s13", "s14", "s15"]],
+            "documents": [[f"session {i}" for i in range(15)]],
+            "metadatas": [[{"session_id": f"s{i}", "date": "2026-01-01", "topic": f"t{i}"} for i in range(15)]],
+            "distances": [[0.05 * i for i in range(15)]],
+        }
+        mock_sess_col.return_value = sess_col
+        mock_bm25_sess.search.return_value = []
+
+        doc_session, sess_session = search_all(
+            "test", n_results=5, intent={"scope": "session"}
+        )
+        doc_personal, sess_personal = search_all(
+            "test", n_results=5, intent={"scope": "personal"}
+        )
+
+        assert len(doc_session) == len(doc_personal)
+        assert len(sess_session) == len(sess_personal)
+
+    @patch("mycoswarm.library.check_embedding_model", return_value=None)
+    @patch("mycoswarm.library._bm25_sessions")
+    @patch("mycoswarm.library._bm25_docs")
+    @patch("mycoswarm.library._get_session_collection")
+    @patch("mycoswarm.library._get_collection")
+    @patch("mycoswarm.library.embed_text")
+    @patch("mycoswarm.library._get_embedding_model")
+    def test_scope_docs_reduces_sessions(
+        self, mock_get_model, mock_embed, mock_doc_col, mock_sess_col,
+        mock_bm25_docs, mock_bm25_sess, _mock_check,
+    ):
+        """scope=docs should reduce session candidates."""
+        mock_get_model.return_value = "nomic-embed-text"
+        mock_embed.return_value = [0.1, 0.2]
+
+        doc_col = MagicMock()
+        doc_col.count.return_value = 10
+        doc_col.query.return_value = {
+            "ids": [["d1", "d2", "d3", "d4", "d5"]],
+            "documents": [["doc1", "doc2", "doc3", "doc4", "doc5"]],
+            "metadatas": [[{"source": f"f{i}.txt"} for i in range(5)]],
+            "distances": [[0.1, 0.2, 0.3, 0.4, 0.5]],
+        }
+        mock_doc_col.return_value = doc_col
+        mock_bm25_docs.search.return_value = []
+
+        sess_col = MagicMock()
+        sess_col.count.return_value = 20
+        sess_col.query.return_value = {
+            "ids": [["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10",
+                     "s11", "s12", "s13", "s14", "s15"]],
+            "documents": [[f"session {i}" for i in range(15)]],
+            "metadatas": [[{"session_id": f"s{i}", "date": "2026-01-01", "topic": f"t{i}"} for i in range(15)]],
+            "distances": [[0.05 * i for i in range(15)]],
+        }
+        mock_sess_col.return_value = sess_col
+        mock_bm25_sess.search.return_value = []
+
+        # Without intent
+        _, sess_normal = search_all("test", n_results=5)
+        # With scope=docs
+        _, sess_docs = search_all("test", n_results=5, intent={"scope": "docs"})
+
+        assert len(sess_docs) <= len(sess_normal)
