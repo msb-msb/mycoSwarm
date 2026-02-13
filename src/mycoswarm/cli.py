@@ -1272,12 +1272,58 @@ def cmd_chat(args):
         tool_sources: list[str] = []
 
         if auto_tools and len(user_input.split()) >= 5:
-            from mycoswarm.solo import classify_query, detect_past_reference
-            print("   🤔 ...", end="", flush=True)
-            classification = classify_query(user_input, model)
-            past_ref = detect_past_reference(user_input)
+            print("   🤔 Classifying...", end="", flush=True)
+
+            if daemon_up:
+                # Daemon mode: submit intent_classify as distributed task
+                import uuid as _uuid
+                _ic_id = f"intent-{_uuid.uuid4().hex[:8]}"
+                _ic_payload = {
+                    "task_id": _ic_id,
+                    "task_type": "intent_classify",
+                    "payload": {"query": user_input},
+                    "source_node": "cli-chat",
+                    "priority": 7,
+                    "timeout_seconds": 30,
+                }
+                try:
+                    import time as _t
+                    _ic_start = _t.time()
+                    with httpx.Client(timeout=5) as _ic_client:
+                        _ic_client.post(f"{url}/task", json=_ic_payload).raise_for_status()
+                    # Poll for result
+                    intent_result = None
+                    with httpx.Client(timeout=5) as _ic_client:
+                        while _t.time() - _ic_start < 15:
+                            _t.sleep(0.3)
+                            try:
+                                _r = _ic_client.get(f"{url}/task/{_ic_id}")
+                                _d = _r.json()
+                                if _d.get("status") in ("completed", "failed"):
+                                    if _d.get("status") == "completed" and _d.get("result"):
+                                        intent_result = _d["result"]
+                                    break
+                            except Exception:
+                                pass
+                except Exception:
+                    intent_result = None
+
+                if intent_result is None:
+                    intent_result = {"tool": "answer", "scope": "general", "confidence": 0.0}
+            else:
+                # Solo mode: call intent_classify() directly
+                from mycoswarm.solo import intent_classify
+                intent_result = intent_classify(user_input)
+
             # Clear the thinking indicator
-            print("\r       \r", end="", flush=True)
+            print("\r                      \r", end="", flush=True)
+
+            classification = intent_result["tool"]
+            past_ref = intent_result.get("scope") == "personal"
+            # Secondary signal: regex check in case LLM missed it
+            if not past_ref:
+                from mycoswarm.solo import detect_past_reference
+                past_ref = detect_past_reference(user_input)
 
             need_web = classification in ("web_search", "web_and_rag")
             need_rag = classification in ("rag", "web_and_rag")

@@ -957,6 +957,156 @@ async def handle_code_run(task: TaskRequest) -> TaskResult:
         )
 
 
+# --- Intent Classification Handler ---
+
+
+_GATE_MODEL_PREFERENCE = ("gemma3:1b", "llama3.2:1b", "gemma3:4b", "llama3.2:3b")
+
+
+async def _pick_gate_model_async() -> str | None:
+    """Pick the smallest available model for gate tasks (async version)."""
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            resp = await client.get(f"{OLLAMA_BASE}/api/tags")
+            resp.raise_for_status()
+            models = [m["name"] for m in resp.json().get("models", [])]
+    except (httpx.ConnectError, httpx.TimeoutException, httpx.HTTPError):
+        return None
+
+    for pattern in _GATE_MODEL_PREFERENCE:
+        for m in models:
+            if pattern in m:
+                return m
+
+    return models[0] if models else None
+
+
+_INTENT_SYSTEM_PROMPT = (
+    "You are an intent classifier. Analyze the user's message and respond "
+    "with ONLY a JSON object, no other text.\n\n"
+    "Fields:\n"
+    '- "tool": one of "answer", "web_search", "rag", "web_and_rag"\n'
+    "  - answer: general knowledge, math, coding, creative writing, conversation\n"
+    "  - web_search: needs current/real-time info (news, weather, prices, recent events)\n"
+    "  - rag: asks about user's documents, files, notes, or past conversations\n"
+    "  - web_and_rag: needs both web info and user's documents\n"
+    '- "scope": one of "general", "personal", "current_events", "documents"\n'
+    "  - general: broad knowledge question\n"
+    "  - personal: references user's own data or past conversations\n"
+    "  - current_events: needs up-to-date information\n"
+    "  - documents: about user's stored files/library\n"
+    '- "confidence": float 0.0 to 1.0\n\n'
+    'Example: {"tool": "web_search", "scope": "current_events", "confidence": 0.85}'
+)
+
+_INTENT_DEFAULT = {"tool": "answer", "scope": "general", "confidence": 0.0}
+_VALID_TOOLS = {"answer", "web_search", "rag", "web_and_rag"}
+_VALID_SCOPES = {"general", "personal", "current_events", "documents"}
+
+
+async def handle_intent_classify(task: TaskRequest) -> TaskResult:
+    """Classify user intent on a CPU worker node.
+
+    Expected payload:
+        query: str      — the user's message
+        model: str      — gate model override (optional)
+
+    Returns result dict with: tool, scope, confidence
+    """
+    payload = task.payload
+    query = payload.get("query")
+
+    if not query:
+        return TaskResult(
+            task_id=task.task_id,
+            status=TaskStatus.FAILED,
+            error="Missing required field: 'query'",
+        )
+
+    model = payload.get("model")
+    if not model:
+        model = await _pick_gate_model_async()
+    if not model:
+        return TaskResult(
+            task_id=task.task_id,
+            status=TaskStatus.FAILED,
+            error="No model available for intent classification",
+        )
+
+    start = time.time()
+    logger.info(f"🧠 Classifying intent: {query[:60]!r} (model={model})")
+
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(5.0, read=15.0)) as client:
+            resp = await client.post(
+                f"{OLLAMA_BASE}/api/chat",
+                json={
+                    "model": model,
+                    "messages": [
+                        {"role": "system", "content": _INTENT_SYSTEM_PROMPT},
+                        {"role": "user", "content": query},
+                    ],
+                    "options": {"temperature": 0.0, "num_predict": 100},
+                    "stream": False,
+                },
+            )
+            resp.raise_for_status()
+            raw = resp.json().get("message", {}).get("content", "").strip()
+    except httpx.TimeoutException:
+        return TaskResult(
+            task_id=task.task_id,
+            status=TaskStatus.FAILED,
+            error="Ollama timed out during intent classification",
+            duration_seconds=round(time.time() - start, 2),
+        )
+    except httpx.ConnectError:
+        return TaskResult(
+            task_id=task.task_id,
+            status=TaskStatus.FAILED,
+            error="Cannot connect to Ollama — is it running?",
+        )
+
+    # Parse JSON from response
+    raw = raw.strip("`").strip()
+    if raw.startswith("json"):
+        raw = raw[4:].strip()
+
+    result = dict(_INTENT_DEFAULT)
+    try:
+        data = json.loads(raw)
+        tool = data.get("tool", "answer")
+        if tool in _VALID_TOOLS:
+            result["tool"] = tool
+        scope = data.get("scope", "general")
+        if scope in _VALID_SCOPES:
+            result["scope"] = scope
+        try:
+            result["confidence"] = max(0.0, min(1.0, float(data.get("confidence", 0.0))))
+        except (TypeError, ValueError):
+            pass
+    except (json.JSONDecodeError, ValueError):
+        lower = raw.lower()
+        for category in ("web_and_rag", "web_search", "rag", "answer"):
+            if category in lower:
+                result["tool"] = category
+                break
+
+    # Check for past-reference patterns
+    from mycoswarm.solo import detect_past_reference
+    if detect_past_reference(query):
+        result["scope"] = "personal"
+
+    duration = round(time.time() - start, 2)
+    logger.info(f"🧠 Intent: tool={result['tool']} scope={result['scope']} ({duration}s)")
+
+    return TaskResult(
+        task_id=task.task_id,
+        status=TaskStatus.COMPLETED,
+        result=result,
+        duration_seconds=duration,
+    )
+
+
 # --- Handler Registry ---
 
 HANDLERS: dict[str, Callable[[TaskRequest], Awaitable[TaskResult]]] = {
@@ -968,6 +1118,7 @@ HANDLERS: dict[str, Callable[[TaskRequest], Awaitable[TaskResult]]] = {
     "file_summarize": handle_file_summarize,
     "translate": handle_translate,
     "code_run": handle_code_run,
+    "intent_classify": handle_intent_classify,
     "ping": handle_ping,
 }
 

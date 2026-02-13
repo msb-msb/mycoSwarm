@@ -202,7 +202,18 @@
 - [x] Auto-update pipeline: detect changed files in ~/mycoswarm-docs/ and re-index (2026-02-13)
 - [x] RAG eval set: gold standard questions with known answers to measure quality (2026-02-13)
 
-### Phase 20: Human Gap Architecture (Pre-Processing Gates)
+### Phase 20: Intent Classification Gate (2026-02-13)
+- [x] `_pick_gate_model()` in solo.py: selects smallest available Ollama model for gate tasks (gemma3:1b > llama3.2:1b > gemma3:4b > llama3.2:3b)
+- [x] `intent_classify()` in solo.py: structured intent classification returning `{tool, scope, confidence}` dict
+- [x] `classify_query()` refactored as backward-compatible wrapper around `intent_classify()`
+- [x] `handle_intent_classify` handler in worker.py: async handler for distributed CPU execution
+- [x] Registered `intent_classify` in TASK_ROUTING (→ cpu_worker), DISTRIBUTABLE_TASKS, and HANDLERS
+- [x] CLI chat pipeline updated: daemon mode submits intent_classify as distributed task; solo mode calls directly
+- [x] Scope-driven session boost: `scope == "personal"` replaces separate `detect_past_reference()` call (with regex fallback)
+- [x] 25 tests in tests/test_intent.py (gate model picker, intent classify, worker handler, backcompat, routing registration)
+- [x] Full suite: 226 tests passing
+
+### Phase 20b: Human Gap Architecture (Pre-Processing Gates)
 - [ ] Timing Gate: Wu Wei module — should I act now, later, or not at all?
 - [ ] Intent Resolution: parse ambiguity, check reversibility, clarify when needed
 - [ ] Confidence Calibration: hedge spectrum instead of uniform confidence

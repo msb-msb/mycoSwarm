@@ -131,12 +131,66 @@ def detect_past_reference(query: str) -> bool:
     return bool(_PAST_REFERENCE_RE.search(query))
 
 
-def classify_query(query: str, model: str) -> str:
-    """Classify a user query to determine what tools are needed.
+def _pick_gate_model() -> str | None:
+    """Pick the smallest available model for gate tasks (classification, etc.).
 
-    Returns one of: "answer", "web_search", "rag", "web_and_rag".
-    Falls back to "answer" on any error.
+    Preference order: gemma3:1b > llama3.2:1b > gemma3:4b > llama3.2:3b.
+    Falls back to first available model, or None if Ollama is unreachable.
     """
+    try:
+        with httpx.Client(timeout=5) as client:
+            resp = client.get(f"{OLLAMA_BASE}/api/tags")
+            resp.raise_for_status()
+            models = [m["name"] for m in resp.json().get("models", [])]
+    except (httpx.ConnectError, httpx.TimeoutException, httpx.HTTPError):
+        return None
+
+    for pattern in ("gemma3:1b", "llama3.2:1b", "gemma3:4b", "llama3.2:3b"):
+        for m in models:
+            if pattern in m:
+                return m
+
+    return models[0] if models else None
+
+
+_INTENT_DEFAULT = {"tool": "answer", "scope": "general", "confidence": 0.0}
+_VALID_TOOLS = {"answer", "web_search", "rag", "web_and_rag"}
+_VALID_SCOPES = {"general", "personal", "current_events", "documents"}
+
+
+def intent_classify(query: str, model: str | None = None) -> dict:
+    """Classify user intent with structured output.
+
+    Returns: {
+        "tool": "answer" | "web_search" | "rag" | "web_and_rag",
+        "scope": "general" | "personal" | "current_events" | "documents",
+        "confidence": 0.0-1.0
+    }
+    Falls back to {"tool": "answer", "scope": "general", "confidence": 0.0} on error.
+    """
+    if model is None:
+        model = _pick_gate_model()
+    if model is None:
+        return dict(_INTENT_DEFAULT)
+
+    system_prompt = (
+        "You are an intent classifier. Analyze the user's message and respond "
+        "with ONLY a JSON object, no other text.\n\n"
+        "Fields:\n"
+        '- "tool": one of "answer", "web_search", "rag", "web_and_rag"\n'
+        "  - answer: general knowledge, math, coding, creative writing, conversation\n"
+        "  - web_search: needs current/real-time info (news, weather, prices, recent events)\n"
+        "  - rag: asks about user's documents, files, notes, or past conversations\n"
+        "  - web_and_rag: needs both web info and user's documents\n"
+        '- "scope": one of "general", "personal", "current_events", "documents"\n'
+        "  - general: broad knowledge question\n"
+        "  - personal: references user's own data or past conversations\n"
+        "  - current_events: needs up-to-date information\n"
+        "  - documents: about user's stored files/library\n"
+        '- "confidence": float 0.0 to 1.0\n\n'
+        'Example: {"tool": "web_search", "scope": "current_events", "confidence": 0.85}'
+    )
+
     try:
         with httpx.Client(timeout=httpx.Timeout(5.0, read=15.0)) as client:
             resp = client.post(
@@ -144,33 +198,65 @@ def classify_query(query: str, model: str) -> str:
                 json={
                     "model": model,
                     "messages": [
-                        {
-                            "role": "system",
-                            "content": (
-                                "Classify the user's message into exactly one category. "
-                                "Respond with ONLY the category word, nothing else.\n\n"
-                                "Categories:\n"
-                                "- answer: can be answered from general knowledge, math, coding, creative writing, or conversation\n"
-                                "- web_search: needs current/real-time info (news, weather, prices, sports, recent events, current status of things)\n"
-                                "- rag: asks about the user's own documents, files, notes, stored library content, or past conversations\n"
-                                "- web_and_rag: needs both web info and the user's documents"
-                            ),
-                        },
+                        {"role": "system", "content": system_prompt},
                         {"role": "user", "content": query},
                     ],
-                    "options": {"temperature": 0.0, "num_predict": 20},
+                    "options": {"temperature": 0.0, "num_predict": 100},
                     "stream": False,
                 },
             )
             resp.raise_for_status()
-            raw = resp.json().get("message", {}).get("content", "").strip().lower()
-            # Extract the classification word from the response
-            for category in ("web_and_rag", "web_search", "rag", "answer"):
-                if category in raw:
-                    return category
-            return "answer"
+            raw = resp.json().get("message", {}).get("content", "").strip()
     except (httpx.ConnectError, httpx.TimeoutException, httpx.HTTPError):
-        return "answer"
+        return dict(_INTENT_DEFAULT)
+
+    # Parse JSON from response (may contain markdown fences)
+    raw = raw.strip("`").strip()
+    if raw.startswith("json"):
+        raw = raw[4:].strip()
+
+    try:
+        data = json.loads(raw)
+    except (json.JSONDecodeError, ValueError):
+        # Fallback: try to extract tool from raw text like the old classifier
+        result = dict(_INTENT_DEFAULT)
+        lower = raw.lower()
+        for category in ("web_and_rag", "web_search", "rag", "answer"):
+            if category in lower:
+                result["tool"] = category
+                break
+        return result
+
+    # Validate and sanitize
+    result = dict(_INTENT_DEFAULT)
+    tool = data.get("tool", "answer")
+    if tool in _VALID_TOOLS:
+        result["tool"] = tool
+    scope = data.get("scope", "general")
+    if scope in _VALID_SCOPES:
+        result["scope"] = scope
+    try:
+        result["confidence"] = max(0.0, min(1.0, float(data.get("confidence", 0.0))))
+    except (TypeError, ValueError):
+        pass
+
+    # Override: regex-detected past reference forces personal scope
+    if detect_past_reference(query):
+        result["scope"] = "personal"
+
+    return result
+
+
+def classify_query(query: str, model: str) -> str:
+    """Classify a user query to determine what tools are needed.
+
+    Returns one of: "answer", "web_search", "rag", "web_and_rag".
+    Falls back to "answer" on any error.
+
+    This is a backward-compatible wrapper around intent_classify().
+    """
+    result = intent_classify(query, model=model)
+    return result["tool"]
 
 
 def web_search_solo(query: str, max_results: int = 5) -> list[dict]:
