@@ -326,6 +326,31 @@ mycoswarm chart bar \
   --output article-assets/vram-chart.png
 ```
 
+### Phase 27: Email Tool
+Reference: OpenClaw's #1 tool (per Nate B. Jones)
+
+Research needed before implementation:
+- [ ] Research OpenClaw's email tool capabilities and approach
+- [ ] Research other local AI email tools (what exists, what's missing)
+- [ ] Define scope: read/filter/compose/reply/summarize?
+
+Potential features:
+- [ ] IMAP/SMTP connection (local, no cloud API)
+- [ ] Spam/priority classification via local LLM
+- [ ] Staleness detection: flag old unreplied threads
+- [ ] Email summarization: "what happened while I was away"
+- [ ] Draft composition: "reply to this saying..."
+- [ ] Smart triage: urgent / needs response / FYI / spam buckets
+- [ ] Privacy-first: all processing local, no email content leaves the swarm
+
+CLI ideas:
+```
+mycoswarm email check     — fetch + classify new mail
+mycoswarm email summary   — summarize unread
+mycoswarm email draft     — compose with context
+mycoswarm email triage    — sort inbox into buckets
+```
+
 ## Next
 
 ### Phase 5b: Cross-Node Inference (remaining)
