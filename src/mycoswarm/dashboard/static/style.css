@@ -222,6 +222,62 @@ header h1 {
     color: #a0a0cc;
 }
 
+/* Memory section */
+.memory-section {
+    padding: 0 24px 24px;
+}
+
+.section-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #808090;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 12px;
+}
+
+.memory-grid {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.memory-card {
+    background: #16213e;
+    border: 1px solid #2a2a4a;
+    border-radius: 8px;
+    padding: 14px 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 120px;
+    flex: 1;
+    transition: border-color 0.2s;
+}
+
+.memory-card:hover {
+    border-color: #4a4a7a;
+}
+
+.memory-icon {
+    font-size: 20px;
+    margin-bottom: 6px;
+}
+
+.memory-value {
+    font-size: 24px;
+    font-weight: 700;
+    color: #c0c0ff;
+}
+
+.memory-label {
+    font-size: 11px;
+    color: #808090;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-top: 2px;
+}
+
 /* Footer */
 footer {
     display: flex;

@@ -39,6 +39,37 @@
         <p class="placeholder">Connecting to daemon...</p>
     </main>
 
+    <section class="memory-section">
+        <h2 class="section-title">Memory</h2>
+        <div class="memory-grid">
+            <div class="memory-card">
+                <span class="memory-icon">&#128221;</span>
+                <span class="memory-value" id="mem-facts">-</span>
+                <span class="memory-label">Facts</span>
+            </div>
+            <div class="memory-card">
+                <span class="memory-icon">&#128172;</span>
+                <span class="memory-value" id="mem-sessions">-</span>
+                <span class="memory-label">Sessions</span>
+            </div>
+            <div class="memory-card">
+                <span class="memory-icon">&#129504;</span>
+                <span class="memory-value" id="mem-session-chunks">-</span>
+                <span class="memory-label">Session Chunks</span>
+            </div>
+            <div class="memory-card">
+                <span class="memory-icon">&#128218;</span>
+                <span class="memory-value" id="mem-docs">-</span>
+                <span class="memory-label">Documents</span>
+            </div>
+            <div class="memory-card">
+                <span class="memory-icon">&#128196;</span>
+                <span class="memory-value" id="mem-doc-chunks">-</span>
+                <span class="memory-label">Doc Chunks</span>
+            </div>
+        </div>
+    </section>
+
     <footer>
         <span>Auto-refresh: 5s</span>
         <span id="last-update">-</span>

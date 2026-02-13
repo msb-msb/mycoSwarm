@@ -161,4 +161,64 @@ def create_app(daemon_port: int = 7890) -> FastAPI:
             },
         }
 
+    @app.get("/api/memory")
+    async def api_memory():
+        """Return memory stats: facts, sessions, ChromaDB counts."""
+        from mycoswarm.memory import FACTS_PATH, SESSIONS_PATH
+        from mycoswarm.library import CHROMA_DIR
+
+        # Facts count
+        facts_count = 0
+        try:
+            import json as _json
+            data = _json.loads(FACTS_PATH.read_text())
+            facts_count = len(data.get("facts", []))
+        except (FileNotFoundError, _json.JSONDecodeError, OSError):
+            pass
+
+        # Sessions count
+        sessions_count = 0
+        try:
+            for line in SESSIONS_PATH.read_text().splitlines():
+                if line.strip():
+                    sessions_count += 1
+        except (FileNotFoundError, OSError):
+            pass
+
+        # ChromaDB collection stats
+        session_chunks = 0
+        doc_chunks = 0
+        docs_indexed = 0
+        try:
+            import chromadb
+            client = chromadb.PersistentClient(path=str(CHROMA_DIR))
+
+            try:
+                sess_col = client.get_collection("session_memory")
+                session_chunks = sess_col.count()
+            except (ValueError, Exception):
+                pass
+
+            try:
+                doc_col = client.get_collection("mycoswarm_docs")
+                doc_chunks = doc_col.count()
+                # Count unique source files
+                all_meta = doc_col.get(include=["metadatas"])
+                if all_meta and all_meta["metadatas"]:
+                    docs_indexed = len({
+                        m.get("source", "") for m in all_meta["metadatas"]
+                    })
+            except (ValueError, Exception):
+                pass
+        except Exception:
+            pass
+
+        return {
+            "facts_count": facts_count,
+            "sessions_count": sessions_count,
+            "session_chunks": session_chunks,
+            "doc_chunks": doc_chunks,
+            "docs_indexed": docs_indexed,
+        }
+
     return app

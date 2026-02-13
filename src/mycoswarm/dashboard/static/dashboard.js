@@ -30,6 +30,12 @@ window.__toggleModels = function (el) {
   var $connStatus = document.getElementById("connection-status");
   var $lastUpdate = document.getElementById("last-update");
 
+  var $memFacts = document.getElementById("mem-facts");
+  var $memSessions = document.getElementById("mem-sessions");
+  var $memSessionChunks = document.getElementById("mem-session-chunks");
+  var $memDocs = document.getElementById("mem-docs");
+  var $memDocChunks = document.getElementById("mem-doc-chunks");
+
   function esc(str) {
     var d = document.createElement("div");
     d.textContent = str;
@@ -292,6 +298,25 @@ window.__toggleModels = function (el) {
     }
   }
 
-  fetchStatus();
-  setInterval(fetchStatus, REFRESH_MS);
+  async function fetchMemory() {
+    try {
+      var resp = await fetch("/api/memory");
+      var data = await resp.json();
+      $memFacts.textContent = data.facts_count;
+      $memSessions.textContent = data.sessions_count;
+      $memSessionChunks.textContent = data.session_chunks;
+      $memDocs.textContent = data.docs_indexed;
+      $memDocChunks.textContent = data.doc_chunks;
+    } catch (e) {
+      // leave as-is on error
+    }
+  }
+
+  function refresh() {
+    fetchStatus();
+    fetchMemory();
+  }
+
+  refresh();
+  setInterval(refresh, REFRESH_MS);
 })();
