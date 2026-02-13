@@ -1479,3 +1479,233 @@ class TestSearchAllRerank:
         search_all("test", n_results=5, do_rerank=False)
 
         mock_rerank.assert_not_called()
+
+
+# --- RAG Evaluation ---
+
+
+from mycoswarm.rag_eval import (
+    _hit_at_k,
+    _reciprocal_rank,
+    _ndcg_at_k,
+    _keyword_overlap,
+    load_eval_set,
+    run_eval,
+    save_results,
+    load_previous_results,
+    format_delta,
+    EVAL_SET_PATH,
+)
+
+
+class TestEvalMetrics:
+    def test_hit_at_1_hit(self):
+        assert _hit_at_k(["a.txt"], ["a.txt", "b.txt"], 1) == 1.0
+
+    def test_hit_at_1_miss(self):
+        assert _hit_at_k(["a.txt"], ["b.txt", "a.txt"], 1) == 0.0
+
+    def test_hit_at_5_hit(self):
+        assert _hit_at_k(["a.txt"], ["b.txt", "c.txt", "a.txt"], 5) == 1.0
+
+    def test_hit_at_5_miss(self):
+        assert _hit_at_k(["a.txt"], ["b.txt", "c.txt", "d.txt", "e.txt", "f.txt"], 5) == 0.0
+
+    def test_reciprocal_rank_first(self):
+        assert _reciprocal_rank(["a.txt"], ["a.txt", "b.txt"]) == 1.0
+
+    def test_reciprocal_rank_second(self):
+        assert _reciprocal_rank(["a.txt"], ["b.txt", "a.txt"]) == 0.5
+
+    def test_reciprocal_rank_not_found(self):
+        assert _reciprocal_rank(["a.txt"], ["b.txt", "c.txt"]) == 0.0
+
+    def test_ndcg_perfect(self):
+        """Perfect ranking: expected source at position 1."""
+        score = _ndcg_at_k(["a.txt"], ["a.txt", "b.txt", "c.txt"], 5)
+        assert score == 1.0
+
+    def test_ndcg_imperfect(self):
+        """Expected source at position 2 instead of 1."""
+        score = _ndcg_at_k(["a.txt"], ["b.txt", "a.txt", "c.txt"], 5)
+        assert 0 < score < 1.0
+
+    def test_ndcg_miss(self):
+        """No expected sources in retrieved list."""
+        score = _ndcg_at_k(["a.txt"], ["b.txt", "c.txt"], 5)
+        assert score == 0.0
+
+    def test_keyword_overlap_all_found(self):
+        texts = ["machine learning with neural networks and GPU"]
+        assert _keyword_overlap(["machine", "learning", "GPU"], texts) == 1.0
+
+    def test_keyword_overlap_partial(self):
+        texts = ["machine learning algorithms"]
+        overlap = _keyword_overlap(["machine", "GPU", "neural"], texts)
+        assert overlap == pytest.approx(1 / 3)
+
+    def test_keyword_overlap_none(self):
+        texts = ["the weather is nice today"]
+        assert _keyword_overlap(["machine", "GPU"], texts) == 0.0
+
+    def test_keyword_overlap_empty_keywords(self):
+        assert _keyword_overlap([], ["anything"]) == 1.0
+
+    def test_keyword_overlap_case_insensitive(self):
+        texts = ["GPU and VRAM and Neural Networks"]
+        assert _keyword_overlap(["gpu", "vram", "neural"], texts) == 1.0
+
+
+class TestEvalSet:
+    def test_eval_set_loads(self):
+        """Eval set JSON is valid and has required fields."""
+        pairs = load_eval_set()
+        assert len(pairs) >= 15
+
+        for pair in pairs:
+            assert "id" in pair
+            assert "query" in pair
+            assert "expected_sources" in pair
+            assert isinstance(pair["expected_sources"], list)
+            assert len(pair["expected_sources"]) > 0
+
+    def test_eval_set_has_unique_ids(self):
+        pairs = load_eval_set()
+        ids = [p["id"] for p in pairs]
+        assert len(ids) == len(set(ids)), "Eval pair IDs must be unique"
+
+
+class TestFormatDelta:
+    def test_positive_delta(self):
+        result = format_delta(0.85, 0.80)
+        assert "+" in result
+        assert "0.05" in result
+
+    def test_negative_delta(self):
+        result = format_delta(0.70, 0.80)
+        assert "-" in result
+
+    def test_no_change(self):
+        result = format_delta(0.80, 0.80)
+        assert "—" in result
+
+
+class TestRunEval:
+    @patch("mycoswarm.library.search_all")
+    def test_run_eval_computes_metrics(self, mock_search_all):
+        """run_eval should compute all metrics from search results."""
+        # Mock search_all: returns matching source for first query, miss for second
+        def fake_search_all(query, n_results=5, model=None, do_rerank=False):
+            if "architecture" in query.lower():
+                return (
+                    [{"text": "The architecture uses discovery daemon worker",
+                      "source": "CLAUDE.md", "score": 0.1, "rrf_score": 0.01}],
+                    [],
+                )
+            return ([], [])
+
+        mock_search_all.side_effect = fake_search_all
+
+        eval_pairs = [
+            {
+                "id": "test-01",
+                "query": "What is the architecture?",
+                "expected_sources": ["CLAUDE.md"],
+                "expected_keywords": ["architecture", "discovery"],
+            },
+            {
+                "id": "test-02",
+                "query": "How to bake a cake?",
+                "expected_sources": ["recipes.md"],
+                "expected_keywords": ["flour", "sugar"],
+            },
+        ]
+
+        results = run_eval(eval_pairs=eval_pairs, n_results=5)
+
+        assert results["n_queries"] == 2
+        assert "metrics" in results
+        assert "per_query" in results
+        assert "timestamp" in results
+        assert "duration_seconds" in results
+
+        m = results["metrics"]
+        # First query hits, second misses → averages = 0.5
+        assert m["hit_at_1"] == 0.5
+        assert m["hit_at_5"] == 0.5
+        assert m["mrr"] == 0.5
+        assert m["keyword_overlap"] == 0.5  # first=1.0 (2/2), second=0.0 (0/2)
+
+    @patch("mycoswarm.library.search_all")
+    def test_run_eval_per_query_details(self, mock_search_all):
+        """Per-query breakdown includes individual metrics."""
+        mock_search_all.return_value = (
+            [{"text": "relevant text", "source": "doc.txt", "score": 0.1, "rrf_score": 0.01}],
+            [],
+        )
+
+        eval_pairs = [
+            {
+                "id": "pq-01",
+                "query": "test query",
+                "expected_sources": ["doc.txt"],
+                "expected_keywords": ["relevant"],
+            },
+        ]
+
+        results = run_eval(eval_pairs=eval_pairs)
+        pq = results["per_query"][0]
+
+        assert pq["id"] == "pq-01"
+        assert pq["hit_at_1"] == 1.0
+        assert pq["hit_at_5"] == 1.0
+        assert pq["mrr"] == 1.0
+        assert pq["keyword_overlap"] == 1.0
+        assert "retrieved_sources" in pq
+
+
+class TestSaveLoadResults:
+    def test_save_and_load(self, tmp_path, monkeypatch):
+        """Results are saved and retrievable."""
+        results_file = tmp_path / "eval_results.json"
+        monkeypatch.setattr("mycoswarm.rag_eval.RESULTS_PATH", results_file)
+
+        results = {
+            "timestamp": "2026-02-12T10:00:00+00:00",
+            "n_queries": 5,
+            "n_results": 5,
+            "metrics": {"hit_at_1": 0.8, "hit_at_5": 0.9, "mrr": 0.85, "ndcg_at_5": 0.82, "keyword_overlap": 0.75},
+            "per_query": [],
+            "duration_seconds": 1.5,
+        }
+
+        save_results(results)
+        loaded = load_previous_results()
+
+        assert loaded is not None
+        assert loaded["metrics"]["hit_at_1"] == 0.8
+
+    def test_load_when_no_file(self, tmp_path, monkeypatch):
+        results_file = tmp_path / "nonexistent.json"
+        monkeypatch.setattr("mycoswarm.rag_eval.RESULTS_PATH", results_file)
+
+        assert load_previous_results() is None
+
+    def test_multiple_runs_kept(self, tmp_path, monkeypatch):
+        """Multiple runs are appended, not overwritten."""
+        results_file = tmp_path / "eval_results.json"
+        monkeypatch.setattr("mycoswarm.rag_eval.RESULTS_PATH", results_file)
+
+        for i in range(3):
+            save_results({
+                "timestamp": f"2026-02-12T1{i}:00:00+00:00",
+                "metrics": {"hit_at_1": 0.5 + i * 0.1},
+            })
+
+        import json
+        data = json.loads(results_file.read_text())
+        assert len(data["runs"]) == 3
+
+        # load_previous_results returns the latest
+        latest = load_previous_results()
+        assert latest["metrics"]["hit_at_1"] == pytest.approx(0.7)

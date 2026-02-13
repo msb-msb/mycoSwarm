@@ -1,0 +1,114 @@
+{
+  "version": 1,
+  "description": "RAG evaluation pairs for mycoSwarm document library. Each entry has a query, expected sources (filenames that should appear in top results), and expected keywords (terms that should appear in retrieved text).",
+  "eval_pairs": [
+    {
+      "id": "arch-01",
+      "query": "What is the architecture of mycoSwarm?",
+      "expected_sources": ["CLAUDE.md"],
+      "expected_keywords": ["hardware", "capabilities", "discovery", "daemon", "orchestrator", "worker"]
+    },
+    {
+      "id": "arch-02",
+      "query": "How does mDNS discovery work in the swarm?",
+      "expected_sources": ["CLAUDE.md", "README.md"],
+      "expected_keywords": ["zeroconf", "mDNS", "discovery", "_mycoswarm._tcp"]
+    },
+    {
+      "id": "arch-03",
+      "query": "What is the task execution flow?",
+      "expected_sources": ["CLAUDE.md"],
+      "expected_keywords": ["TaskQueue", "TaskWorker", "Handler", "TaskResult"]
+    },
+    {
+      "id": "design-01",
+      "query": "What are the key design principles of mycoSwarm?",
+      "expected_sources": ["CLAUDE.md", "README.md"],
+      "expected_keywords": ["zero config", "mDNS", "LAN", "dependencies"]
+    },
+    {
+      "id": "design-02",
+      "query": "Why does mycoSwarm exist? What problem does it solve?",
+      "expected_sources": ["CLAUDE.md", "README.md"],
+      "expected_keywords": ["cloud", "hardware", "GPU", "swarm", "distributed"]
+    },
+    {
+      "id": "hw-01",
+      "query": "What hardware is in the test bed?",
+      "expected_sources": ["CLAUDE.md"],
+      "expected_keywords": ["RTX 3090", "ThinkCentre", "M710Q", "i7"]
+    },
+    {
+      "id": "hw-02",
+      "query": "How does hardware detection work?",
+      "expected_sources": ["CLAUDE.md", "README.md"],
+      "expected_keywords": ["nvidia-smi", "psutil", "CPU", "RAM", "GPU"]
+    },
+    {
+      "id": "cli-01",
+      "query": "How do I start the daemon?",
+      "expected_sources": ["CLAUDE.md", "README.md"],
+      "expected_keywords": ["daemon", "port", "7890"]
+    },
+    {
+      "id": "cli-02",
+      "query": "What CLI commands are available?",
+      "expected_sources": ["CLAUDE.md", "README.md"],
+      "expected_keywords": ["detect", "daemon", "swarm", "ping", "ask"]
+    },
+    {
+      "id": "ollama-01",
+      "query": "How does mycoSwarm integrate with Ollama?",
+      "expected_sources": ["CLAUDE.md", "README.md"],
+      "expected_keywords": ["Ollama", "localhost", "11434"]
+    },
+    {
+      "id": "security-01",
+      "query": "What security measures does mycoSwarm use?",
+      "expected_sources": ["CLAUDE.md", "README.md"],
+      "expected_keywords": ["sandbox", "LAN", "security", "isolation"]
+    },
+    {
+      "id": "coding-01",
+      "query": "What coding standards should I follow?",
+      "expected_sources": ["CLAUDE.md"],
+      "expected_keywords": ["Python", "type hints", "asyncio", "dataclasses", "pytest"]
+    },
+    {
+      "id": "coding-02",
+      "query": "What should I NOT do when contributing?",
+      "expected_sources": ["CLAUDE.md"],
+      "expected_keywords": ["cloud", "API", "configuration", "0.0.0.0"]
+    },
+    {
+      "id": "plan-01",
+      "query": "What features are planned for future development?",
+      "expected_sources": ["PLAN.md"],
+      "expected_keywords": ["phase", "retrieval", "context", "skills"]
+    },
+    {
+      "id": "plan-02",
+      "query": "What has been completed in the project roadmap?",
+      "expected_sources": ["PLAN.md"],
+      "expected_keywords": ["done", "phase", "completed"]
+    },
+    {
+      "id": "node-01",
+      "query": "How are node IDs generated and stored?",
+      "expected_sources": ["CLAUDE.md"],
+      "expected_keywords": ["node_id", "persistent", "myco-", "hex"]
+    },
+    {
+      "id": "api-01",
+      "query": "What API endpoints does each node serve?",
+      "expected_sources": ["CLAUDE.md", "README.md"],
+      "expected_keywords": ["health", "status", "peers", "tasks", "FastAPI"]
+    },
+    {
+      "id": "deps-01",
+      "query": "What are the minimum dependencies for mycoSwarm?",
+      "expected_sources": ["CLAUDE.md", "README.md"],
+      "expected_keywords": ["zeroconf", "psutil", "httpx", "fastapi", "uvicorn"]
+    }
+  ]
+}

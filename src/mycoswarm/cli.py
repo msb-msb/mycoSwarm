@@ -1478,7 +1478,7 @@ def cmd_chat(args):
 
 
 def cmd_library(args):
-    """Manage the document library (ingest, search, list, remove, reindex, reindex-sessions)."""
+    """Manage the document library (ingest, search, list, remove, reindex, reindex-sessions, auto-update, eval)."""
     from pathlib import Path
     from mycoswarm.library import (
         ingest_file, ingest_directory, search, list_documents, remove_document,
@@ -1594,6 +1594,15 @@ def cmd_library(args):
                 print(f"  🗑  Removed: {name}")
             total = len(result["updated"]) + len(result["added"]) + len(result["removed"])
             print(f"\n  📊 {total} change(s) applied")
+
+    elif action == "eval":
+        from mycoswarm.rag_eval import run_eval, save_results, print_results, load_previous_results
+
+        previous = load_previous_results()
+        print("🔬 Running RAG evaluation...")
+        results = run_eval(model=args.model, verbose=True)
+        save_results(results)
+        print_results(results, previous)
 
 
 def cmd_rag(args):
@@ -1897,10 +1906,10 @@ def main():
 
     # library
     library_parser = subparsers.add_parser(
-        "library", help="Manage the document library (ingest, search, list, remove, reindex, reindex-sessions, auto-update)"
+        "library", help="Manage the document library (ingest, search, list, remove, reindex, reindex-sessions, auto-update, eval)"
     )
     library_parser.add_argument(
-        "action", choices=["ingest", "search", "list", "remove", "reindex", "reindex-sessions", "auto-update"],
+        "action", choices=["ingest", "search", "list", "remove", "reindex", "reindex-sessions", "auto-update", "eval"],
         help="Action to perform",
     )
     library_parser.add_argument(

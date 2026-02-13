@@ -200,7 +200,7 @@
 - [x] Hybrid search: BM25 keyword matching alongside vector similarity (2026-02-12)
 - [x] Re-ranking: LLM ranks retrieved chunks by relevance before generating answer (2026-02-13)
 - [x] Auto-update pipeline: detect changed files in ~/mycoswarm-docs/ and re-index (2026-02-13)
-- [ ] RAG eval set: gold standard questions with known answers to measure quality
+- [x] RAG eval set: gold standard questions with known answers to measure quality (2026-02-13)
 
 ### Phase 20: Human Gap Architecture (Pre-Processing Gates)
 - [ ] Timing Gate: Wu Wei module — should I act now, later, or not at all?
@@ -257,9 +257,9 @@ Reference: docs/ARCHITECTURE-RAG.md
 - [x] Filter out noise before injecting into context (2026-02-13)
 
 #### 22c: RAG Eval Set
-- [ ] Gold standard question/answer pairs
-- [ ] Measure retrieval quality over time
-- [ ] Regression testing for RAG changes
+- [x] Gold standard question/answer pairs (2026-02-13)
+- [x] Measure retrieval quality over time (2026-02-13)
+- [x] Regression testing for RAG changes (2026-02-13)
 
 #### 22d: Auto-Update Pipeline
 - [ ] File watcher for changed documents
