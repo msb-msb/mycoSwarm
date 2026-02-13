@@ -248,9 +248,9 @@ Reference: docs/ARCHITECTURE-MEMORY.md
 Reference: docs/ARCHITECTURE-RAG.md
 
 #### 22a: Hybrid Search (Level 2)
-- [ ] BM25 keyword search alongside vector semantic search
-- [ ] Combine scores for better relevance
-- [ ] "Find the document where we decided X" queries
+- [x] BM25 keyword search alongside vector semantic search (2026-02-12)
+- [x] Combine scores for better relevance (2026-02-12)
+- [x] "Find the document where we decided X" queries (2026-02-12)
 
 #### 22b: Re-Ranking
 - [x] LLM re-ranks retrieved chunks by relevance to query (2026-02-13)
