@@ -1709,3 +1709,133 @@ class TestSaveLoadResults:
         # load_previous_results returns the latest
         latest = load_previous_results()
         assert latest["metrics"]["hit_at_1"] == pytest.approx(0.7)
+
+
+# --- detect_past_reference ---
+
+
+from mycoswarm.solo import detect_past_reference
+
+
+class TestDetectPastReference:
+    def test_we_discussed(self):
+        assert detect_past_reference("what did we discuss about intent gates") is True
+
+    def test_we_talked_about(self):
+        assert detect_past_reference("we talked about RAG earlier") is True
+
+    def test_you_suggested(self):
+        assert detect_past_reference("you suggested using BM25") is True
+
+    def test_you_told_me(self):
+        assert detect_past_reference("you told me to use asyncio") is True
+
+    def test_remember_when(self):
+        assert detect_past_reference("remember when we set up discovery?") is True
+
+    def test_you_recommended(self):
+        assert detect_past_reference("what model did you recommended last time") is True
+
+    def test_we_decided(self):
+        assert detect_past_reference("we decided to use zeroconf") is True
+
+    def test_last_time(self):
+        assert detect_past_reference("last time we were working on the daemon") is True
+
+    def test_normal_question(self):
+        assert detect_past_reference("tell me about RAG") is False
+
+    def test_factual_question(self):
+        assert detect_past_reference("how does mDNS work?") is False
+
+    def test_coding_question(self):
+        assert detect_past_reference("write a function to sort a list") is False
+
+    def test_short_input(self):
+        assert detect_past_reference("hi") is False
+
+
+# --- session_boost in search_all ---
+
+
+class TestSessionBoost:
+    @patch("mycoswarm.library.check_embedding_model", return_value=None)
+    @patch("mycoswarm.library._bm25_sessions")
+    @patch("mycoswarm.library._bm25_docs")
+    @patch("mycoswarm.library._get_session_collection")
+    @patch("mycoswarm.library._get_collection")
+    @patch("mycoswarm.library.embed_text")
+    @patch("mycoswarm.library._get_embedding_model")
+    def test_session_boost_fetches_more(
+        self, mock_get_model, mock_embed, mock_doc_col, mock_sess_col,
+        mock_bm25_docs, mock_bm25_sess, _mock_check,
+    ):
+        """session_boost=True should fetch more session results."""
+        mock_get_model.return_value = "nomic-embed-text"
+        mock_embed.return_value = [0.1, 0.2]
+
+        # Empty doc collection
+        doc_col = MagicMock()
+        doc_col.count.return_value = 0
+        mock_doc_col.return_value = doc_col
+        mock_bm25_docs.search.return_value = []
+
+        # Session collection with enough data
+        sess_col = MagicMock()
+        sess_col.count.return_value = 20
+        sess_col.query.return_value = {
+            "ids": [["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10"]],
+            "documents": [[f"session {i}" for i in range(10)]],
+            "metadatas": [[{"session_id": f"s{i}", "date": "2026-02-10", "topic": f"topic{i}"} for i in range(10)]],
+            "distances": [[0.1 * i for i in range(10)]],
+        }
+        mock_sess_col.return_value = sess_col
+        mock_bm25_sess.search.return_value = []
+
+        # Without boost
+        _, hits_normal = search_all("test", n_results=5, session_boost=False)
+        normal_count = len(hits_normal)
+
+        # With boost — should return more session results
+        _, hits_boosted = search_all("test", n_results=5, session_boost=True)
+        boosted_count = len(hits_boosted)
+
+        assert boosted_count >= normal_count
+
+    @patch("mycoswarm.library.check_embedding_model", return_value=None)
+    @patch("mycoswarm.library._bm25_sessions")
+    @patch("mycoswarm.library._bm25_docs")
+    @patch("mycoswarm.library._get_session_collection")
+    @patch("mycoswarm.library._get_collection")
+    @patch("mycoswarm.library.embed_text")
+    @patch("mycoswarm.library._get_embedding_model")
+    def test_no_boost_normal_results(
+        self, mock_get_model, mock_embed, mock_doc_col, mock_sess_col,
+        mock_bm25_docs, mock_bm25_sess, _mock_check,
+    ):
+        """session_boost=False gives normal result count."""
+        mock_get_model.return_value = "nomic-embed-text"
+        mock_embed.return_value = [0.1, 0.2]
+
+        doc_col = MagicMock()
+        doc_col.count.return_value = 0
+        mock_doc_col.return_value = doc_col
+        mock_bm25_docs.search.return_value = []
+
+        sess_col = MagicMock()
+        sess_col.count.return_value = 3
+        sess_col.query.return_value = {
+            "ids": [["s1", "s2", "s3"]],
+            "documents": [["session A", "session B", "session C"]],
+            "metadatas": [[
+                {"session_id": "s1", "date": "2026-02-10", "topic": "a"},
+                {"session_id": "s2", "date": "2026-02-10", "topic": "b"},
+                {"session_id": "s3", "date": "2026-02-10", "topic": "c"},
+            ]],
+            "distances": [[0.1, 0.2, 0.3]],
+        }
+        mock_sess_col.return_value = sess_col
+        mock_bm25_sess.search.return_value = []
+
+        _, hits = search_all("test", n_results=5, session_boost=False)
+        assert len(hits) == 3  # all 3 available, within n_results

@@ -637,12 +637,14 @@ def search_all(
     model: str | None = None,
     rerank_model: str | None = None,
     do_rerank: bool = False,
+    session_boost: bool = False,
 ) -> tuple[list[dict], list[dict]]:
     """Search BOTH document library and session memory with hybrid retrieval.
 
     Uses vector similarity (ChromaDB) + BM25 keyword matching, merged via
     Reciprocal Rank Fusion (RRF).  Embeds the query once.
     When do_rerank=True, passes candidates through LLM re-ranking.
+    When session_boost=True, fetches 2x session results (for past-reference queries).
     Returns (doc_hits, session_hits) so callers can format them
     with distinct labels ([D1]... vs [S1]...).
     """
@@ -659,6 +661,8 @@ def search_all(
 
     # When re-ranking, fetch more candidates for the LLM to filter
     n_candidates = n_results * 2 if do_rerank else n_results
+    # When session_boost is active, fetch 2x session candidates
+    n_session_candidates = n_candidates * 2 if session_boost else n_candidates
 
     # --- Document collection: hybrid search ---
     doc_hits: list[dict] = []
@@ -732,7 +736,7 @@ def search_all(
         sess_col = _get_session_collection()
         sess_count = sess_col.count()
         if sess_count > 0:
-            n_fetch = min(n_candidates * 2, sess_count)
+            n_fetch = min(n_session_candidates * 2, sess_count)
 
             # Vector search
             vec_results = sess_col.query(
@@ -777,7 +781,7 @@ def search_all(
             rrf_scores = _rrf_fuse(vec_ids_s, bm25_ids_s)
             sorted_ids = sorted(
                 rrf_scores, key=lambda x: rrf_scores[x], reverse=True,
-            )[:n_candidates]
+            )[:n_session_candidates]
 
             for doc_id in sorted_ids:
                 hit = sess_data[doc_id]

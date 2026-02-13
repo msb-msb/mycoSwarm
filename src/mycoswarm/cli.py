@@ -1163,7 +1163,11 @@ def cmd_chat(args):
                     continue
                 rag_query = parts[1]
                 from mycoswarm.library import search_all
-                doc_hits, session_hits = search_all(rag_query, n_results=5)
+                from mycoswarm.solo import detect_past_reference as _dpr
+                _past = _dpr(rag_query)
+                doc_hits, session_hits = search_all(
+                    rag_query, n_results=5, session_boost=_past,
+                )
                 if not doc_hits and not session_hits:
                     print("   No documents or sessions indexed. Try: mycoswarm library ingest")
                     continue
@@ -1268,9 +1272,10 @@ def cmd_chat(args):
         tool_sources: list[str] = []
 
         if auto_tools and len(user_input.split()) >= 5:
-            from mycoswarm.solo import classify_query
+            from mycoswarm.solo import classify_query, detect_past_reference
             print("   🤔 ...", end="", flush=True)
             classification = classify_query(user_input, model)
+            past_ref = detect_past_reference(user_input)
             # Clear the thinking indicator
             print("\r       \r", end="", flush=True)
 
@@ -1307,7 +1312,10 @@ def cmd_chat(args):
             # --- RAG search (documents — only when classified as rag) ---
             doc_hits: list[dict] = []
             if need_rag:
-                print("   📚 Checking your documents...", end="", flush=True)
+                if past_ref:
+                    print("   💭 Searching past conversations...", end="", flush=True)
+                else:
+                    print("   📚 Checking your documents...", end="", flush=True)
                 from mycoswarm.library import search as lib_search
                 doc_hits = lib_search(user_input, n_results=5)
                 if doc_hits:
@@ -1317,7 +1325,8 @@ def cmd_chat(args):
 
             # --- Session memory search (always — not gated by classifier) ---
             from mycoswarm.library import search_sessions
-            session_hits = search_sessions(user_input, n_results=5)
+            n_sessions = 10 if past_ref else 5
+            session_hits = search_sessions(user_input, n_results=n_sessions)
 
             # --- Format results ---
             for ri, hit in enumerate(doc_hits, 1):
@@ -1607,18 +1616,23 @@ def cmd_library(args):
 
 def cmd_rag(args):
     """Ask a question with document context via RAG."""
-    from mycoswarm.solo import check_daemon, check_ollama, pick_model, chat_stream
+    from mycoswarm.solo import check_daemon, check_ollama, pick_model, chat_stream, detect_past_reference
     from mycoswarm.library import search_all
 
     question = " ".join(args.question)
     do_rerank = not getattr(args, "no_rerank", False)
+    past_ref = detect_past_reference(question)
 
     # Search both document library and session memory
-    if do_rerank:
+    if past_ref:
+        print(f"💭 Searching past conversations...", end=" ", flush=True)
+    elif do_rerank:
         print(f"🔍 Searching + re-ranking...", end=" ", flush=True)
     else:
         print(f"🔍 Searching library...", end=" ", flush=True)
-    doc_hits, session_hits = search_all(question, n_results=5, do_rerank=do_rerank)
+    doc_hits, session_hits = search_all(
+        question, n_results=5, do_rerank=do_rerank, session_boost=past_ref,
+    )
 
     if not doc_hits and not session_hits:
         print("no results.")

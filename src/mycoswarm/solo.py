@@ -5,6 +5,7 @@ No mDNS, no orchestrator, no API server — just detect hardware and talk to Oll
 """
 
 import json
+import re
 import sys
 import time
 
@@ -113,6 +114,21 @@ def ask_direct(prompt: str, model: str) -> None:
 
     print(f"\n{'─' * 50}")
     print(f"  ⏱  {duration:.1f}s | {tps:.1f} tok/s | model: {model}")
+
+
+_PAST_REFERENCE_RE = re.compile(
+    r"(?i)\b(?:"
+    r"we discussed|we talked about|you said|you told me"
+    r"|we mentioned|remember when|what did we|did we discuss"
+    r"|last time|earlier conversation|before.{0,20}we"
+    r"|our conversation|you suggested|you recommended|we decided"
+    r")\b"
+)
+
+
+def detect_past_reference(query: str) -> bool:
+    """Return True if the query references past conversations."""
+    return bool(_PAST_REFERENCE_RE.search(query))
 
 
 def classify_query(query: str, model: str) -> str:
