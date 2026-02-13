@@ -329,13 +329,22 @@ mycoswarm chart bar \
 ### Phase 27: Email Tool
 Reference: OpenClaw's #1 tool (per Nate B. Jones)
 
+Environment:
+- Primary email: hello@mycoswarm.org
+- Client: Thunderbird (local mbox/maildir at ~/.thunderbird/*/Mail/)
+- Option A: Read directly from Thunderbird's local files (zero config, no IMAP needed)
+- Option B: IMAP/SMTP for broader compatibility
+- Option C: Thunderbird extension/add-on for tighter integration
+
 Research needed before implementation:
 - [ ] Research OpenClaw's email tool capabilities and approach
 - [ ] Research other local AI email tools (what exists, what's missing)
 - [ ] Define scope: read/filter/compose/reply/summarize?
+- [ ] Evaluate Thunderbird local file parsing (mbox format) vs IMAP approach
 
 Potential features:
-- [ ] IMAP/SMTP connection (local, no cloud API)
+- [ ] Thunderbird local mail reader (parse ~/.thunderbird mbox/maildir files directly)
+- [ ] IMAP/SMTP fallback for non-Thunderbird setups
 - [ ] Spam/priority classification via local LLM
 - [ ] Staleness detection: flag old unreplied threads
 - [ ] Email summarization: "what happened while I was away"
