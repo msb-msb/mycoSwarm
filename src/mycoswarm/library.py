@@ -541,13 +541,108 @@ def search_sessions(
     return hits
 
 
+# --- LLM Re-Ranking ---
+
+
+def _pick_rerank_model() -> str | None:
+    """Pick a small, fast model for re-ranking. Returns None if unavailable."""
+    try:
+        resp = httpx.get(f"{OLLAMA_BASE}/api/tags", timeout=5)
+        resp.raise_for_status()
+        models = [m["name"] for m in resp.json().get("models", [])]
+    except (httpx.ConnectError, httpx.TimeoutException, httpx.HTTPError):
+        return None
+
+    # Prefer small models for speed
+    for pattern in ("gemma3:1b", "gemma3:4b", "llama3.2:1b", "llama3.2:3b"):
+        for m in models:
+            if pattern in m:
+                return m
+
+    # Fall back to any available model
+    return models[0] if models else None
+
+
+def _score_chunk(query: str, text: str, llm_model: str) -> float:
+    """Ask the LLM to rate relevance of text to query. Returns 0-10."""
+    prompt = (
+        "Rate the relevance of this text to the question on a scale of 0-10.\n"
+        f"Question: {query}\n"
+        f"Text: {text[:1000]}\n"
+        "Reply with ONLY a number 0-10."
+    )
+    try:
+        resp = httpx.post(
+            f"{OLLAMA_BASE}/api/generate",
+            json={
+                "model": llm_model,
+                "prompt": prompt,
+                "options": {"temperature": 0.0, "num_predict": 8},
+                "stream": False,
+            },
+            timeout=30.0,
+        )
+        resp.raise_for_status()
+        raw = resp.json().get("response", "").strip()
+        # Extract first number from response
+        for token in raw.split():
+            token = token.strip(".,;:!?()[]")
+            try:
+                score = float(token)
+                return max(0.0, min(10.0, score))
+            except ValueError:
+                continue
+        return 5.0  # parse failure fallback
+    except Exception:
+        return 5.0
+
+
+def rerank(
+    query: str,
+    chunks: list[dict],
+    llm_model: str | None = None,
+    top_k: int = 5,
+    text_key: str = "text",
+) -> list[dict]:
+    """Re-rank retrieved chunks using LLM relevance scoring.
+
+    Each chunk is scored by a small LLM on 0-10 relevance.
+    Returns top_k chunks sorted by descending relevance score.
+    Each returned chunk gets a "rerank_score" field.
+    """
+    if not chunks:
+        return []
+
+    if llm_model is None:
+        llm_model = _pick_rerank_model()
+    if llm_model is None:
+        # No LLM available — return as-is, truncated
+        return chunks[:top_k]
+
+    scored: list[tuple[float, dict]] = []
+    for chunk in chunks:
+        text = chunk.get(text_key, chunk.get("summary", ""))
+        score = _score_chunk(query, text, llm_model)
+        chunk_copy = dict(chunk)
+        chunk_copy["rerank_score"] = score
+        scored.append((score, chunk_copy))
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+    return [item[1] for item in scored[:top_k]]
+
+
 def search_all(
-    query: str, n_results: int = 5, model: str | None = None,
+    query: str,
+    n_results: int = 5,
+    model: str | None = None,
+    rerank_model: str | None = None,
+    do_rerank: bool = False,
 ) -> tuple[list[dict], list[dict]]:
     """Search BOTH document library and session memory with hybrid retrieval.
 
     Uses vector similarity (ChromaDB) + BM25 keyword matching, merged via
     Reciprocal Rank Fusion (RRF).  Embeds the query once.
+    When do_rerank=True, passes candidates through LLM re-ranking.
     Returns (doc_hits, session_hits) so callers can format them
     with distinct labels ([D1]... vs [S1]...).
     """
@@ -562,13 +657,16 @@ def search_all(
     if query_embedding is None:
         return [], []
 
+    # When re-ranking, fetch more candidates for the LLM to filter
+    n_candidates = n_results * 2 if do_rerank else n_results
+
     # --- Document collection: hybrid search ---
     doc_hits: list[dict] = []
     try:
         doc_col = _get_collection(model)
         doc_count = doc_col.count()
         if doc_count > 0:
-            n_fetch = min(n_results * 2, doc_count)
+            n_fetch = min(n_candidates * 2, doc_count)
 
             # Vector search
             vec_results = doc_col.query(
@@ -619,7 +717,7 @@ def search_all(
             rrf_scores = _rrf_fuse(vec_ids, bm25_ids)
             sorted_ids = sorted(
                 rrf_scores, key=lambda x: rrf_scores[x], reverse=True,
-            )[:n_results]
+            )[:n_candidates]
 
             for doc_id in sorted_ids:
                 hit = doc_data[doc_id]
@@ -634,7 +732,7 @@ def search_all(
         sess_col = _get_session_collection()
         sess_count = sess_col.count()
         if sess_count > 0:
-            n_fetch = min(n_results * 2, sess_count)
+            n_fetch = min(n_candidates * 2, sess_count)
 
             # Vector search
             vec_results = sess_col.query(
@@ -679,7 +777,7 @@ def search_all(
             rrf_scores = _rrf_fuse(vec_ids_s, bm25_ids_s)
             sorted_ids = sorted(
                 rrf_scores, key=lambda x: rrf_scores[x], reverse=True,
-            )[:n_results]
+            )[:n_candidates]
 
             for doc_id in sorted_ids:
                 hit = sess_data[doc_id]
@@ -687,6 +785,17 @@ def search_all(
                 session_hits.append(hit)
     except Exception:
         pass
+
+    # --- LLM re-ranking ---
+    if do_rerank and (doc_hits or session_hits):
+        doc_hits = rerank(
+            query, doc_hits,
+            llm_model=rerank_model, top_k=n_results, text_key="text",
+        )
+        session_hits = rerank(
+            query, session_hits,
+            llm_model=rerank_model, top_k=n_results, text_key="summary",
+        )
 
     return doc_hits, session_hits
 

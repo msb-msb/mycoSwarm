@@ -1602,10 +1602,14 @@ def cmd_rag(args):
     from mycoswarm.library import search_all
 
     question = " ".join(args.question)
+    do_rerank = not getattr(args, "no_rerank", False)
 
     # Search both document library and session memory
-    print(f"🔍 Searching library...", end=" ", flush=True)
-    doc_hits, session_hits = search_all(question, n_results=5)
+    if do_rerank:
+        print(f"🔍 Searching + re-ranking...", end=" ", flush=True)
+    else:
+        print(f"🔍 Searching library...", end=" ", flush=True)
+    doc_hits, session_hits = search_all(question, n_results=5, do_rerank=do_rerank)
 
     if not doc_hits and not session_hits:
         print("no results.")
@@ -1923,6 +1927,10 @@ def main():
     rag_parser.add_argument("question", nargs="+", help="Your question")
     rag_parser.add_argument(
         "--model", type=str, default=None, help="Inference model"
+    )
+    rag_parser.add_argument(
+        "--no-rerank", action="store_true", default=False,
+        help="Skip LLM re-ranking of retrieved chunks",
     )
     rag_parser.add_argument(
         "--port", type=int, default=7890, help="Local daemon port"

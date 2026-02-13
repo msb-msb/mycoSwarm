@@ -198,7 +198,7 @@
 - [x] Per-topic session splitting: split multi-topic summaries into separate ChromaDB entries for better retrieval precision (2026-02-11)
 - [x] Session reindex command: `mycoswarm library reindex-sessions` drops + rebuilds session_memory from sessions.jsonl with topic splitting (2026-02-11)
 - [x] Hybrid search: BM25 keyword matching alongside vector similarity (2026-02-12)
-- [ ] Re-ranking: LLM ranks retrieved chunks by relevance before generating answer
+- [x] Re-ranking: LLM ranks retrieved chunks by relevance before generating answer (2026-02-13)
 - [x] Auto-update pipeline: detect changed files in ~/mycoswarm-docs/ and re-index (2026-02-13)
 - [ ] RAG eval set: gold standard questions with known answers to measure quality
 
@@ -253,8 +253,8 @@ Reference: docs/ARCHITECTURE-RAG.md
 - [ ] "Find the document where we decided X" queries
 
 #### 22b: Re-Ranking
-- [ ] LLM re-ranks retrieved chunks by relevance to query
-- [ ] Filter out noise before injecting into context
+- [x] LLM re-ranks retrieved chunks by relevance to query (2026-02-13)
+- [x] Filter out noise before injecting into context (2026-02-13)
 
 #### 22c: RAG Eval Set
 - [ ] Gold standard question/answer pairs

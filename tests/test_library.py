@@ -20,6 +20,7 @@ from mycoswarm.library import (
     list_documents,
     remove_document,
     reindex,
+    rerank,
     check_embedding_model,
     check_stale_documents,
     auto_update,
@@ -1309,3 +1310,172 @@ class TestAutoUpdate:
         assert result["updated"] == []
         assert result["added"] == []
         mock_remove.assert_called_once_with("gone.pdf")
+
+
+# --- rerank ---
+
+
+class TestRerank:
+    @patch("mycoswarm.library._score_chunk")
+    def test_sorts_by_llm_relevance(self, mock_score):
+        """rerank() should sort chunks by LLM-assigned score descending."""
+        # Assign scores: chunk C=9, chunk A=7, chunk B=3
+        mock_score.side_effect = [7.0, 3.0, 9.0]
+
+        chunks = [
+            {"text": "chunk A about cats", "source": "a.txt"},
+            {"text": "chunk B about weather", "source": "b.txt"},
+            {"text": "chunk C about machine learning", "source": "c.txt"},
+        ]
+
+        result = rerank("machine learning", chunks, llm_model="test-model", top_k=3)
+
+        assert len(result) == 3
+        assert result[0]["source"] == "c.txt"  # score 9
+        assert result[0]["rerank_score"] == 9.0
+        assert result[1]["source"] == "a.txt"  # score 7
+        assert result[2]["source"] == "b.txt"  # score 3
+
+    @patch("mycoswarm.library._score_chunk")
+    def test_top_k_truncation(self, mock_score):
+        """rerank() returns at most top_k results."""
+        mock_score.side_effect = [8.0, 6.0, 4.0, 2.0]
+
+        chunks = [
+            {"text": f"chunk {i}", "source": f"{i}.txt"}
+            for i in range(4)
+        ]
+
+        result = rerank("query", chunks, llm_model="test-model", top_k=2)
+        assert len(result) == 2
+
+    @patch("mycoswarm.library._score_chunk")
+    def test_handles_parse_failures_gracefully(self, mock_score):
+        """Parse failures default to score 5, don't crash."""
+        # First chunk gets a real score, second gets default 5
+        mock_score.side_effect = [9.0, 5.0]
+
+        chunks = [
+            {"text": "relevant text", "source": "a.txt"},
+            {"text": "ambiguous text", "source": "b.txt"},
+        ]
+
+        result = rerank("query", chunks, llm_model="test-model", top_k=2)
+
+        assert len(result) == 2
+        assert result[0]["rerank_score"] == 9.0
+        assert result[1]["rerank_score"] == 5.0
+
+    def test_empty_chunks(self):
+        """rerank() with empty list returns empty."""
+        assert rerank("query", [], llm_model="test-model") == []
+
+    @patch("mycoswarm.library._pick_rerank_model", return_value=None)
+    def test_no_llm_returns_truncated(self, _mock_pick):
+        """When no LLM available, return first top_k chunks unchanged."""
+        chunks = [
+            {"text": f"chunk {i}", "source": f"{i}.txt"}
+            for i in range(5)
+        ]
+
+        result = rerank("query", chunks, top_k=3)
+        assert len(result) == 3
+        assert result[0]["source"] == "0.txt"
+
+    @patch("mycoswarm.library._score_chunk")
+    def test_uses_summary_key_for_sessions(self, mock_score):
+        """rerank() with text_key='summary' reads the summary field."""
+        mock_score.return_value = 8.0
+
+        chunks = [{"summary": "Discussed beekeeping", "session_id": "s1"}]
+        result = rerank("bees", chunks, llm_model="test", top_k=1, text_key="summary")
+
+        assert len(result) == 1
+        # Verify _score_chunk was called with the summary text
+        mock_score.assert_called_once_with("bees", "Discussed beekeeping", "test")
+
+
+# --- search_all with rerank ---
+
+
+class TestSearchAllRerank:
+    @patch("mycoswarm.library.rerank")
+    @patch("mycoswarm.library.check_embedding_model", return_value=None)
+    @patch("mycoswarm.library._bm25_sessions")
+    @patch("mycoswarm.library._bm25_docs")
+    @patch("mycoswarm.library._get_session_collection")
+    @patch("mycoswarm.library._get_collection")
+    @patch("mycoswarm.library.embed_text")
+    @patch("mycoswarm.library._get_embedding_model")
+    def test_rerank_true_calls_rerank(
+        self, mock_get_model, mock_embed, mock_doc_col, mock_sess_col,
+        mock_bm25_docs, mock_bm25_sess, _mock_check, mock_rerank,
+    ):
+        """search_all with do_rerank=True should call rerank()."""
+        mock_get_model.return_value = "nomic-embed-text"
+        mock_embed.return_value = [0.1, 0.2]
+
+        doc_col = MagicMock()
+        doc_col.count.return_value = 3
+        doc_col.query.return_value = {
+            "ids": [["a::0", "b::0"]],
+            "documents": [["doc A", "doc B"]],
+            "metadatas": [[
+                {"source": "a.txt", "chunk_index": 0, "section": "u",
+                 "doc_type": ".txt", "file_date": 0.0, "embedding_model": "n"},
+                {"source": "b.txt", "chunk_index": 0, "section": "u",
+                 "doc_type": ".txt", "file_date": 0.0, "embedding_model": "n"},
+            ]],
+            "distances": [[0.1, 0.2]],
+        }
+        mock_doc_col.return_value = doc_col
+        mock_bm25_docs.search.return_value = []
+
+        sess_col = MagicMock()
+        sess_col.count.return_value = 0
+        mock_sess_col.return_value = sess_col
+        mock_bm25_sess.search.return_value = []
+
+        # rerank returns filtered results
+        mock_rerank.side_effect = lambda q, chunks, **kw: chunks[:1]
+
+        doc_hits, _ = search_all("test", n_results=5, do_rerank=True)
+
+        assert mock_rerank.call_count == 2  # once for docs, once for sessions
+
+    @patch("mycoswarm.library.rerank")
+    @patch("mycoswarm.library.check_embedding_model", return_value=None)
+    @patch("mycoswarm.library._bm25_sessions")
+    @patch("mycoswarm.library._bm25_docs")
+    @patch("mycoswarm.library._get_session_collection")
+    @patch("mycoswarm.library._get_collection")
+    @patch("mycoswarm.library.embed_text")
+    @patch("mycoswarm.library._get_embedding_model")
+    def test_rerank_false_skips_rerank(
+        self, mock_get_model, mock_embed, mock_doc_col, mock_sess_col,
+        mock_bm25_docs, mock_bm25_sess, _mock_check, mock_rerank,
+    ):
+        """search_all with do_rerank=False should NOT call rerank()."""
+        mock_get_model.return_value = "nomic-embed-text"
+        mock_embed.return_value = [0.1, 0.2]
+
+        doc_col = MagicMock()
+        doc_col.count.return_value = 1
+        doc_col.query.return_value = {
+            "ids": [["a::0"]],
+            "documents": [["doc A"]],
+            "metadatas": [[{"source": "a.txt", "chunk_index": 0, "section": "u",
+                           "doc_type": ".txt", "file_date": 0.0, "embedding_model": "n"}]],
+            "distances": [[0.1]],
+        }
+        mock_doc_col.return_value = doc_col
+        mock_bm25_docs.search.return_value = []
+
+        sess_col = MagicMock()
+        sess_col.count.return_value = 0
+        mock_sess_col.return_value = sess_col
+        mock_bm25_sess.search.return_value = []
+
+        search_all("test", n_results=5, do_rerank=False)
+
+        mock_rerank.assert_not_called()
