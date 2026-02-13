@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.1.5 — Unified Memory Search (2026-02-12)
+- Session memory and document RAG now searched together
+- [S] citations for past conversations, [D] for documents
+- Date and topic labels on session citations
+- Fixed context pollution between turns in multi-turn chat
+- 136 tests passing
+
 ## v0.1.4 — Session Memory (2026-02-11)
 - Session-as-RAG: semantic search across all past conversations
 - Multi-topic splitting: sessions covering multiple topics indexed as separate searchable chunks

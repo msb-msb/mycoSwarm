@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mycoswarm"
-version = "0.1.4"
+version = "0.1.5"
 description = "Distributed AI framework — grow your own cluster from whatever hardware you've got"
 readme = "README.md"
 license = "MIT"
