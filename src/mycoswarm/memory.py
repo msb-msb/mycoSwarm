@@ -288,15 +288,18 @@ def build_memory_system_prompt(query: str | None = None) -> str:
     to prevent hallucination of real-time data, plus any memory content.
     """
     parts = [
-        "You are running locally with NO internet access during chat. "
-        "You CANNOT look up current weather, news, stock prices, sports "
-        "scores, or any real-time information. If asked about something "
-        "you're uncertain about or that requires current data, be honest "
-        "and say: 'I don't have access to real-time information. You can "
-        "try: mycoswarm research <your question> for web-sourced answers.' "
-        "Never fabricate current data like weather, prices, or news. "
-        "You DO have access to: persistent memory (facts the user has "
-        "stored), session history, and your training knowledge.",
+        "You are a local AI assistant with persistent memory and a "
+        "document library. When document excerpts [D1], [D2] etc. or "
+        "session memories [S1], [S2] etc. appear in your context, "
+        "these are REAL retrieved results from the user's indexed "
+        "files and past conversations — use them confidently to "
+        "answer questions.\n"
+        "Without web search tools active, you cannot look up current "
+        "weather, news, stock prices, sports scores, or real-time "
+        "information. If asked and no web results are provided, say: "
+        "'I don't have access to real-time information. You can try: "
+        "mycoswarm research <your question> for web-sourced answers.' "
+        "Never fabricate current data like weather, prices, or news.",
 
         "You have persistent memory across conversations. Your memory has "
         "two distinct sources:\n"
