@@ -216,6 +216,14 @@
 - [x] 27 tests in tests/test_intent.py (gate model picker, intent classify, worker handler, backcompat, routing registration, embedding exclusion)
 - [x] Intent-aware retrieval: `search_all()` accepts `intent=` dict — mode=chat skips RAG; hard scope exclusion: scope=session/personal → zero doc results, scope=docs/documents → zero session results (2026-02-13)
 - [x] Chat loop unified: replaced separate `search()` + `search_sessions()` with single `search_all(intent=)` call; scope-aware progress indicators (2026-02-13)
+- [x] RAG grounding pipeline fixes (2026-02-14):
+  - Source filtering: named-file queries (e.g. "PLAN.md") return only chunks from that file
+  - Section header boost: +0.05 RRF for word-boundary section matches (e.g. "Phase 20" boosts matching section)
+  - User-message injection: RAG context merged into user message instead of separate system message
+  - Output truncation: source-filtered results capped to n_results
+  - `--debug` flag: full pipeline visibility (intent/retrieval/hits/prompt/messages), skips session save to prevent poisoning
+  - Intent override: docs scope downgrades web_and_rag → rag
+  - Memory system prompt rewrite: explicitly trusts [D1]/[S1] excerpts while keeping real-time data boundary
 - [x] Full suite: 232 tests passing
 - [x] Released v0.1.6 (2026-02-13)
 
