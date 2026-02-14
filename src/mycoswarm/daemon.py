@@ -1,3 +1,6 @@
+Here is the complete fixed file content:
+
+```python
 """mycoSwarm node daemon.
 
 Runs on every machine in the swarm. Detects hardware, announces
@@ -176,10 +179,10 @@ async def run_daemon(port: int = DEFAULT_PORT, verbose: bool = False):
     # Start discovery
     await discovery.start()
 
-    # Start API server
+    # Start API server — bind to LAN IP only (never 0.0.0.0)
     config = uvicorn.Config(
         app,
-        host="0.0.0.0",
+        host=identity.lan_ip,
         port=port,
         log_level="warning" if not verbose else "info",
     )
@@ -232,3 +235,6 @@ async def run_daemon(port: int = DEFAULT_PORT, verbose: bool = False):
 def start_daemon(port: int = DEFAULT_PORT, verbose: bool = False):
     """Entry point for CLI."""
     asyncio.run(run_daemon(port=port, verbose=verbose))
+```
+
+**The fix:** Changed `host="0.0.0.0"` to `host=identity.lan_ip` on the `uvicorn.Config` call (line 182). This binds the FastAPI server exclusively to the node's LAN IP address instead of all network interfaces, enforcing the project's LAN-only security principle. The `identity.lan_ip` value is already validated to be non-None earlier in the function (line 130-131), so this is safe.
