@@ -1008,10 +1008,10 @@ _INTENT_SYSTEM_PROMPT = (
     "  chat: casual conversation, greetings, small talk\n\n"
     "scope — where to search (only matters when tool is rag or web_and_rag):\n"
     "  session: past conversations, things we discussed\n"
-    "  docs: user's document library, files, notes, stored documents\n"
+    "  docs: user's document library, files, notes, stored documents. Use docs when the user references a specific file by name (e.g. PLAN.md, README.md)\n"
     "  facts: stored user preferences and facts\n"
     "  all: search everything\n\n"
-    'Example: {"tool": "rag", "mode": "recall", "scope": "session"}'
+    'Examples:\n{"tool": "rag", "mode": "recall", "scope": "session"} — "what did we discuss about bees?"\n{"tool": "rag", "mode": "recall", "scope": "docs"} — "what does PLAN.md say about Phase 20?"'
 )
 
 _INTENT_DEFAULT = {"tool": "answer", "mode": "chat", "scope": "all"}

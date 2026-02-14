@@ -959,6 +959,8 @@ def cmd_chat(args):
             )
         return
 
+    debug = getattr(args, "debug", False)
+
     daemon_up = check_daemon(args.port)
 
     if daemon_up:
@@ -1036,6 +1038,9 @@ def cmd_chat(args):
     auto_tools = True  # agentic tool routing on by default
 
     def _save():
+        if debug:
+            print("   🐛 DEBUG: Skipping session save/summarize in debug mode.")
+            return
         _save_session(session_name, messages, model)
         print(f"   Session saved: {session_name}")
 
@@ -1194,14 +1199,16 @@ def cmd_chat(args):
                     cite_parts.append("[S1], [S2] for past conversations")
                 cite_hint = "Cite using " + " and ".join(cite_parts) + "." if cite_parts else ""
                 rag_system = (
-                    f"Answer using the provided context. {cite_hint} "
-                    "If the excerpts don't contain enough information, "
-                    "say so.\n\nRETRIEVED CONTEXT:\n" + rag_context
+                    "IMPORTANT: The excerpts below are REAL content retrieved from "
+                    "the user's actual files and past conversations. Use them as "
+                    "your primary source of truth. Quote specific details from the "
+                    "excerpts. Do NOT say you cannot access files — the content is "
+                    f"provided below. {cite_hint}\n\nRETRIEVED CONTEXT:\n" + rag_context
                 )
-                # Inject as a one-off system message for this turn
+                # Inject context into user message for better grounding
+                augmented_query = rag_system + "\n\nUSER QUESTION: " + rag_query
                 rag_messages = list(messages) + [
-                    {"role": "system", "content": rag_system},
-                    {"role": "user", "content": rag_query},
+                    {"role": "user", "content": augmented_query},
                 ]
                 total_hits = len(doc_hits) + len(session_hits)
                 print(f"   📚 {total_hits} excerpts found ({len(doc_hits)} docs, {len(session_hits)} sessions).\n")
@@ -1321,6 +1328,9 @@ def cmd_chat(args):
             # Show intent debug line (replaces "Classifying..." indicator)
             print(f"\r   🤔 intent: {intent_result['tool']}/{intent_result.get('mode', '?')}/{intent_result.get('scope', '?')}", flush=True)
 
+            if debug:
+                print(f"🐛 DEBUG: INTENT: {intent_result}", flush=True)
+
             classification = intent_result["tool"]
             past_ref = intent_result.get("scope") in ("personal", "session")
             # Secondary signal: regex check in case LLM missed it
@@ -1384,6 +1394,15 @@ def cmd_chat(args):
                 else:
                     print(" no results", flush=True)
 
+                if debug:
+                    import re as _re
+                    _sf = _re.search(r'\b(\w+\.(?:md|txt|py|json|yaml|toml|cfg|csv))\b', user_input, _re.IGNORECASE)
+                    print(f"🐛 DEBUG: RETRIEVAL: source_filter={_sf.group(1) if _sf else None} scope={scope} past_ref={past_ref}", flush=True)
+                    for _di, _dh in enumerate(doc_hits, 1):
+                        print(f"🐛 DEBUG: DOC HIT [{_di}]: source={_dh.get('source')} chunk={_dh.get('chunk_index')} rrf={_dh.get('rrf_score', 'n/a')} text={_dh.get('text', '')[:100]!r}", flush=True)
+                    for _si, _sh in enumerate(session_hits, 1):
+                        print(f"🐛 DEBUG: SESSION HIT [{_si}]: date={_sh.get('date')} topic={_sh.get('topic', '')} text={_sh.get('summary', '')[:100]!r}", flush=True)
+
             # --- Format results ---
             for ri, hit in enumerate(doc_hits, 1):
                 section = hit.get("section", "untitled")
@@ -1434,11 +1453,14 @@ def cmd_chat(args):
         # Swap "no internet" boundary when web results are present
         _send_msgs = list(messages)
 
-        # --- Inject tool context into send copy only (not persistent history) ---
-        # Insert before the final user message so the model sees context for this turn.
+        # --- Inject tool context into the user message (not persistent history) ---
+        # Merge context into the final user message so the model sees it together.
         # Previous turns' RAG/web results are NOT carried forward.
         if tool_context:
-            _send_msgs.insert(-1, {"role": "system", "content": tool_context})
+            _send_msgs[-1] = {
+                "role": "user",
+                "content": tool_context + "\n\nUSER QUESTION: " + _send_msgs[-1]["content"],
+            }
         if "web" in tool_sources and _send_msgs and _send_msgs[0].get("role") == "system":
             _no_net = (
                 "You are running locally with NO internet access during chat. "
@@ -1459,6 +1481,19 @@ def cmd_chat(args):
                 **_send_msgs[0],
                 "content": _send_msgs[0]["content"].replace(_no_net, _web_aware),
             }
+
+        if debug:
+            if tool_context:
+                print(f"🐛 DEBUG: PROMPT: tool_context ({len(tool_context)} chars):", flush=True)
+                for _line in tool_context.split("\n")[:20]:
+                    print(f"🐛 DEBUG:   {_line[:200]}", flush=True)
+                if tool_context.count("\n") > 20:
+                    print(f"🐛 DEBUG:   ... ({tool_context.count(chr(10)) - 20} more lines)", flush=True)
+            print(f"🐛 DEBUG: MESSAGES: {len(_send_msgs)} total", flush=True)
+            for _mi, _msg in enumerate(_send_msgs):
+                _role = _msg.get("role", "?")
+                _content = _msg.get("content", "")
+                print(f"🐛 DEBUG:   [{_mi}] {_role}: {_content[:200]!r}", flush=True)
 
         if not daemon_up:
             # Single-node mode — direct to Ollama
@@ -1724,9 +1759,11 @@ def cmd_rag(args):
         cite_parts.append("[S1], [S2] for past conversations")
     cite_hint = "Cite using " + " and ".join(cite_parts) + "." if cite_parts else ""
     system_prompt = (
-        f"Answer using the provided context. {cite_hint} "
-        "If the excerpts don't contain enough information, "
-        "say so.\n\n"
+        "IMPORTANT: The excerpts below are REAL content retrieved from "
+        "the user's actual files and past conversations. Use them as "
+        "your primary source of truth. Quote specific details from the "
+        "excerpts. Do NOT say you cannot access files — the content is "
+        f"provided below. {cite_hint}\n\n"
         f"RETRIEVED CONTEXT:\n{context_block}"
     )
 
@@ -1969,6 +2006,10 @@ def main():
     chat_parser.add_argument(
         "--list", dest="list_sessions", action="store_true", default=False,
         help="List saved chat sessions",
+    )
+    chat_parser.add_argument(
+        "--debug", action="store_true", default=False,
+        help="Show full processing pipeline debug output",
     )
     chat_parser.set_defaults(func=cmd_chat)
 

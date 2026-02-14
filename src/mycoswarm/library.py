@@ -692,6 +692,12 @@ def search_all(
         elif scope in ("docs", "documents"):
             n_session_candidates = 0
 
+    # --- Source filter: extract filename from query ---
+    _source_re = re.search(
+        r'\b(\w+\.(?:md|txt|py|json|yaml|toml|cfg|csv))\b', query, re.IGNORECASE,
+    )
+    source_filter = _source_re.group(1) if _source_re else None
+
     # --- Document collection: hybrid search ---
     doc_hits: list[dict] = []
     try:
@@ -699,6 +705,20 @@ def search_all(
         doc_count = doc_col.count()
         if doc_count > 0:
             n_fetch = min(n_candidates * 2, doc_count)
+
+            # Widen pool when targeting a specific source file
+            if source_filter:
+                try:
+                    all_meta = doc_col.get(include=["metadatas"])["metadatas"]
+                    source_count = sum(
+                        1 for m in all_meta
+                        if m.get("source", "").lower() == source_filter.lower()
+                    )
+                    n_candidates = max(n_candidates, source_count)
+                    n_fetch = max(n_fetch, source_count * 2)
+                    n_fetch = min(n_fetch, doc_count)
+                except Exception:
+                    pass
 
             # Vector search
             vec_results = doc_col.query(
@@ -747,9 +767,31 @@ def search_all(
 
             # RRF fusion
             rrf_scores = _rrf_fuse(vec_ids, bm25_ids)
+
+            # Section header boost: if capitalized/numeric query terms
+            # match a chunk's section heading, boost its RRF score
+            _query_terms = [
+                w.strip("?.,!:") for w in query.split()
+                if w[0:1].isupper() or w.strip("?.,!:").isdigit()
+            ]
+            if _query_terms:
+                for did, score in rrf_scores.items():
+                    section = doc_data[did].get("section", "").lower()
+                    section_words = set(re.findall(r'\b\w+\b', section))
+                    matches = sum(1 for t in _query_terms if t.lower() in section_words)
+                    if matches >= 2:
+                        rrf_scores[did] = score + 0.05
+
             sorted_ids = sorted(
                 rrf_scores, key=lambda x: rrf_scores[x], reverse=True,
-            )[:n_candidates]
+            )
+            # Source filter: if query mentions a specific file, keep only those chunks
+            if source_filter:
+                sorted_ids = [
+                    did for did in sorted_ids
+                    if doc_data[did]["source"].lower() == source_filter.lower()
+                ]
+            sorted_ids = sorted_ids[:n_candidates]
 
             for doc_id in sorted_ids:
                 hit = doc_data[doc_id]
@@ -828,6 +870,10 @@ def search_all(
             query, session_hits,
             llm_model=rerank_model, top_k=n_results, text_key="summary",
         )
+
+    # Final truncation: never return more than n_results
+    doc_hits = doc_hits[:n_results]
+    session_hits = session_hits[:n_results]
 
     return doc_hits, session_hits
 
