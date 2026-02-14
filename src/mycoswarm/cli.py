@@ -1036,6 +1036,7 @@ def cmd_chat(args):
     print(f"{'─' * 50}")
 
     auto_tools = True  # agentic tool routing on by default
+    session_rag_context: list[str] = []  # accumulated RAG context for grounding check
 
     def _save():
         if debug:
@@ -1045,15 +1046,22 @@ def cmd_chat(args):
         print(f"   Session saved: {session_name}")
 
         # Summarize session for persistent memory
-        from mycoswarm.memory import summarize_session, save_session_summary
+        from mycoswarm.memory import (
+            summarize_session, save_session_summary, compute_grounding_score,
+        )
         # Only summarize if there are user+assistant messages (skip system-only)
         user_msgs = [m for m in messages if m["role"] in ("user", "assistant")]
         if len(user_msgs) >= 2:
             print("   Summarizing session...", end=" ", flush=True)
             summary = summarize_session(messages, model)
             if summary:
-                save_session_summary(session_name, model, summary, len(user_msgs))
-                print("done.")
+                user_texts = [m["content"] for m in user_msgs if m["role"] == "user"]
+                gs = compute_grounding_score(summary, user_texts, session_rag_context)
+                save_session_summary(
+                    session_name, model, summary, len(user_msgs),
+                    grounding_score=gs,
+                )
+                print(f"done. (grounding: {gs:.0%})")
             else:
                 print("skipped.")
         else:
@@ -1446,6 +1454,10 @@ def cmd_chat(args):
                     f"Use the following context to answer. {cite_hint}\n\n"
                     + "\n\n".join(context_sections)
                 )
+
+            # Accumulate RAG context for session grounding check
+            if rag_context_parts:
+                session_rag_context.extend(rag_context_parts)
 
         # --- Send message ---
         messages.append({"role": "user", "content": user_input})

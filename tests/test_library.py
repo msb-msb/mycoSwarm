@@ -25,6 +25,7 @@ from mycoswarm.library import (
     check_stale_documents,
     auto_update,
     _extract_chunk_sections,
+    _detect_contradictions,
     _save_embedding_model,
     _load_embedding_model,
     _rrf_fuse,
@@ -2115,3 +2116,179 @@ class TestSourcePriority:
         assert doc_hits[0]["rrf_score"] == pytest.approx(
             session_hits[0]["rrf_score"] * 2.0, rel=1e-4,
         )
+
+
+# --- Grounding Score Gating ---
+
+
+class TestGroundingScoreGating:
+    @patch("mycoswarm.library.index_session_summary")
+    @patch("mycoswarm.library._get_embedding_model")
+    def test_reindex_skips_low_grounding(self, mock_get_model, mock_index, tmp_path, monkeypatch):
+        """reindex_sessions should skip entries with grounding_score < 0.3."""
+        import json as _json
+        import chromadb
+
+        mock_get_model.return_value = "nomic-embed-text"
+        mock_index.return_value = True
+
+        chroma_dir = tmp_path / "chroma"
+        chroma_dir.mkdir()
+        monkeypatch.setattr("mycoswarm.library.CHROMA_DIR", chroma_dir)
+
+        sessions_path = tmp_path / "sessions.jsonl"
+        entries = [
+            {"session_name": "good", "model": "m", "timestamp": "2026-02-10T10:00:00",
+             "summary": "Well-grounded session about Python", "message_count": 5,
+             "grounding_score": 0.85},
+            {"session_name": "bad", "model": "m", "timestamp": "2026-02-10T11:00:00",
+             "summary": "Hallucinated nonsense about weather", "message_count": 3,
+             "grounding_score": 0.1},
+            {"session_name": "legacy", "model": "m", "timestamp": "2026-02-10T12:00:00",
+             "summary": "Old session without grounding score", "message_count": 4},
+        ]
+        sessions_path.write_text("\n".join(_json.dumps(e) for e in entries) + "\n")
+
+        from mycoswarm import memory
+        monkeypatch.setattr(memory, "SESSIONS_PATH", sessions_path)
+        monkeypatch.setattr(
+            "mycoswarm.memory.split_session_topics",
+            lambda s, m: [{"topic": "general", "summary": s}],
+        )
+
+        stats = reindex_sessions(model="nomic-embed-text")
+
+        # "good" and "legacy" indexed (legacy defaults to 1.0), "bad" skipped
+        assert stats["sessions"] == 3
+        assert stats["topics"] == 2
+        assert stats["failed"] == 1  # the low-grounding entry
+
+    @patch("mycoswarm.library.check_embedding_model", return_value=None)
+    @patch("mycoswarm.library._bm25_sessions")
+    @patch("mycoswarm.library._bm25_docs")
+    @patch("mycoswarm.library._get_session_collection")
+    @patch("mycoswarm.library._get_collection")
+    @patch("mycoswarm.library.embed_text")
+    @patch("mycoswarm.library._get_embedding_model")
+    def test_grounding_score_reduces_rrf(
+        self, mock_get_model, mock_embed, mock_doc_col, mock_sess_col,
+        mock_bm25_docs, mock_bm25_sess, _mock_check,
+    ):
+        """Session hits with low grounding_score get reduced RRF scores."""
+        mock_get_model.return_value = "nomic-embed-text"
+        mock_embed.return_value = [0.1, 0.2]
+
+        # Empty doc collection
+        doc_col = MagicMock()
+        doc_col.count.return_value = 0
+        mock_doc_col.return_value = doc_col
+        mock_bm25_docs.search.return_value = []
+
+        # Two session hits: one well-grounded, one poorly grounded
+        sess_col = MagicMock()
+        sess_col.count.return_value = 2
+        sess_col.query.return_value = {
+            "ids": [["s-good", "s-bad"]],
+            "documents": [["Well-grounded session", "Poorly grounded session"]],
+            "metadatas": [[
+                {"session_id": "s-good", "date": "2026-02-10", "topic": "python",
+                 "grounding_score": 0.95},
+                {"session_id": "s-bad", "date": "2026-02-11", "topic": "python",
+                 "grounding_score": 0.3},
+            ]],
+            "distances": [[0.10, 0.10]],  # same vector distance
+        }
+        mock_sess_col.return_value = sess_col
+        mock_bm25_sess.search.return_value = []
+
+        _, session_hits = search_all("python")
+
+        assert len(session_hits) == 2
+        # Well-grounded hit should have higher effective RRF score
+        good = next(h for h in session_hits if h["session_id"] == "s-good")
+        bad = next(h for h in session_hits if h["session_id"] == "s-bad")
+        assert good["rrf_score"] > bad["rrf_score"]
+        assert good["grounding_score"] == 0.95
+        assert bad["grounding_score"] == 0.3
+
+
+# --- Contradiction Detection ---
+
+
+class TestContradictionDetection:
+    def test_contradicting_session_dropped(self):
+        """Session hit with low grounding that contradicts a doc is dropped."""
+        doc_hits = [{
+            "text": "Phase 20: Intent Classification Gate — adds structured intent "
+                    "classification as a distributed swarm task with tool scope confidence",
+            "source": "PLAN.md",
+            "rrf_score": 0.03,
+        }]
+        session_hits = [{
+            "summary": "Phase 20 was about automated testing infrastructure and CI pipelines",
+            "session_id": "s1",
+            "date": "2026-02-10",
+            "rrf_score": 0.02,
+            "grounding_score": 0.2,
+        }]
+
+        result = _detect_contradictions(doc_hits, session_hits)
+        assert len(result) == 0  # contradicting session dropped
+
+    def test_non_contradicting_session_kept(self):
+        """Session hit that aligns with the doc is kept."""
+        doc_hits = [{
+            "text": "Phase 20: Intent Classification Gate — adds structured intent "
+                    "classification as a distributed swarm task",
+            "source": "PLAN.md",
+            "rrf_score": 0.03,
+        }]
+        session_hits = [{
+            "summary": "We worked on Phase 20 Intent Classification adding the gate model",
+            "session_id": "s1",
+            "date": "2026-02-10",
+            "rrf_score": 0.02,
+            "grounding_score": 0.4,
+        }]
+
+        result = _detect_contradictions(doc_hits, session_hits)
+        # Overlapping context windows share "intent", "classification", "phase" → kept
+        assert len(result) == 1
+        assert result[0]["session_id"] == "s1"
+
+    def test_high_grounding_skips_check(self):
+        """Session hits with grounding_score >= 0.5 are never dropped."""
+        doc_hits = [{
+            "text": "Phase 20: Intent Classification Gate",
+            "source": "PLAN.md",
+            "rrf_score": 0.03,
+        }]
+        session_hits = [{
+            "summary": "Phase 20 was about automated testing infrastructure",
+            "session_id": "s1",
+            "date": "2026-02-10",
+            "rrf_score": 0.02,
+            "grounding_score": 0.8,  # high confidence → skip check
+        }]
+
+        result = _detect_contradictions(doc_hits, session_hits)
+        assert len(result) == 1
+
+    def test_no_docs_returns_all_sessions(self):
+        """With no doc_hits, all session hits are kept."""
+        session_hits = [{
+            "summary": "Random session about something",
+            "session_id": "s1",
+            "date": "2026-02-10",
+            "rrf_score": 0.02,
+            "grounding_score": 0.1,
+        }]
+
+        result = _detect_contradictions([], session_hits)
+        assert len(result) == 1
+
+    def test_no_sessions_returns_empty(self):
+        """With no session_hits, returns empty list."""
+        doc_hits = [{"text": "Some doc content", "source": "a.txt", "rrf_score": 0.03}]
+        result = _detect_contradictions(doc_hits, [])
+        assert result == []

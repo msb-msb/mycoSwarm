@@ -110,8 +110,44 @@ def load_session_summaries(limit: int = 10) -> list[dict]:
     return summaries[-limit:]
 
 
+def compute_grounding_score(
+    summary: str,
+    user_messages: list[str],
+    rag_context: list[str],
+) -> float:
+    """Check what fraction of summary claims are grounded in context.
+
+    Extracts key terms (capitalized words, quoted phrases) from the summary
+    and checks how many appear in the user messages or RAG context.
+    Returns 0.0-1.0 (fraction of grounded terms).  Returns 1.0 if no
+    extractable terms (nothing to check → assume grounded).
+    """
+    import re as _re
+
+    terms: set[str] = set()
+    # Capitalized words (proper nouns, technical terms, >2 chars)
+    for word in summary.split():
+        cleaned = word.strip(".,;:!?\"'()-")
+        if len(cleaned) > 2 and cleaned[0:1].isupper():
+            terms.add(cleaned.lower())
+    # Quoted phrases
+    for match in _re.findall(r'"([^"]+)"', summary):
+        terms.add(match.lower())
+    for match in _re.findall(r"'([^']+)'", summary):
+        if len(match) > 2:
+            terms.add(match.lower())
+
+    if not terms:
+        return 1.0
+
+    corpus = " ".join(user_messages + rag_context).lower()
+    grounded = sum(1 for t in terms if t in corpus)
+    return round(grounded / len(terms), 4)
+
+
 def save_session_summary(
     name: str, model: str, summary: str, count: int,
+    grounding_score: float | None = None,
 ) -> None:
     """Append one session summary to the JSONL file and index into ChromaDB."""
     _ensure_dir()
@@ -123,6 +159,7 @@ def save_session_summary(
         "summary": summary,
         "message_count": count,
         "source_type": "model_generated",
+        "grounding_score": grounding_score if grounding_score is not None else 1.0,
     }
     with open(SESSIONS_PATH, "a") as f:
         f.write(json.dumps(entry) + "\n")

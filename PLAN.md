@@ -399,6 +399,44 @@ mycoswarm email draft     — compose with context
 mycoswarm email triage    — sort inbox into buckets
 ```
 
+### Phase 28: Multi-Source Ingest Pipeline
+Reference: Lessons from Wise Advisor multi-domain RAG system
+
+#### 28a: Source Type Detection
+- [ ] Auto-detect source type on ingest: book, transcript, newsletter, working doc, code
+- [ ] Apply type-specific chunking strategy per source
+- [ ] Store source_type in chunk metadata for retrieval weighting
+
+#### 28b: Book Ingestion
+- [ ] Chapter/section-aware chunking for PDFs
+- [ ] Table of contents extraction for section headers
+- [ ] Key concept extraction per chapter (fact store integration)
+- [ ] Large file handling: progress bar, incremental indexing
+
+#### 28c: Transcript Ingestion
+- [ ] Speaker detection and labeling
+- [ ] Timestamp preservation in chunk metadata
+- [ ] Topic segmentation within long transcripts
+- [ ] Integration with existing transcript scraper
+
+#### 28d: Newsletter / Article Ingestion
+- [ ] Date and source tagging on ingest
+- [ ] Deduplication across issues (same story, different dates)
+- [ ] Recency weighting: newer articles rank higher
+- [ ] Batch ingest from folder
+
+#### 28e: Working Document Sync
+- [ ] Detect file changes and re-ingest automatically
+- [ ] Version-aware: don't duplicate unchanged chunks
+- [ ] Stale chunk cleanup when source file is updated
+
+#### 28f: Cross-Source Retrieval
+- [ ] Query routing: "what did the Wu Wei book say" vs "what did the podcast mention" vs "what's in my notes"
+- [ ] Source-type weighting: books for depth, transcripts for recency, newsletters for breadth
+- [ ] Unified search_all() with source_type filter parameter
+
+Principle: "Different knowledge streams flow at different speeds. The system should honor each stream's natural rhythm — Wu Wei applied to information architecture."
+
 ## Next
 
 ### Phase 5b: Cross-Node Inference (remaining)

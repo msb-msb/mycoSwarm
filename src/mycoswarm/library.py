@@ -410,6 +410,7 @@ def index_session_summary(
     date: str,
     model: str | None = None,
     topic: str | None = None,
+    grounding_score: float | None = None,
 ) -> bool:
     """Index a session summary into the session_memory ChromaDB collection.
 
@@ -430,6 +431,7 @@ def index_session_summary(
         "date": date,
         "topic_keywords": topic_keywords,
         "embedding_model": model,
+        "grounding_score": grounding_score if grounding_score is not None else 1.0,
     }
     if topic is not None:
         metadata["topic"] = topic
@@ -477,8 +479,14 @@ def reindex_sessions(model: str | None = None) -> dict:
         ts = entry.get("timestamp", "")
         chat_model = entry.get("model", "")
         date = ts[:10] if ts else ""
+        grounding_score = entry.get("grounding_score", 1.0)
 
         if not summary:
+            continue
+
+        # Skip sessions with low grounding confidence (likely hallucinated)
+        if grounding_score < 0.3:
+            stats["failed"] += 1
             continue
 
         topics = split_session_topics(summary, chat_model)
@@ -489,6 +497,7 @@ def reindex_sessions(model: str | None = None) -> dict:
                 date=date,
                 model=model,
                 topic=t["topic"],
+                grounding_score=grounding_score,
             )
             if ok:
                 stats["topics"] += 1
@@ -635,6 +644,98 @@ def rerank(
 
     scored.sort(key=lambda x: x[0], reverse=True)
     return [item[1] for item in scored[:top_k]]
+
+
+def _detect_contradictions(
+    doc_hits: list[dict], session_hits: list[dict],
+) -> list[dict]:
+    """Drop session hits that contradict a document chunk on the same topic.
+
+    For each session hit, finds shared "anchor terms" (capitalized words
+    appearing in both the session summary and a doc chunk).  For each
+    anchor, extracts a 10-word context window from both texts and computes
+    word-overlap ratio.  If overlap < 0.2 AND the session's grounding_score
+    < 0.5, the session hit is dropped (documents are primary sources).
+
+    Returns the filtered session_hits list.
+    """
+    if not doc_hits or not session_hits:
+        return session_hits
+
+    # Pre-compute doc text words for efficiency
+    doc_texts = [h.get("text", "").lower() for h in doc_hits]
+    doc_word_lists = [t.split() for t in doc_texts]
+
+    kept: list[dict] = []
+    for sh in session_hits:
+        summary = sh.get("summary", "")
+        gs = sh.get("grounding_score", 1.0)
+
+        # Only check low-confidence summaries
+        if gs >= 0.5:
+            kept.append(sh)
+            continue
+
+        # Extract anchor terms (capitalized words >2 chars) from summary
+        anchors = set()
+        for w in summary.split():
+            cleaned = w.strip(".,;:!?\"'()-")
+            if len(cleaned) > 2 and cleaned[0:1].isupper():
+                anchors.add(cleaned.lower())
+
+        if not anchors:
+            kept.append(sh)
+            continue
+
+        summary_lower = summary.lower()
+        summary_words = summary_lower.split()
+        contradicted = False
+
+        for di, doc_words in enumerate(doc_word_lists):
+            doc_text = doc_texts[di]
+            # Find anchors shared between session summary and this doc
+            shared = [a for a in anchors if a in doc_text]
+            if len(shared) < 1:
+                continue
+
+            # For each shared anchor, extract 10-word context windows
+            for anchor in shared:
+                # Window from summary
+                s_window: set[str] = set()
+                for idx, sw in enumerate(summary_words):
+                    if anchor in sw:
+                        start = max(0, idx - 5)
+                        end = min(len(summary_words), idx + 6)
+                        s_window.update(summary_words[start:end])
+                        break
+
+                # Window from doc
+                d_window: set[str] = set()
+                for idx, dw in enumerate(doc_words):
+                    if anchor in dw:
+                        start = max(0, idx - 5)
+                        end = min(len(doc_words), idx + 6)
+                        d_window.update(doc_words[start:end])
+                        break
+
+                if not s_window or not d_window:
+                    continue
+
+                # Compute overlap ratio
+                overlap = len(s_window & d_window) / max(len(s_window | d_window), 1)
+                if overlap < 0.2:
+                    contradicted = True
+                    break
+
+            if contradicted:
+                break
+
+        if contradicted:
+            sh["contradiction_flag"] = True
+        else:
+            kept.append(sh)
+
+    return kept
 
 
 def search_all(
@@ -833,6 +934,7 @@ def search_all(
                         "date": meta.get("date", ""),
                         "topic": meta.get("topic", ""),
                         "score": round(distance, 4),
+                        "grounding_score": meta.get("grounding_score", 1.0),
                     }
 
             bm25_ids_s: list[str] = []
@@ -846,6 +948,7 @@ def search_all(
                         "date": meta.get("date", ""),
                         "topic": meta.get("topic", ""),
                         "score": 0.0,
+                        "grounding_score": meta.get("grounding_score", 1.0),
                     }
 
             # RRF fusion
@@ -856,7 +959,9 @@ def search_all(
 
             for doc_id in sorted_ids:
                 hit = sess_data[doc_id]
-                hit["rrf_score"] = round(rrf_scores[doc_id], 6)
+                base_rrf = rrf_scores[doc_id]
+                gs = hit.get("grounding_score", 1.0)
+                hit["rrf_score"] = round(base_rrf * gs, 6)
                 hit["source_type"] = "model_generated"
                 session_hits.append(hit)
     except Exception:
@@ -867,6 +972,10 @@ def search_all(
     if _scope == "all" and doc_hits and session_hits:
         for hit in doc_hits:
             hit["rrf_score"] = round(hit.get("rrf_score", 0) * 2.0, 6)
+
+    # --- Contradiction detection: drop session hits that contradict docs ---
+    if doc_hits and session_hits:
+        session_hits = _detect_contradictions(doc_hits, session_hits)
 
     # --- LLM re-ranking ---
     if do_rerank and (doc_hits or session_hits):

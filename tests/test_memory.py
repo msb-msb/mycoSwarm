@@ -365,3 +365,65 @@ class TestTopicSplitting:
         assert calls[0]["topic"] == "general"
         assert calls[0]["summary"] == "Single topic summary"
 
+
+# ---------------------------------------------------------------------------
+# Grounding Score
+# ---------------------------------------------------------------------------
+
+class TestGroundingScore:
+    def test_fully_grounded(self):
+        """All capitalized terms appear in user messages → 1.0."""
+        summary = "Discussed Python and FastAPI for the API layer."
+        user_msgs = ["We discussed the API layer", "I want to use Python and FastAPI."]
+        score = memory.compute_grounding_score(summary, user_msgs, [])
+        assert score == 1.0
+
+    def test_partially_grounded(self):
+        """Some terms present, some fabricated → between 0 and 1."""
+        summary = "Discussed Python and Kubernetes for deployment."
+        user_msgs = ["Tell me about Python deployment options."]
+        score = memory.compute_grounding_score(summary, user_msgs, [])
+        assert 0.0 < score < 1.0
+
+    def test_ungrounded(self):
+        """No key terms from summary appear in context → low score."""
+        summary = "Discussed Terraform and Docker orchestration."
+        user_msgs = ["What is the weather today?"]
+        score = memory.compute_grounding_score(summary, user_msgs, [])
+        assert score < 0.5
+
+    def test_rag_context_counts(self):
+        """Terms found in RAG context also count as grounded."""
+        summary = "Discussed ChromaDB indexing pipeline."
+        user_msgs = ["How does the library work?"]
+        rag_ctx = ["[D1] ChromaDB is used for the indexing pipeline."]
+        score = memory.compute_grounding_score(summary, user_msgs, rag_ctx)
+        assert score >= 0.5
+
+    def test_no_extractable_terms(self):
+        """Summary with no capitalized words → 1.0 (nothing to check)."""
+        summary = "we talked about some things and made progress."
+        score = memory.compute_grounding_score(summary, ["hi"], [])
+        assert score == 1.0
+
+    def test_grounding_score_saved_in_jsonl(self, monkeypatch):
+        """grounding_score is persisted in the sessions.jsonl entry."""
+        import json
+
+        monkeypatch.setattr(
+            memory, "split_session_topics",
+            lambda s, m: [{"topic": "general", "summary": s}],
+        )
+        monkeypatch.setattr(
+            "mycoswarm.library.index_session_summary",
+            lambda **kw: True,
+        )
+
+        memory.save_session_summary(
+            "gs-test", "m", "Summary text", 5, grounding_score=0.75,
+        )
+
+        entries = memory.load_session_summaries()
+        assert len(entries) == 1
+        assert entries[0]["grounding_score"] == 0.75
+
