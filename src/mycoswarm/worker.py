@@ -1106,10 +1106,13 @@ async def handle_intent_classify(task: TaskRequest) -> TaskResult:
                 result["tool"] = category
                 break
 
-    # Check for past-reference patterns
+    # Override: regex-detected past reference forces session scope
     from mycoswarm.solo import detect_past_reference
     if detect_past_reference(query):
         result["scope"] = "session"
+    # Override: docs scope never needs web search
+    if result["scope"] == "docs" and result["tool"] == "web_and_rag":
+        result["tool"] = "rag"
 
     duration = round(time.time() - start, 2)
     logger.info(f"🧠 Intent: {result['tool']}/{result['mode']}/{result['scope']} ({duration}s)")
