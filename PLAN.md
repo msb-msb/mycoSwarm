@@ -215,6 +215,7 @@
 - [x] 27 tests in tests/test_intent.py (gate model picker, intent classify, worker handler, backcompat, routing registration, embedding exclusion)
 - [x] Intent-aware retrieval: `search_all()` accepts `intent=` dict — mode=chat skips RAG, scope=session boosts sessions & reduces docs, scope=docs reduces sessions (2026-02-13)
 - [x] Full suite: 232 tests passing
+- [x] Released v0.1.6 (2026-02-13)
 
 ### Phase 20b: Human Gap Architecture (Pre-Processing Gates)
 - [ ] Timing Gate: Wu Wei module — should I act now, later, or not at all?
