@@ -158,6 +158,7 @@
 - [x] build_memory_system_prompt() injects facts + summaries into chat system prompt
 - [x] Hallucination mitigation: capability boundary text prevents fabrication of real-time data
 - [x] Session memory citation: model cites dates, gracefully handles misses, distinguishes facts vs session history (2026-02-11)
+- [x] System prompt rewrite: explicitly trust retrieved [D1]/[S1] excerpts while keeping real-time data hallucination boundary (2026-02-13)
 
 ### Phase 16: Document Library with RAG (2026-02-09)
 - [x] library.py: ChromaDB vector storage, document ingestion, chunking, embedding via Ollama
@@ -213,7 +214,7 @@
 - [x] Scope-driven session boost: `scope == "session"` replaces separate `detect_past_reference()` call (with regex fallback)
 - [x] Embedding model exclusion: `_is_embedding_model()` filter in gate model picker, rerank model picker, and async gate picker — prevents nomic-embed-text etc. from being selected for classification/reranking (2026-02-13)
 - [x] 27 tests in tests/test_intent.py (gate model picker, intent classify, worker handler, backcompat, routing registration, embedding exclusion)
-- [x] Intent-aware retrieval: `search_all()` accepts `intent=` dict — mode=chat skips RAG, scope=session boosts sessions & reduces docs, scope=docs reduces sessions (2026-02-13)
+- [x] Intent-aware retrieval: `search_all()` accepts `intent=` dict — mode=chat skips RAG; hard scope exclusion: scope=session/personal → zero doc results, scope=docs/documents → zero session results (2026-02-13)
 - [x] Full suite: 232 tests passing
 - [x] Released v0.1.6 (2026-02-13)
 
