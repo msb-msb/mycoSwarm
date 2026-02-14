@@ -227,6 +227,7 @@
 - [x] Full suite: 232 tests passing
 - [x] Released v0.1.6 (2026-02-13)
 - [x] Released v0.1.7 (2026-02-14)
+- [x] Released v0.1.8 (2026-02-14)
 - **Known issue discovered**: hallucination feedback loop — a single poisoned session summary (model hallucinated PLAN.md content) got indexed into session_memory, then retrieved as context for future queries, causing the model to repeat the hallucination with increasing confidence. Fixed with debug mode poison prevention and session reindex, but needs structural fix → see Phase 21g: Self-Correcting Memory
 
 ### Phase 20b: Human Gap Architecture (Pre-Processing Gates)
