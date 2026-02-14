@@ -1,3 +1,6 @@
+Here is the complete fixed file content:
+
+```python
 """mycoSwarm node API service.
 
 Each node runs a lightweight FastAPI server that exposes:
@@ -103,11 +106,18 @@ class PeerResponse(BaseModel):
 class TaskQueue:
     """Simple async task queue for a node."""
 
+    # How long to keep completed/failed results before eviction (seconds).
+    RESULT_TTL: float = 600.0  # 10 minutes
+    # Maximum number of stored results — hard cap to prevent runaway growth.
+    RESULT_MAX: int = 1000
+    # How long an unconsumed stream can sit idle before being cleaned up.
+    STREAM_TTL: float = 600.0  # 10 minutes
+
     def __init__(self, max_size: int = 100):
         self._queue: asyncio.Queue[TaskRequest] = asyncio.Queue(maxsize=max_size)
-        self._results: dict[str, TaskResult] = {}
+        self._results: dict[str, tuple[TaskResult, float]] = {}  # task_id → (result, stored_at)
         self._active: dict[str, TaskRequest] = {}
-        self._streams: dict[str, asyncio.Queue] = {}
+        self._streams: dict[str, tuple[asyncio.Queue, float]] = {}  # task_id → (queue, created_at)
         self._lock = asyncio.Lock()
 
     async def submit(self, task: TaskRequest) -> TaskResponse:
@@ -138,24 +148,68 @@ class TaskQueue:
 
     async def store_result(self, result: TaskResult):
         async with self._lock:
-            self._results[result.task_id] = result
+            self._results[result.task_id] = (result, time.monotonic())
             self._active.pop(result.task_id, None)
+            self._evict_results_locked()
 
     async def get_result(self, task_id: str) -> TaskResult | None:
         async with self._lock:
-            return self._results.get(task_id)
+            entry = self._results.get(task_id)
+            if entry is None:
+                return None
+            return entry[0]
+
+    def _evict_results_locked(self) -> None:
+        """Remove expired results. Must be called while holding _lock."""
+        now = time.monotonic()
+        expired = [
+            tid for tid, (_, stored_at) in self._results.items()
+            if now - stored_at > self.RESULT_TTL
+        ]
+        for tid in expired:
+            del self._results[tid]
+
+        # Hard cap: if still over limit, drop oldest entries
+        if len(self._results) > self.RESULT_MAX:
+            by_age = sorted(self._results.items(), key=lambda kv: kv[1][1])
+            to_drop = len(self._results) - self.RESULT_MAX
+            for tid, _ in by_age[:to_drop]:
+                del self._results[tid]
 
     def create_stream(self, task_id: str) -> asyncio.Queue:
         """Create a token stream queue for a task."""
         q: asyncio.Queue = asyncio.Queue()
-        self._streams[task_id] = q
+        self._streams[task_id] = (q, time.monotonic())
         return q
 
     def get_stream(self, task_id: str) -> asyncio.Queue | None:
-        return self._streams.get(task_id)
+        entry = self._streams.get(task_id)
+        return entry[0] if entry else None
 
     def remove_stream(self, task_id: str) -> None:
         self._streams.pop(task_id, None)
+
+    def _evict_stale_streams(self) -> None:
+        """Remove streams that have been idle longer than STREAM_TTL."""
+        now = time.monotonic()
+        stale = [
+            tid for tid, (_, created_at) in self._streams.items()
+            if now - created_at > self.STREAM_TTL
+        ]
+        for tid in stale:
+            logger.debug(f"🧹 Evicting stale stream for task {tid}")
+            del self._streams[tid]
+
+    async def periodic_cleanup(self) -> None:
+        """Background loop that periodically evicts expired results and stale streams.
+
+        Call this as an asyncio task when the daemon starts.
+        """
+        while True:
+            await asyncio.sleep(60.0)
+            async with self._lock:
+                self._evict_results_locked()
+            self._evict_stale_streams()
 
     @property
     def pending_count(self) -> int:
@@ -218,6 +272,10 @@ def create_api(
         description=f"Node {identity.node_id} [{identity.node_tier}]",
         version="0.1.0",
     )
+
+    @app.on_event("startup")
+    async def _start_cleanup_task():
+        asyncio.create_task(task_queue.periodic_cleanup())
 
     @app.get("/health", response_model=HealthResponse)
     async def health():
@@ -554,3 +612,20 @@ def create_api(
         }
 
     return app
+```
+
+**Changes made:**
+
+1. **`_results` now stores `(TaskResult, float)` tuples** — the float is the `time.monotonic()` timestamp when the result was stored.
+
+2. **`_evict_results_locked()`** — called on every `store_result()`, removes entries older than `RESULT_TTL` (10 minutes). Also enforces a hard cap of `RESULT_MAX` (1000) entries by dropping the oldest if exceeded.
+
+3. **`_streams` now stores `(asyncio.Queue, float)` tuples** — tracking creation time.
+
+4. **`_evict_stale_streams()`** — removes streams older than `STREAM_TTL` (10 minutes) that were never consumed (e.g., client disconnected before reading).
+
+5. **`periodic_cleanup()`** — a background coroutine that runs every 60 seconds to evict expired results and stale streams.
+
+6. **`@app.on_event("startup")`** — launches the periodic cleanup task when the FastAPI app starts.
+
+7. **`get_result()` and `get_stream()`** updated to unwrap the tuple format.
