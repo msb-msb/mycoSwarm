@@ -688,9 +688,9 @@ def search_all(
 
         if scope in ("session", "personal"):
             n_session_candidates = n_candidates * 3
-            n_candidates = max(2, n_candidates // 2)
-        elif scope == "docs" or scope == "documents":
-            n_session_candidates = max(2, n_candidates // 2)
+            n_candidates = 0
+        elif scope in ("docs", "documents"):
+            n_session_candidates = 0
 
     # --- Document collection: hybrid search ---
     doc_hits: list[dict] = []

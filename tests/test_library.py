@@ -1860,11 +1860,11 @@ class TestSearchAllIntent:
     @patch("mycoswarm.library._get_collection")
     @patch("mycoswarm.library.embed_text")
     @patch("mycoswarm.library._get_embedding_model")
-    def test_scope_session_boosts_sessions_reduces_docs(
+    def test_scope_session_returns_only_sessions(
         self, mock_get_model, mock_embed, mock_doc_col, mock_sess_col,
         mock_bm25_docs, mock_bm25_sess, _mock_check,
     ):
-        """scope=session should triple session candidates and halve doc candidates."""
+        """scope=session should return zero doc results and only sessions."""
         mock_get_model.return_value = "nomic-embed-text"
         mock_embed.return_value = [0.1, 0.2]
 
@@ -1893,17 +1893,13 @@ class TestSearchAllIntent:
         mock_sess_col.return_value = sess_col
         mock_bm25_sess.search.return_value = []
 
-        # Without intent
-        doc_normal, sess_normal = search_all("test", n_results=5)
-        # With scope=session intent
         doc_scoped, sess_scoped = search_all(
             "test", n_results=5, intent={"scope": "session"}
         )
 
-        # Session results should be boosted (more results)
-        assert len(sess_scoped) >= len(sess_normal)
-        # Doc results should be reduced
-        assert len(doc_scoped) <= len(doc_normal)
+        # scope=session → zero doc results, sessions only
+        assert len(doc_scoped) == 0
+        assert len(sess_scoped) > 0
 
     @patch("mycoswarm.library.check_embedding_model", return_value=None)
     @patch("mycoswarm.library._bm25_sessions")
@@ -1950,7 +1946,9 @@ class TestSearchAllIntent:
             "test", n_results=5, intent={"scope": "personal"}
         )
 
-        assert len(doc_session) == len(doc_personal)
+        # Both should zero out docs and return only sessions
+        assert len(doc_session) == 0
+        assert len(doc_personal) == 0
         assert len(sess_session) == len(sess_personal)
 
     @patch("mycoswarm.library.check_embedding_model", return_value=None)
@@ -1960,11 +1958,11 @@ class TestSearchAllIntent:
     @patch("mycoswarm.library._get_collection")
     @patch("mycoswarm.library.embed_text")
     @patch("mycoswarm.library._get_embedding_model")
-    def test_scope_docs_reduces_sessions(
+    def test_scope_docs_returns_only_docs(
         self, mock_get_model, mock_embed, mock_doc_col, mock_sess_col,
         mock_bm25_docs, mock_bm25_sess, _mock_check,
     ):
-        """scope=docs should reduce session candidates."""
+        """scope=docs should return zero session results and only docs."""
         mock_get_model.return_value = "nomic-embed-text"
         mock_embed.return_value = [0.1, 0.2]
 
@@ -1991,9 +1989,10 @@ class TestSearchAllIntent:
         mock_sess_col.return_value = sess_col
         mock_bm25_sess.search.return_value = []
 
-        # Without intent
-        _, sess_normal = search_all("test", n_results=5)
-        # With scope=docs
-        _, sess_docs = search_all("test", n_results=5, intent={"scope": "docs"})
+        doc_docs, sess_docs = search_all(
+            "test", n_results=5, intent={"scope": "docs"}
+        )
 
-        assert len(sess_docs) <= len(sess_normal)
+        # scope=docs → zero session results, docs only
+        assert len(sess_docs) == 0
+        assert len(doc_docs) > 0
