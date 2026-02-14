@@ -203,16 +203,18 @@
 - [x] RAG eval set: gold standard questions with known answers to measure quality (2026-02-13)
 
 ### Phase 20: Intent Classification Gate (2026-02-13)
-- [x] `_pick_gate_model()` in solo.py: selects smallest available Ollama model for gate tasks (gemma3:1b > llama3.2:1b > gemma3:4b > llama3.2:3b)
-- [x] `intent_classify()` in solo.py: structured intent classification returning `{tool, scope, confidence}` dict
+- [x] `_pick_gate_model()` in solo.py: selects smallest available Ollama model for gate tasks (gemma3:1b > llama3.2:1b > gemma3:4b > llama3.2:3b), excludes embedding-only models
+- [x] `intent_classify()` in solo.py: structured intent classification returning `{tool, mode, scope}` dict
+- [x] Three-field intent schema: tool (answer/web_search/rag/web_and_rag), mode (recall/explore/execute/chat), scope (session/docs/facts/all)
 - [x] `classify_query()` refactored as backward-compatible wrapper around `intent_classify()`
 - [x] `handle_intent_classify` handler in worker.py: async handler for distributed CPU execution
 - [x] Registered `intent_classify` in TASK_ROUTING (→ cpu_worker), DISTRIBUTABLE_TASKS, and HANDLERS
 - [x] CLI chat pipeline updated: daemon mode submits intent_classify as distributed task; solo mode calls directly
-- [x] Scope-driven session boost: `scope == "personal"` replaces separate `detect_past_reference()` call (with regex fallback)
-- [x] 25 tests in tests/test_intent.py (gate model picker, intent classify, worker handler, backcompat, routing registration)
-- [x] Intent-aware retrieval: `search_all()` accepts `intent=` dict — mode=chat skips RAG, scope=session/personal boosts sessions & reduces docs, scope=docs reduces sessions (2026-02-13)
-- [x] Full suite: 230 tests passing
+- [x] Scope-driven session boost: `scope == "session"` replaces separate `detect_past_reference()` call (with regex fallback)
+- [x] Embedding model exclusion: `_is_embedding_model()` filter in gate model picker, rerank model picker, and async gate picker — prevents nomic-embed-text etc. from being selected for classification/reranking (2026-02-13)
+- [x] 27 tests in tests/test_intent.py (gate model picker, intent classify, worker handler, backcompat, routing registration, embedding exclusion)
+- [x] Intent-aware retrieval: `search_all()` accepts `intent=` dict — mode=chat skips RAG, scope=session boosts sessions & reduces docs, scope=docs reduces sessions (2026-02-13)
+- [x] Full suite: 232 tests passing
 
 ### Phase 20b: Human Gap Architecture (Pre-Processing Gates)
 - [ ] Timing Gate: Wu Wei module — should I act now, later, or not at all?

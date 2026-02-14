@@ -35,7 +35,7 @@ TASK_ROUTING = {
     "web_search": ["cpu_worker"],
     "file_read": ["file_processing", "cpu_worker"],
     "code_run": ["code_execution", "cpu_worker"],
-    "intent_classify": ["cpu_worker"],
+    "intent_classify": ["cpu_worker", "gpu_inference", "cpu_inference"],
     "file_process": ["cpu_worker"],
 }
 
