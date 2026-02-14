@@ -227,6 +227,7 @@
 - [x] Full suite: 232 tests passing
 - [x] Released v0.1.6 (2026-02-13)
 - [x] Released v0.1.7 (2026-02-14)
+- **Known issue discovered**: hallucination feedback loop — a single poisoned session summary (model hallucinated PLAN.md content) got indexed into session_memory, then retrieved as context for future queries, causing the model to repeat the hallucination with increasing confidence. Fixed with debug mode poison prevention and session reindex, but needs structural fix → see Phase 21g: Self-Correcting Memory
 
 ### Phase 20b: Human Gap Architecture (Pre-Processing Gates)
 - [ ] Timing Gate: Wu Wei module — should I act now, later, or not at all?
@@ -269,6 +270,17 @@ Reference: docs/ARCHITECTURE-MEMORY.md
 - [ ] Periodic prompts to review stale facts
 - [ ] Fact versioning with change history
 - [ ] Dashboard UI for memory management
+
+#### 21g: Self-Correcting Memory (Anti-Hallucination)
+Reference: Learned from Phase 20 debugging — single poisoned session summary dominated 99 good memories and created hallucination feedback loops.
+
+- [ ] Source priority: tag session summaries as source=model_generated, doc chunks as source=user_document. When both match a query, weight user_document hits 2x higher in RRF scoring
+- [ ] Confidence gating: before saving a session summary, verify key claims appear in the RAG context that was provided. If summary contradicts its source material, flag as low_confidence and exclude from retrieval indexing
+- [ ] Contradiction detection: at retrieval time, if a session summary contradicts a document chunk on the same topic, drop the session hit and keep the document
+- [ ] Poison loop prevention: detect when the same hallucinated claim appears across multiple session summaries (repetition = amplification signal). Auto-quarantine repeated ungrounded claims
+- [ ] Summary grounding score: store a 0-1 score with each summary indicating what fraction of its claims trace back to provided context. Low scores decay faster in retrieval priority
+
+Principle: "The system should naturally resist corruption rather than requiring manual purges. Wu Wei — self-correcting flow."
 
 ### Phase 22: RAG Architecture
 Reference: docs/ARCHITECTURE-RAG.md
