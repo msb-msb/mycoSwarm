@@ -215,6 +215,7 @@
 - [x] Embedding model exclusion: `_is_embedding_model()` filter in gate model picker, rerank model picker, and async gate picker — prevents nomic-embed-text etc. from being selected for classification/reranking (2026-02-13)
 - [x] 27 tests in tests/test_intent.py (gate model picker, intent classify, worker handler, backcompat, routing registration, embedding exclusion)
 - [x] Intent-aware retrieval: `search_all()` accepts `intent=` dict — mode=chat skips RAG; hard scope exclusion: scope=session/personal → zero doc results, scope=docs/documents → zero session results (2026-02-13)
+- [x] Chat loop unified: replaced separate `search()` + `search_sessions()` with single `search_all(intent=)` call; scope-aware progress indicators (2026-02-13)
 - [x] Full suite: 232 tests passing
 - [x] Released v0.1.6 (2026-02-13)
 
