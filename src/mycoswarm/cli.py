@@ -1358,24 +1358,31 @@ def cmd_chat(args):
                 else:
                     print(" no results", flush=True)
 
-            # --- RAG search (documents — only when classified as rag) ---
+            # --- RAG search (docs + sessions via search_all with intent) ---
             doc_hits: list[dict] = []
-            if need_rag:
-                if past_ref:
+            session_hits: list[dict] = []
+            if need_rag or past_ref:
+                scope = (intent_result or {}).get("scope", "all")
+                if scope in ("session", "personal"):
                     print("   💭 Searching past conversations...", end="", flush=True)
-                else:
+                elif scope in ("docs", "documents"):
                     print("   📚 Checking your documents...", end="", flush=True)
-                from mycoswarm.library import search as lib_search
-                doc_hits = lib_search(user_input, n_results=5)
+                else:
+                    print("   📚 Searching docs + sessions...", end="", flush=True)
+                from mycoswarm.library import search_all
+                doc_hits, session_hits = search_all(
+                    user_input, n_results=5, intent=intent_result,
+                    do_rerank=False, session_boost=past_ref,
+                )
+                parts = []
                 if doc_hits:
-                    print(f" {len(doc_hits)} excerpts", flush=True)
+                    parts.append(f"{len(doc_hits)} excerpts")
+                if session_hits:
+                    parts.append(f"{len(session_hits)} sessions")
+                if parts:
+                    print(f" {', '.join(parts)}", flush=True)
                 else:
                     print(" no results", flush=True)
-
-            # --- Session memory search (always — not gated by classifier) ---
-            from mycoswarm.library import search_sessions
-            n_sessions = 10 if past_ref else 5
-            session_hits = search_sessions(user_input, n_results=n_sessions)
 
             # --- Format results ---
             for ri, hit in enumerate(doc_hits, 1):
@@ -1395,8 +1402,6 @@ def cmd_chat(args):
 
             if doc_hits or session_hits:
                 tool_sources.append("docs")
-                if session_hits:
-                    print(f"   💬 {len(session_hits)} past conversation(s) found", flush=True)
 
             # --- Build combined context ---
             context_sections: list[str] = []
