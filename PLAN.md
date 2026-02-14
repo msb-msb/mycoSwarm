@@ -275,11 +275,11 @@ Reference: docs/ARCHITECTURE-MEMORY.md
 #### 21g: Self-Correcting Memory (Anti-Hallucination)
 Reference: Learned from Phase 20 debugging — single poisoned session summary dominated 99 good memories and created hallucination feedback loops.
 
-- [ ] Source priority: tag session summaries as source=model_generated, doc chunks as source=user_document. When both match a query, weight user_document hits 2x higher in RRF scoring
-- [ ] Confidence gating: before saving a session summary, verify key claims appear in the RAG context that was provided. If summary contradicts its source material, flag as low_confidence and exclude from retrieval indexing
-- [ ] Contradiction detection: at retrieval time, if a session summary contradicts a document chunk on the same topic, drop the session hit and keep the document
+- [x] Source priority: tag session summaries as source=model_generated, doc chunks as source=user_document. 2x RRF boost for user_document when scope=all (2026-02-14)
+- [x] Confidence gating: compute_grounding_score() checks summary claims against user messages + RAG context. Stored in sessions.jsonl + ChromaDB metadata. Low scores (< 0.3) excluded from reindex, score multiplies RRF at retrieval (2026-02-14)
+- [x] Contradiction detection: _detect_contradictions() drops low-grounding session hits when shared anchor terms have < 0.2 context-window overlap with doc chunks. Documents are primary sources (2026-02-14)
 - [ ] Poison loop prevention: detect when the same hallucinated claim appears across multiple session summaries (repetition = amplification signal). Auto-quarantine repeated ungrounded claims
-- [ ] Summary grounding score: store a 0-1 score with each summary indicating what fraction of its claims trace back to provided context. Low scores decay faster in retrieval priority
+- [x] Summary grounding score: 0-1 score stored with each summary via compute_grounding_score(). Low scores reduce RRF ranking and trigger contradiction checks (2026-02-14)
 
 Principle: "The system should naturally resist corruption rather than requiring manual purges. Wu Wei — self-correcting flow."
 
