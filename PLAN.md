@@ -226,6 +226,7 @@
   - Memory system prompt rewrite: explicitly trusts [D1]/[S1] excerpts while keeping real-time data boundary
 - [x] Full suite: 232 tests passing
 - [x] Released v0.1.6 (2026-02-13)
+- [x] Released v0.1.7 (2026-02-14)
 
 ### Phase 20b: Human Gap Architecture (Pre-Processing Gates)
 - [ ] Timing Gate: Wu Wei module — should I act now, later, or not at all?
