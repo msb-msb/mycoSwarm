@@ -796,6 +796,7 @@ def search_all(
             for doc_id in sorted_ids:
                 hit = doc_data[doc_id]
                 hit["rrf_score"] = round(rrf_scores[doc_id], 6)
+                hit["source_type"] = "user_document"
                 doc_hits.append(hit)
     except Exception:
         pass
@@ -856,9 +857,16 @@ def search_all(
             for doc_id in sorted_ids:
                 hit = sess_data[doc_id]
                 hit["rrf_score"] = round(rrf_scores[doc_id], 6)
+                hit["source_type"] = "model_generated"
                 session_hits.append(hit)
     except Exception:
         pass
+
+    # --- Source priority: boost user_document hits 2x when scope is "all" ---
+    _scope = intent.get("scope", "all") if intent else "all"
+    if _scope == "all" and doc_hits and session_hits:
+        for hit in doc_hits:
+            hit["rrf_score"] = round(hit.get("rrf_score", 0) * 2.0, 6)
 
     # --- LLM re-ranking ---
     if do_rerank and (doc_hits or session_hits):

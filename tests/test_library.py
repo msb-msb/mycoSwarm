@@ -1996,3 +1996,122 @@ class TestSearchAllIntent:
         # scope=docs → zero session results, docs only
         assert len(sess_docs) == 0
         assert len(doc_docs) > 0
+
+
+# --- Source Priority Tagging ---
+
+
+class TestSourcePriority:
+    @patch("mycoswarm.library.check_embedding_model", return_value=None)
+    @patch("mycoswarm.library._bm25_sessions")
+    @patch("mycoswarm.library._bm25_docs")
+    @patch("mycoswarm.library._get_session_collection")
+    @patch("mycoswarm.library._get_collection")
+    @patch("mycoswarm.library.embed_text")
+    @patch("mycoswarm.library._get_embedding_model")
+    def test_source_type_present_in_hits(
+        self, mock_get_model, mock_embed, mock_doc_col, mock_sess_col,
+        mock_bm25_docs, mock_bm25_sess, _mock_check,
+    ):
+        """doc_hits should have source_type='user_document', session_hits 'model_generated'."""
+        mock_get_model.return_value = "nomic-embed-text"
+        mock_embed.return_value = [0.1, 0.2, 0.3]
+
+        doc_col = MagicMock()
+        doc_col.count.return_value = 2
+        doc_col.query.return_value = {
+            "ids": [["notes.md::chunk_0"]],
+            "documents": [["notes about tai chi"]],
+            "metadatas": [[{
+                "source": "notes.md", "chunk_index": 0, "section": "Tai Chi",
+                "doc_type": ".md", "file_date": 1700000000.0,
+                "embedding_model": "nomic-embed-text",
+            }]],
+            "distances": [[0.12]],
+        }
+        mock_doc_col.return_value = doc_col
+        mock_bm25_docs.search.return_value = []
+
+        sess_col = MagicMock()
+        sess_col.count.return_value = 3
+        sess_col.query.return_value = {
+            "ids": [["chat-20260211::topic_0"]],
+            "documents": [["Discussed tai chi for ADHD"]],
+            "metadatas": [[{
+                "session_id": "chat-20260211::topic_0",
+                "date": "2026-02-11",
+                "topic": "tai chi",
+            }]],
+            "distances": [[0.08]],
+        }
+        mock_sess_col.return_value = sess_col
+        mock_bm25_sess.search.return_value = []
+
+        doc_hits, session_hits = search_all("tai chi")
+
+        assert len(doc_hits) == 1
+        assert doc_hits[0]["source_type"] == "user_document"
+
+        assert len(session_hits) == 1
+        assert session_hits[0]["source_type"] == "model_generated"
+
+    @patch("mycoswarm.library.check_embedding_model", return_value=None)
+    @patch("mycoswarm.library._bm25_sessions")
+    @patch("mycoswarm.library._bm25_docs")
+    @patch("mycoswarm.library._get_session_collection")
+    @patch("mycoswarm.library._get_collection")
+    @patch("mycoswarm.library.embed_text")
+    @patch("mycoswarm.library._get_embedding_model")
+    def test_doc_outranks_session_when_scope_all(
+        self, mock_get_model, mock_embed, mock_doc_col, mock_sess_col,
+        mock_bm25_docs, mock_bm25_sess, _mock_check,
+    ):
+        """With scope=all, doc hits get 2x RRF boost so they outrank session hits."""
+        mock_get_model.return_value = "nomic-embed-text"
+        mock_embed.return_value = [0.1, 0.2, 0.3]
+
+        # Both collections return a hit at the same vector rank (rank 1)
+        doc_col = MagicMock()
+        doc_col.count.return_value = 1
+        doc_col.query.return_value = {
+            "ids": [["guide.md::chunk_0"]],
+            "documents": [["beekeeping guide chapter 1"]],
+            "metadatas": [[{
+                "source": "guide.md", "chunk_index": 0, "section": "untitled",
+                "doc_type": ".md", "file_date": 1700000000.0,
+                "embedding_model": "nomic-embed-text",
+            }]],
+            "distances": [[0.10]],
+        }
+        mock_doc_col.return_value = doc_col
+        mock_bm25_docs.search.return_value = []
+
+        sess_col = MagicMock()
+        sess_col.count.return_value = 1
+        sess_col.query.return_value = {
+            "ids": [["s1::topic_0"]],
+            "documents": [["We discussed beekeeping"]],
+            "metadatas": [[{
+                "session_id": "s1::topic_0",
+                "date": "2026-02-10",
+                "topic": "beekeeping",
+            }]],
+            "distances": [[0.10]],
+        }
+        mock_sess_col.return_value = sess_col
+        mock_bm25_sess.search.return_value = []
+
+        doc_hits, session_hits = search_all(
+            "beekeeping", intent={"scope": "all"},
+        )
+
+        assert len(doc_hits) == 1
+        assert len(session_hits) == 1
+
+        # Doc hit should have 2x boosted RRF score
+        assert doc_hits[0]["rrf_score"] > session_hits[0]["rrf_score"]
+        # Specifically, doc should be exactly 2x the session score
+        # (both at rank 1 in vector-only → same base RRF)
+        assert doc_hits[0]["rrf_score"] == pytest.approx(
+            session_hits[0]["rrf_score"] * 2.0, rel=1e-4,
+        )

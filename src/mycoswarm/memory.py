@@ -122,6 +122,7 @@ def save_session_summary(
         "timestamp": timestamp,
         "summary": summary,
         "message_count": count,
+        "source_type": "model_generated",
     }
     with open(SESSIONS_PATH, "a") as f:
         f.write(json.dumps(entry) + "\n")
