@@ -477,8 +477,10 @@ The thesis: most AI memory systems are engineered as databases — store, retrie
 #### 29a: Rich Episodic Memory
 Current session summaries are lossy — "we discussed Phase 20" discards the experience. Rich episodes store what happened, what was decided, what was learned, and what surprised us.
 
-- [ ] **Experience record schema:** {timestamp, topic, what_happened, decisions_made, lessons_learned, surprises, emotional_tone, grounding_score}
-- [ ] **Structured summarization prompt:** End-of-session LLM call that extracts fields, not just topic summary
+- [x] **Experience record schema:** summary, decisions, lessons, surprises, emotional_tone, grounding_score stored in sessions.jsonl (2026-02-15)
+- [x] **Structured summarization prompt:** summarize_session_rich() — end-of-session LLM call extracts structured fields via JSON prompt, falls back to plain summary (2026-02-15)
+- [x] **Lessons as procedural memory:** lessons indexed as topic=lesson_learned in ChromaDB for retrieval (2026-02-15)
+- [x] **Tone-aware prompt injection:** format_summaries_for_prompt() shows tone tags, lessons (max 3), decisions (max 2), backward compatible (2026-02-15)
 - [ ] **Temporal + emotional retrieval:** "times we were stuck" or "breakthroughs" as valid queries
 - [ ] **Episode linking:** Connect related episodes across sessions (e.g., multi-day debugging arc)
 
