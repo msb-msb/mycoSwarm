@@ -278,7 +278,7 @@ Reference: Learned from Phase 20 debugging — single poisoned session summary d
 - [x] Source priority: tag session summaries as source=model_generated, doc chunks as source=user_document. 2x RRF boost for user_document when scope=all (2026-02-14)
 - [x] Confidence gating: compute_grounding_score() checks summary claims against user messages + RAG context. Stored in sessions.jsonl + ChromaDB metadata. Low scores (< 0.3) excluded from reindex, score multiplies RRF at retrieval (2026-02-14)
 - [x] Contradiction detection: _detect_contradictions() drops low-grounding session hits when shared anchor terms have < 0.2 context-window overlap with doc chunks. Documents are primary sources (2026-02-14)
-- [ ] Poison loop prevention: detect when the same hallucinated claim appears across multiple session summaries (repetition = amplification signal). Auto-quarantine repeated ungrounded claims
+- [x] Poison loop prevention: _detect_poison_loops() detects repeated ungrounded claims across multiple low-grounding sessions, quarantines sessions where >50% of key terms are repeated+ungrounded and not doc-backed (2026-02-14)
 - [x] Summary grounding score: 0-1 score stored with each summary via compute_grounding_score(). Low scores reduce RRF ranking and trigger contradiction checks (2026-02-14)
 
 Principle: "The system should naturally resist corruption rather than requiring manual purges. Wu Wei — self-correcting flow."
