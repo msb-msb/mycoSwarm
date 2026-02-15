@@ -578,6 +578,17 @@ def _get_session_collection():
     )
 
 
+def _get_procedural_collection():
+    """Get or create the procedural_memory ChromaDB collection."""
+    import chromadb
+    CHROMA_DIR.mkdir(parents=True, exist_ok=True)
+    client = chromadb.PersistentClient(path=str(CHROMA_DIR))
+    return client.get_or_create_collection(
+        name="procedural_memory",
+        metadata={"hnsw:space": "cosine"},
+    )
+
+
 # --- BM25 Keyword Index ---
 
 
@@ -617,6 +628,8 @@ class BM25Index:
         try:
             if self._collection_name == "mycoswarm_docs":
                 collection = _get_collection()
+            elif self._collection_name == "procedural_memory":
+                collection = _get_procedural_collection()
             else:
                 collection = _get_session_collection()
 
@@ -677,6 +690,7 @@ class BM25Index:
 # Module-level BM25 index instances (lazy-built, cached)
 _bm25_docs = BM25Index("mycoswarm_docs")
 _bm25_sessions = BM25Index("session_memory")
+_bm25_procedures = BM25Index("procedural_memory")
 
 
 def _rrf_fuse(
@@ -796,6 +810,154 @@ def reindex_sessions(model: str | None = None) -> dict:
                 stats["failed"] += 1
 
     return stats
+
+
+def index_procedure(proc: dict, model: str | None = None) -> bool:
+    """Index a procedure into the procedural_memory ChromaDB collection.
+
+    Creates a searchable document combining problem + solution + reasoning.
+    Returns True on success.
+    """
+    model = _get_embedding_model(model)
+
+    # Combine fields into a searchable document
+    doc_parts = [proc["problem"], proc["solution"]]
+    if proc.get("reasoning"):
+        doc_parts.append(proc["reasoning"])
+    for ap in proc.get("anti_patterns", []):
+        doc_parts.append(f"Avoid: {ap}")
+    document = " ".join(doc_parts)
+
+    embedding = embed_text(document, model)
+    if embedding is None:
+        return False
+
+    metadata = {
+        "proc_id": proc["id"],
+        "outcome": proc.get("outcome", "success"),
+        "tags": ",".join(proc.get("tags", [])),
+        "created": proc.get("created", ""),
+        "embedding_model": model,
+    }
+
+    collection = _get_procedural_collection()
+    collection.upsert(
+        ids=[proc["id"]],
+        documents=[document],
+        embeddings=[embedding],
+        metadatas=[metadata],
+    )
+    _bm25_procedures.invalidate()
+    return True
+
+
+def reindex_procedures(model: str | None = None) -> dict:
+    """Drop and rebuild the procedural_memory collection from procedures.jsonl.
+
+    Returns {"procedures": count, "indexed": count, "failed": count}.
+    """
+    import chromadb
+    from mycoswarm.memory import load_procedures
+
+    CHROMA_DIR.mkdir(parents=True, exist_ok=True)
+    client = chromadb.PersistentClient(path=str(CHROMA_DIR))
+    try:
+        client.delete_collection("procedural_memory")
+    except (ValueError, Exception):
+        pass
+    _bm25_procedures.invalidate()
+
+    model = _get_embedding_model(model)
+    procs = load_procedures()
+    stats = {"procedures": len(procs), "indexed": 0, "failed": 0}
+
+    for proc in procs:
+        if index_procedure(proc, model):
+            stats["indexed"] += 1
+        else:
+            stats["failed"] += 1
+
+    return stats
+
+
+def search_procedures(
+    query: str,
+    n_results: int = 3,
+    model: str | None = None,
+) -> list[dict]:
+    """Search procedural memory using hybrid search (vector + BM25).
+
+    Returns list of procedure dicts with rrf_score added.
+    Only returns 'success' outcomes by default (anti-patterns are in the doc text).
+    """
+    from mycoswarm.memory import load_procedures
+
+    model = _get_embedding_model(model)
+    query_embedding = embed_text(query, model)
+    if query_embedding is None:
+        return []
+
+    try:
+        col = _get_procedural_collection()
+        if col.count() == 0:
+            return []
+
+        n_fetch = min(n_results * 2, col.count())
+
+        # Vector search
+        vec_results = col.query(
+            query_embeddings=[query_embedding],
+            n_results=n_fetch,
+        )
+
+        # BM25 search
+        bm25_results = _bm25_procedures.search(query, n_results=n_fetch)
+
+        # Build lookup
+        proc_data: dict[str, dict] = {}
+        vec_ids: list[str] = []
+
+        if vec_results and vec_results["ids"]:
+            for i, pid in enumerate(vec_results["ids"][0]):
+                vec_ids.append(pid)
+                meta = vec_results["metadatas"][0][i] if vec_results["metadatas"] else {}
+                proc_data[pid] = {
+                    "proc_id": pid,
+                    "document": vec_results["documents"][0][i],
+                    "outcome": meta.get("outcome", "success"),
+                    "tags": meta.get("tags", ""),
+                }
+
+        bm25_ids: list[str] = []
+        for hit in bm25_results:
+            bm25_ids.append(hit["id"])
+            if hit["id"] not in proc_data:
+                meta = hit["metadata"]
+                proc_data[hit["id"]] = {
+                    "proc_id": hit["id"],
+                    "document": hit["document"],
+                    "outcome": meta.get("outcome", "success"),
+                    "tags": meta.get("tags", ""),
+                }
+
+        # RRF fusion
+        rrf_scores = _rrf_fuse(vec_ids, bm25_ids)
+        sorted_ids = sorted(rrf_scores, key=lambda x: rrf_scores[x], reverse=True)
+        sorted_ids = sorted_ids[:n_results]
+
+        # Hydrate with full procedure data from JSONL
+        all_procs = {p["id"]: p for p in load_procedures()}
+        results = []
+        for pid in sorted_ids:
+            full = all_procs.get(pid)
+            if full:
+                full["rrf_score"] = round(rrf_scores[pid], 6)
+                results.append(full)
+
+        return results
+
+    except Exception:
+        return []
 
 
 def search_sessions(
@@ -1109,16 +1271,16 @@ def search_all(
     do_rerank: bool = False,
     session_boost: bool = False,
     intent: dict | None = None,
-) -> tuple[list[dict], list[dict]]:
-    """Search BOTH document library and session memory with hybrid retrieval.
+) -> tuple[list[dict], list[dict], list[dict]]:
+    """Search documents, sessions, AND procedural memory.
 
     Uses vector similarity (ChromaDB) + BM25 keyword matching, merged via
     Reciprocal Rank Fusion (RRF).  Embeds the query once.
     When do_rerank=True, passes candidates through LLM re-ranking.
     When session_boost=True, fetches 2x session results (for past-reference queries).
     When intent is provided, adjusts candidate counts based on mode/scope.
-    Returns (doc_hits, session_hits) so callers can format them
-    with distinct labels ([D1]... vs [S1]...).
+    Returns (doc_hits, session_hits, procedure_hits) so callers can format them
+    with distinct labels ([D1]... vs [S1]... vs [P1]...).
     """
     # --- Intent-driven candidate adjustments ---
     # Note: tool=answer skips RAG entirely in cli.py before calling search_all.
@@ -1133,7 +1295,7 @@ def search_all(
 
     query_embedding = embed_text(query, model)
     if query_embedding is None:
-        return [], []
+        return [], [], []
 
     # When re-ranking, fetch more candidates for the LLM to filter
     n_candidates = n_results * 2 if do_rerank else n_results
@@ -1359,6 +1521,27 @@ def search_all(
     if len(session_hits) >= 2:
         session_hits = _detect_poison_loops(doc_hits, session_hits)
 
+    # --- Procedural memory: triggered by execute mode or problem-like queries ---
+    procedure_hits: list[dict] = []
+    _mode = intent.get("mode", "explore") if intent else "explore"
+    _PROBLEM_RE = re.compile(
+        r'\b(error|bug|fix|issue|fail|broke|wrong|how\s+to|why\s+does|'
+        r'doesn.t\s+work|not\s+working|problem|debug|solve)\b',
+        re.IGNORECASE,
+    )
+    if _mode == "execute" or _PROBLEM_RE.search(query):
+        try:
+            procedure_hits = search_procedures(query, n_results=3, model=model)
+        except Exception:
+            pass
+
+    # Also search procedures when mode is recall and scope is all
+    if not procedure_hits and _mode == "recall" and _scope == "all":
+        try:
+            procedure_hits = search_procedures(query, n_results=2, model=model)
+        except Exception:
+            pass
+
     # --- LLM re-ranking ---
     if do_rerank and (doc_hits or session_hits):
         doc_hits = rerank(
@@ -1378,7 +1561,7 @@ def search_all(
     doc_hits = doc_hits[:n_results]
     session_hits = session_hits[:n_results]
 
-    return doc_hits, session_hits
+    return doc_hits, session_hits, procedure_hits
 
 
 # --- Embedding Model Tracking ---

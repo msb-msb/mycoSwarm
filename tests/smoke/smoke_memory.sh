@@ -12,7 +12,7 @@ echo "  Testing memory priority & contradiction detection..."
 # Test 1: Source priority — doc hits should have source_type=user_document
 python3 -c "
 from mycoswarm.library import search_all
-doc_hits, session_hits = search_all(
+doc_hits, session_hits, _ = search_all(
     'what does PLAN.md say about Phase 20?',
     n_results=5,
     intent={'tool': 'rag', 'mode': 'recall', 'scope': 'docs'}
@@ -28,7 +28,7 @@ exit(0)
 # Test 2: Session hits should have source_type=model_generated
 python3 -c "
 from mycoswarm.library import search_all
-doc_hits, session_hits = search_all(
+doc_hits, session_hits, _ = search_all(
     'what did we discuss about bees?',
     n_results=5,
     intent={'tool': 'rag', 'mode': 'recall', 'scope': 'session'}
@@ -47,7 +47,7 @@ exit(0)
 # Test 3: Source filter — PLAN.md query returns only PLAN.md chunks
 python3 -c "
 from mycoswarm.library import search_all
-doc_hits, _ = search_all(
+doc_hits, _, _ = search_all(
     'what does PLAN.md say about Phase 20?',
     n_results=5,
     intent={'tool': 'rag', 'mode': 'recall', 'scope': 'docs'}
@@ -64,7 +64,7 @@ else:
 # Test 4: Section header boost — Phase 20 chunk should rank #1
 python3 -c "
 from mycoswarm.library import search_all
-doc_hits, _ = search_all(
+doc_hits, _, _ = search_all(
     'what does PLAN.md say about Phase 20?',
     n_results=5,
     intent={'tool': 'rag', 'mode': 'recall', 'scope': 'docs'}

@@ -1225,7 +1225,7 @@ def cmd_chat(args):
                 from mycoswarm.library import search_all
                 from mycoswarm.solo import detect_past_reference as _dpr
                 _past = _dpr(rag_query)
-                doc_hits, session_hits = search_all(
+                doc_hits, session_hits, procedure_hits = search_all(
                     rag_query, n_results=5, session_boost=_past,
                     intent=intent_result,
                 )
@@ -1244,12 +1244,20 @@ def cmd_chat(args):
                     if topic:
                         label += f" — {topic}"
                     rag_parts.append(f"[S{si}] (From {label}) {hit['summary']}")
+                if procedure_hits:
+                    from mycoswarm.memory import format_procedures_for_prompt, reference_procedure
+                    proc_text = format_procedures_for_prompt(procedure_hits)
+                    rag_parts.append(f"\nRelevant procedures (past solutions):\n{proc_text}")
+                    for p in procedure_hits:
+                        reference_procedure(p.get("id", ""))
                 rag_context = "\n\n".join(rag_parts)
                 cite_parts = []
                 if doc_hits:
                     cite_parts.append("[D1], [D2] for documents")
                 if session_hits:
                     cite_parts.append("[S1], [S2] for past conversations")
+                if procedure_hits:
+                    cite_parts.append("[P1], [P2] for known procedures")
                 cite_hint = "Cite using " + " and ".join(cite_parts) + "." if cite_parts else ""
                 rag_system = (
                     "IMPORTANT: The excerpts below are REAL content retrieved from "
@@ -1263,7 +1271,7 @@ def cmd_chat(args):
                 rag_messages = list(messages) + [
                     {"role": "user", "content": augmented_query},
                 ]
-                total_hits = len(doc_hits) + len(session_hits)
+                total_hits = len(doc_hits) + len(session_hits) + len(procedure_hits)
                 print(f"   📚 {total_hits} excerpts found ({len(doc_hits)} docs, {len(session_hits)} sessions).\n")
                 if not daemon_up:
                     full_text, metrics = chat_stream(rag_messages, model)
@@ -1320,6 +1328,70 @@ def cmd_chat(args):
                 state = "on" if auto_tools else "off"
                 print(f"   Auto tool use: {state}")
                 continue
+
+            elif user_input.startswith("/procedure"):
+                parts = user_input.split(maxsplit=1)
+                subcmd = parts[1].strip() if len(parts) > 1 else "list"
+
+                if subcmd == "list":
+                    from mycoswarm.memory import load_procedures
+                    procs = load_procedures()
+                    if not procs:
+                        print("  No procedures stored yet.")
+                        print("  Add one: /procedure add <problem> | <solution>")
+                    else:
+                        for p in procs:
+                            outcome = "ok" if p["outcome"] == "success" else "FAIL"
+                            uses = p.get("use_count", 0)
+                            print(f"  [{p['id']}] ({outcome}, used {uses}x) {p['problem'][:60]}")
+                    continue
+
+                elif subcmd.startswith("add "):
+                    text = subcmd[4:].strip()
+                    if "|" in text:
+                        problem, solution = text.split("|", 1)
+                        from mycoswarm.memory import add_procedure
+                        proc = add_procedure(
+                            problem=problem.strip(),
+                            solution=solution.strip(),
+                        )
+                        print(f"  Stored: {proc['id']}")
+                    else:
+                        print("  Format: /procedure add <problem> | <solution>")
+                    continue
+
+                elif subcmd.startswith("remove "):
+                    proc_id = subcmd[7:].strip()
+                    from mycoswarm.memory import remove_procedure
+                    if remove_procedure(proc_id):
+                        print(f"  Removed: {proc_id}")
+                    else:
+                        print(f"  Not found: {proc_id}")
+                    continue
+
+                elif subcmd.startswith("promote"):
+                    # Promote recent lessons to procedures
+                    from mycoswarm.memory import load_session_summaries, promote_lesson_to_procedure
+                    sessions = load_session_summaries(limit=5)
+                    promoted = 0
+                    for s in sessions:
+                        for lesson in s.get("lessons", []):
+                            result = promote_lesson_to_procedure(
+                                lesson,
+                                session_name=s.get("session_name", ""),
+                            )
+                            if result:
+                                print(f"  Promoted: {result['id']} \u2014 {lesson[:60]}")
+                                promoted += 1
+                    if promoted == 0:
+                        print("  No promotable lessons found in recent sessions.")
+                    else:
+                        print(f"  Promoted {promoted} lessons to procedures.")
+                    continue
+
+                else:
+                    print("  /procedure list | add <problem>|<solution> | remove <id> | promote")
+                    continue
 
             else:
                 print(f"   Unknown command: {cmd}")
@@ -1433,7 +1505,7 @@ def cmd_chat(args):
                 else:
                     print("   📚 Searching docs + sessions...", end="", flush=True)
                 from mycoswarm.library import search_all
-                doc_hits, session_hits = search_all(
+                doc_hits, session_hits, procedure_hits = search_all(
                     user_input, n_results=5, intent=intent_result,
                     do_rerank=False, session_boost=past_ref,
                 )
@@ -1472,7 +1544,15 @@ def cmd_chat(args):
                     f"[S{si}] (From {label}) {hit['summary']}"
                 )
 
-            if doc_hits or session_hits:
+            # Format procedure hits
+            if procedure_hits:
+                from mycoswarm.memory import format_procedures_for_prompt, reference_procedure
+                proc_text = format_procedures_for_prompt(procedure_hits)
+                rag_context_parts.append(f"\nRelevant procedures (past solutions):\n{proc_text}")
+                for p in procedure_hits:
+                    reference_procedure(p.get("id", ""))
+
+            if doc_hits or session_hits or procedure_hits:
                 tool_sources.append("docs")
 
             # --- Build combined context ---
@@ -1494,6 +1574,8 @@ def cmd_chat(args):
                     cite_parts.append("[D1], [D2] for documents")
                 if session_hits:
                     cite_parts.append("[S1], [S2] for past conversations")
+                if procedure_hits:
+                    cite_parts.append("[P1], [P2] for known procedures")
                 cite_hint = "Cite using " + " and ".join(cite_parts) + "." if cite_parts else ""
                 tool_context = (
                     f"Use the following context to answer. {cite_hint}\n\n"
@@ -1633,7 +1715,7 @@ def cmd_chat(args):
 
 
 def cmd_library(args):
-    """Manage the document library (ingest, search, list, remove, reindex, reindex-sessions, auto-update, eval)."""
+    """Manage the document library (ingest, search, list, remove, reindex, reindex-sessions, reindex-procedures, auto-update, eval)."""
     from pathlib import Path
     from mycoswarm.library import (
         ingest_file, ingest_directory, search, list_documents, remove_document,
@@ -1734,6 +1816,14 @@ def cmd_library(args):
         if stats["failed"]:
             print(f"  ⚠️  {stats['failed']} chunk(s) failed to embed")
 
+    elif action == "reindex-procedures":
+        from mycoswarm.library import reindex_procedures
+        print("🔄 Dropping procedural_memory and re-indexing from procedures.jsonl...")
+        stats = reindex_procedures(model=args.model)
+        print(f"  Reindexed: {stats['indexed']}/{stats['procedures']} procedures")
+        if stats["failed"]:
+            print(f"  Failed: {stats['failed']}")
+
     elif action == "auto-update":
         target = Path(args.path).expanduser() if args.path else LIBRARY_DIR
         print(f"🔄 Checking for changes in {target}...")
@@ -1776,7 +1866,7 @@ def cmd_rag(args):
         print(f"🔍 Searching + re-ranking...", end=" ", flush=True)
     else:
         print(f"🔍 Searching library...", end=" ", flush=True)
-    doc_hits, session_hits = search_all(
+    doc_hits, session_hits, procedure_hits = search_all(
         question, n_results=5, do_rerank=do_rerank, session_boost=past_ref,
     )
 
@@ -1785,7 +1875,7 @@ def cmd_rag(args):
         print("   No documents or sessions indexed. Try: mycoswarm library ingest")
         return
 
-    total = len(doc_hits) + len(session_hits)
+    total = len(doc_hits) + len(session_hits) + len(procedure_hits)
     print(f"{total} result(s) found ({len(doc_hits)} docs, {len(session_hits)} sessions).\n")
 
     # Build context from hits with distinct labels
@@ -1807,6 +1897,13 @@ def cmd_rag(args):
         context_parts.append(f"[S{i}] (From {label}) {hit['summary']}")
     if session_hits:
         sources.append("sessions")
+    if procedure_hits:
+        from mycoswarm.memory import format_procedures_for_prompt, reference_procedure
+        proc_text = format_procedures_for_prompt(procedure_hits)
+        context_parts.append(f"\nRelevant procedures (past solutions):\n{proc_text}")
+        for p in procedure_hits:
+            reference_procedure(p.get("id", ""))
+        sources.append("procedures")
 
     context_block = "\n\n".join(context_parts)
     cite_parts = []
@@ -1814,6 +1911,8 @@ def cmd_rag(args):
         cite_parts.append("[D1], [D2] for documents")
     if session_hits:
         cite_parts.append("[S1], [S2] for past conversations")
+    if procedure_hits:
+        cite_parts.append("[P1], [P2] for known procedures")
     cite_hint = "Cite using " + " and ".join(cite_parts) + "." if cite_parts else ""
     system_prompt = (
         "IMPORTANT: The excerpts below are REAL content retrieved from "
@@ -2072,10 +2171,10 @@ def main():
 
     # library
     library_parser = subparsers.add_parser(
-        "library", help="Manage the document library (ingest, search, list, remove, reindex, reindex-sessions, auto-update, eval)"
+        "library", help="Manage the document library (ingest, search, list, remove, reindex, reindex-sessions, reindex-procedures, auto-update, eval)"
     )
     library_parser.add_argument(
-        "action", choices=["ingest", "search", "list", "remove", "reindex", "reindex-sessions", "auto-update", "eval"],
+        "action", choices=["ingest", "search", "list", "remove", "reindex", "reindex-sessions", "reindex-procedures", "auto-update", "eval"],
         help="Action to perform",
     )
     library_parser.add_argument(

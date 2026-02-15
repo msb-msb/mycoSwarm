@@ -1,14 +1,16 @@
-"""mycoSwarm persistent memory — facts + session summaries.
+"""mycoSwarm persistent memory — facts + session summaries + procedures.
 
 Provides cross-session memory by injecting structured context into the
-system prompt. Two layers:
+system prompt. Three layers:
 
   Layer 1 — Session summaries: auto-generated after each chat session
   Layer 2 — User facts: explicit /remember commands
+  Layer 3 — Procedural memory: reusable problem/solution patterns
 
 Data stored in ~/.config/mycoswarm/memory/:
   facts.json       — versioned fact store
   sessions.jsonl   — append-only session summaries
+  procedures.jsonl — problem/solution patterns
 """
 
 import json
@@ -23,6 +25,7 @@ logger = logging.getLogger(__name__)
 MEMORY_DIR = Path("~/.config/mycoswarm/memory").expanduser()
 FACTS_PATH = MEMORY_DIR / "facts.json"
 SESSIONS_PATH = MEMORY_DIR / "sessions.jsonl"
+PROCEDURES_PATH = MEMORY_DIR / "procedures.jsonl"
 
 OLLAMA_BASE = "http://localhost:11434"
 
@@ -584,6 +587,173 @@ def format_summaries_for_prompt(summaries: list[dict]) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Layer 3: Procedural Memory
+# ---------------------------------------------------------------------------
+
+def load_procedures() -> list[dict]:
+    """Load all procedures from the JSONL file."""
+    if not PROCEDURES_PATH.exists():
+        return []
+    procedures = []
+    for line in PROCEDURES_PATH.read_text().splitlines():
+        line = line.strip()
+        if line:
+            try:
+                procedures.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+    return procedures
+
+
+def _next_procedure_id() -> str:
+    """Generate next procedure ID."""
+    procs = load_procedures()
+    if not procs:
+        return "proc_001"
+    max_num = 0
+    for p in procs:
+        pid = p.get("id", "")
+        if pid.startswith("proc_"):
+            try:
+                num = int(pid.split("_")[1])
+                max_num = max(max_num, num)
+            except (ValueError, IndexError):
+                pass
+    return f"proc_{max_num + 1:03d}"
+
+
+def add_procedure(
+    problem: str,
+    solution: str,
+    *,
+    reasoning: str = "",
+    anti_patterns: list[str] | None = None,
+    outcome: str = "success",
+    tags: list[str] | None = None,
+    source_session: str = "",
+) -> dict:
+    """Add a new procedure. Returns the procedure dict.
+
+    Also indexes into ChromaDB for semantic search.
+    """
+    _ensure_dir()
+    now = datetime.now().isoformat()
+    proc = {
+        "id": _next_procedure_id(),
+        "problem": problem,
+        "solution": solution,
+        "reasoning": reasoning,
+        "anti_patterns": anti_patterns or [],
+        "outcome": outcome,
+        "tags": tags or [],
+        "source_session": source_session,
+        "created": now,
+        "last_used": now,
+        "use_count": 0,
+    }
+
+    with open(PROCEDURES_PATH, "a") as f:
+        f.write(json.dumps(proc) + "\n")
+
+    # Index into ChromaDB
+    try:
+        from mycoswarm.library import index_procedure
+        index_procedure(proc)
+    except Exception as e:
+        logger.debug("Failed to index procedure: %s", e)
+
+    return proc
+
+
+def remove_procedure(proc_id: str) -> bool:
+    """Remove a procedure by ID. Returns True if found and removed."""
+    procs = load_procedures()
+    filtered = [p for p in procs if p.get("id") != proc_id]
+    if len(filtered) == len(procs):
+        return False
+    # Rewrite file
+    _ensure_dir()
+    with open(PROCEDURES_PATH, "w") as f:
+        for p in filtered:
+            f.write(json.dumps(p) + "\n")
+    return True
+
+
+def reference_procedure(proc_id: str) -> bool:
+    """Mark a procedure as used (updates last_used + use_count).
+
+    Call when a procedure is retrieved and injected into context.
+    Returns True if found and updated.
+    """
+    procs = load_procedures()
+    found = False
+    for p in procs:
+        if p.get("id") == proc_id:
+            p["last_used"] = datetime.now().isoformat()
+            p["use_count"] = p.get("use_count", 0) + 1
+            found = True
+            break
+    if not found:
+        return False
+    _ensure_dir()
+    with open(PROCEDURES_PATH, "w") as f:
+        for p in procs:
+            f.write(json.dumps(p) + "\n")
+    return True
+
+
+def format_procedures_for_prompt(procedures: list[dict]) -> str:
+    """Format procedures for injection into chat context.
+
+    Uses [P1], [P2] tags matching the [D1]/[S1] pattern.
+    """
+    if not procedures:
+        return ""
+    lines = []
+    for i, p in enumerate(procedures):
+        tag = f"[P{i + 1}]"
+        outcome_marker = "\u2713" if p.get("outcome") == "success" else "\u2717"
+        lines.append(f"{tag} ({outcome_marker}) Problem: {p['problem']}")
+        lines.append(f"    Solution: {p['solution']}")
+        if p.get("reasoning"):
+            lines.append(f"    Why: {p['reasoning']}")
+        for ap in p.get("anti_patterns", []):
+            lines.append(f"    Avoid: {ap}")
+    return "\n".join(lines)
+
+
+def promote_lesson_to_procedure(
+    lesson: str,
+    *,
+    session_name: str = "",
+    tags: list[str] | None = None,
+) -> dict | None:
+    """Promote an episodic lesson to a procedure.
+
+    Attempts to split the lesson into problem/solution format.
+    Returns the new procedure dict, or None if the lesson doesn't
+    have a clear problem/solution structure.
+    """
+    # Simple heuristic: if lesson contains action language, it's promotable
+    action_signals = [
+        "should", "must", "don't", "avoid", "use", "instead",
+        "works better", "causes", "prevents", "requires",
+    ]
+    has_action = any(s in lesson.lower() for s in action_signals)
+    if not has_action:
+        return None
+
+    return add_procedure(
+        problem=lesson,
+        solution=lesson,
+        reasoning="Extracted from session lesson \u2014 refine with /procedure edit",
+        outcome="success",
+        tags=tags or [],
+        source_session=session_name,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Prompt Builder
 # ---------------------------------------------------------------------------
 
@@ -648,5 +818,16 @@ def build_memory_system_prompt(query: str | None = None) -> str:
 
     if session_text:
         parts.append(session_text)
+
+    # Procedural memory context
+    procs = load_procedures()
+    if procs:
+        parts.append(
+            "You also have procedural memory \u2014 past solutions to problems. "
+            "When [P1], [P2] etc. appear in your context, these are proven "
+            "approaches from previous problem-solving sessions. Apply them "
+            "when the current problem matches the pattern. If a procedure "
+            "is marked as a failure, avoid that approach."
+        )
 
     return "\n\n".join(parts)

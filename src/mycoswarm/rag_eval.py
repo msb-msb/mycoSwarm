@@ -155,7 +155,7 @@ def run_eval(
         expected_keywords = pair.get("expected_keywords", [])
 
         # Run retrieval (no re-ranking — measure raw retrieval quality)
-        doc_hits, session_hits = search_all(
+        doc_hits, session_hits, _ = search_all(
             query, n_results=n_results, model=model, do_rerank=False,
         )
 

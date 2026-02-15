@@ -275,12 +275,12 @@ Reference: Lucek/CoALA procedural memory + IFS value-informed reasoning
 
 Procedural memory isn't just "how to do X" — it's "why we do it this way" and "what to avoid." In IFS terms, procedural memory without ethical grounding produces a system that's skilled but not wise.
 
-- [ ] New memory type: exemplar store (procedures.jsonl + ChromaDB procedural_memory collection)
-- [ ] "How we solved X before" — success/fail patterns with problem signature matching
-- [ ] **Value-informed procedures:** Store not just the solution but the reasoning: "we chose this approach because [principle]"
-- [ ] **Anti-patterns:** Explicitly store what *not* to do and why (e.g., "don't inject RAG as system message — model ignores it")
-- [ ] Stored separately from episodic and factual memory with dedicated retrieval path
-- [ ] **Procedural retrieval trigger:** When intent mode=execute or problem signature matches known pattern, pull relevant procedures
+- [x] New memory type: exemplar store (procedures.jsonl + ChromaDB procedural_memory collection) (2026-02-15)
+- [x] "How we solved X before" — success/fail patterns with problem signature matching (2026-02-15)
+- [x] **Anti-patterns:** Explicitly store what *not* to do and why (e.g., "don't inject RAG as system message — model ignores it") (2026-02-15)
+- [x] Stored separately from episodic and factual memory with dedicated retrieval path (2026-02-15)
+- [x] **Procedural retrieval trigger:** When intent mode=execute or problem signature matches known pattern, pull relevant procedures (2026-02-15)
+- [ ] **Value-informed procedures:** Store not just the solution but the reasoning (schema supports it, needs prompt refinement)
 - [ ] **Procedure growth from experience:** End-of-session extraction identifies reusable patterns → auto-creates procedure candidates for review
 - [ ] **Ethical reasoning domain:** Wisdom from Taoism, IFS, martial arts philosophy indexed as procedural knowledge — shapes *how* the system reasons, not just *what* it knows
 

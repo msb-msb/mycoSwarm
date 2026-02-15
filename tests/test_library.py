@@ -779,7 +779,7 @@ class TestSearchAll:
         mock_sess_col.return_value = sess_col
         mock_bm25_sess.search.return_value = []
 
-        doc_hits, session_hits = search_all("tai chi ADHD")
+        doc_hits, session_hits, _ = search_all("tai chi ADHD")
 
         assert len(doc_hits) == 1
         assert doc_hits[0]["source"] == "health.pdf"
@@ -822,7 +822,7 @@ class TestSearchAll:
         mock_sess_col.return_value = sess_col
         mock_bm25_sess.search.return_value = []
 
-        doc_hits, session_hits = search_all("meditation")
+        doc_hits, session_hits, _ = search_all("meditation")
 
         assert len(doc_hits) == 0
         assert len(session_hits) == 1
@@ -835,7 +835,7 @@ class TestSearchAll:
         mock_get_model.return_value = "nomic-embed-text"
         mock_embed.return_value = None
 
-        doc_hits, session_hits = search_all("anything")
+        doc_hits, session_hits, _ = search_all("anything")
         assert doc_hits == []
         assert session_hits == []
 
@@ -1073,7 +1073,7 @@ class TestHybridSearchAll:
         mock_sess_col.return_value = sess_col
         mock_bm25_sess.search.return_value = []
 
-        doc_hits, session_hits = search_all("xylophone neural networks", n_results=5)
+        doc_hits, session_hits, _ = search_all("xylophone neural networks", n_results=5)
 
         # Both docs should appear
         sources = [h["source"] for h in doc_hits]
@@ -1117,7 +1117,7 @@ class TestHybridSearchAll:
         mock_sess_col.return_value = sess_col
         mock_bm25_sess.search.return_value = []
 
-        doc_hits, _ = search_all("test", n_results=5)
+        doc_hits, _, _ = search_all("test", n_results=5)
 
         assert len(doc_hits) == 1
         assert "rrf_score" in doc_hits[0]
@@ -1165,7 +1165,7 @@ class TestHybridSearchAll:
              "bm25_score": 1.5},
         ]
 
-        _, session_hits = search_all("beekeeping", n_results=5)
+        _, session_hits, _ = search_all("beekeeping", n_results=5)
 
         assert len(session_hits) == 2
         summaries = [h["summary"] for h in session_hits]
@@ -1448,7 +1448,7 @@ class TestSearchAllRerank:
         # rerank returns filtered results
         mock_rerank.side_effect = lambda q, chunks, **kw: chunks[:1]
 
-        doc_hits, _ = search_all("test", n_results=5, do_rerank=True)
+        doc_hits, _, _ = search_all("test", n_results=5, do_rerank=True)
 
         assert mock_rerank.call_count == 2  # once for docs, once for sessions
 
@@ -1610,8 +1610,9 @@ class TestRunEval:
                     [{"text": "The architecture uses discovery daemon worker",
                       "source": "CLAUDE.md", "score": 0.1, "rrf_score": 0.01}],
                     [],
+                    [],
                 )
-            return ([], [])
+            return ([], [], [])
 
         mock_search_all.side_effect = fake_search_all
 
@@ -1650,6 +1651,7 @@ class TestRunEval:
         """Per-query breakdown includes individual metrics."""
         mock_search_all.return_value = (
             [{"text": "relevant text", "source": "doc.txt", "score": 0.1, "rrf_score": 0.01}],
+            [],
             [],
         )
 
@@ -1802,11 +1804,11 @@ class TestSessionBoost:
         mock_bm25_sess.search.return_value = []
 
         # Without boost
-        _, hits_normal = search_all("test", n_results=5, session_boost=False)
+        _, hits_normal, _ = search_all("test", n_results=5, session_boost=False)
         normal_count = len(hits_normal)
 
         # With boost — should return more session results
-        _, hits_boosted = search_all("test", n_results=5, session_boost=True)
+        _, hits_boosted, _ = search_all("test", n_results=5, session_boost=True)
         boosted_count = len(hits_boosted)
 
         assert boosted_count >= normal_count
@@ -1846,7 +1848,7 @@ class TestSessionBoost:
         mock_sess_col.return_value = sess_col
         mock_bm25_sess.search.return_value = []
 
-        _, hits = search_all("test", n_results=5, session_boost=False)
+        _, hits, _ = search_all("test", n_results=5, session_boost=False)
         assert len(hits) == 3  # all 3 available, within n_results
 
 
@@ -1894,7 +1896,7 @@ class TestSearchAllIntent:
         mock_sess_col.return_value = sess_col
         mock_bm25_sess.search.return_value = []
 
-        doc_scoped, sess_scoped = search_all(
+        doc_scoped, sess_scoped, _ = search_all(
             "test", n_results=5, intent={"scope": "session"}
         )
 
@@ -1940,10 +1942,10 @@ class TestSearchAllIntent:
         mock_sess_col.return_value = sess_col
         mock_bm25_sess.search.return_value = []
 
-        doc_session, sess_session = search_all(
+        doc_session, sess_session, _ = search_all(
             "test", n_results=5, intent={"scope": "session"}
         )
-        doc_personal, sess_personal = search_all(
+        doc_personal, sess_personal, _ = search_all(
             "test", n_results=5, intent={"scope": "personal"}
         )
 
@@ -1990,7 +1992,7 @@ class TestSearchAllIntent:
         mock_sess_col.return_value = sess_col
         mock_bm25_sess.search.return_value = []
 
-        doc_docs, sess_docs = search_all(
+        doc_docs, sess_docs, _ = search_all(
             "test", n_results=5, intent={"scope": "docs"}
         )
 
@@ -2048,7 +2050,7 @@ class TestSourcePriority:
         mock_sess_col.return_value = sess_col
         mock_bm25_sess.search.return_value = []
 
-        doc_hits, session_hits = search_all("tai chi")
+        doc_hits, session_hits, _ = search_all("tai chi")
 
         assert len(doc_hits) == 1
         assert doc_hits[0]["source_type"] == "user_document"
@@ -2103,7 +2105,7 @@ class TestSourcePriority:
         mock_sess_col.return_value = sess_col
         mock_bm25_sess.search.return_value = []
 
-        doc_hits, session_hits = search_all(
+        doc_hits, session_hits, _ = search_all(
             "beekeeping", intent={"scope": "all"},
         )
 
@@ -2200,7 +2202,7 @@ class TestGroundingScoreGating:
         mock_sess_col.return_value = sess_col
         mock_bm25_sess.search.return_value = []
 
-        _, session_hits = search_all("python")
+        _, session_hits, _ = search_all("python")
 
         assert len(session_hits) == 2
         # Well-grounded hit should have higher effective RRF score
@@ -2681,7 +2683,7 @@ class TestRecencyDecay:
         mock_bm25_docs.search.return_value = []
         mock_bm25_sess.search.return_value = []
 
-        _, session_hits = search_all("testing query", n_results=5)
+        _, session_hits, _ = search_all("testing query", n_results=5)
         assert len(session_hits) >= 1
         hit = session_hits[0]
         assert "recency_decay" in hit
@@ -2756,7 +2758,7 @@ class TestTemporalRecencyDetection:
         mock_bm25_docs.search.return_value = []
         mock_bm25_sess.search.return_value = []
 
-        _, session_hits = search_all(
+        _, session_hits, _ = search_all(
             "what were we talking about last time?", n_results=5,
         )
         assert len(session_hits) == 2
