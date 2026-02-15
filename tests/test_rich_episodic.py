@@ -342,3 +342,10 @@ def test_summarize_session_rich_falls_back_on_error():
 
     assert result["summary"] == "fallback text"
     assert result["emotional_tone"] == "neutral"
+
+
+def test_rich_prompt_asks_for_subject_matter_lessons():
+    """Verify the reflection prompt explicitly requests subject-matter lessons."""
+    import inspect
+    source = inspect.getsource(summarize_session_rich)
+    assert "SUBJECT MATTER" in source or "TOPICS discussed" in source

@@ -7,6 +7,7 @@ from unittest.mock import patch, MagicMock
 import pytest
 
 from mycoswarm.library import (
+    _recency_decay,
     chunk_text,
     chunk_text_pdf,
     clean_text,
@@ -2085,6 +2086,7 @@ class TestSourcePriority:
         mock_doc_col.return_value = doc_col
         mock_bm25_docs.search.return_value = []
 
+        today = datetime.now().strftime("%Y-%m-%d")
         sess_col = MagicMock()
         sess_col.count.return_value = 1
         sess_col.query.return_value = {
@@ -2092,7 +2094,7 @@ class TestSourcePriority:
             "documents": [["We discussed beekeeping"]],
             "metadatas": [[{
                 "session_id": "s1::topic_0",
-                "date": "2026-02-10",
+                "date": today,
                 "topic": "beekeeping",
             }]],
             "distances": [[0.10]],
@@ -2107,10 +2109,8 @@ class TestSourcePriority:
         assert len(doc_hits) == 1
         assert len(session_hits) == 1
 
-        # Doc hit should have 2x boosted RRF score
+        # Doc hit should have 2x boosted RRF score (session from today → decay=1.0)
         assert doc_hits[0]["rrf_score"] > session_hits[0]["rrf_score"]
-        # Specifically, doc should be exactly 2x the session score
-        # (both at rank 1 in vector-only → same base RRF)
         assert doc_hits[0]["rrf_score"] == pytest.approx(
             session_hits[0]["rrf_score"] * 2.0, rel=1e-4,
         )
@@ -2597,3 +2597,91 @@ class TestSectionsFromToc:
             # Heuristic was NOT called
             mock_heuristic.assert_not_called()
             assert result["chunks"] > 0
+
+
+# --- Recency Decay ---
+
+
+class TestRecencyDecay:
+    def test_today_returns_one(self):
+        today = datetime.now().isoformat()
+        assert _recency_decay(today) == 1.0
+
+    def test_30_days_ago_approx_half(self):
+        d = (datetime.now() - timedelta(days=30)).isoformat()
+        decay = _recency_decay(d)
+        assert 0.45 <= decay <= 0.55, f"Expected ~0.5, got {decay}"
+
+    def test_90_days_ago(self):
+        d = (datetime.now() - timedelta(days=90)).isoformat()
+        decay = _recency_decay(d)
+        assert 0.1 <= decay <= 0.15, f"Expected ~0.125, got {decay}"
+
+    def test_floor_at_01(self):
+        d = (datetime.now() - timedelta(days=365)).isoformat()
+        decay = _recency_decay(d)
+        assert decay == 0.1
+
+    def test_bad_date_returns_half(self):
+        assert _recency_decay("not-a-date") == 0.5
+        assert _recency_decay("") == 0.5
+        assert _recency_decay(None) == 0.5
+
+    def test_future_date_returns_one(self):
+        d = (datetime.now() + timedelta(days=10)).isoformat()
+        assert _recency_decay(d) == 1.0
+
+    def test_lesson_decays_slower(self):
+        d = (datetime.now() - timedelta(days=30)).isoformat()
+        regular = _recency_decay(d, half_life_days=30)
+        lesson = _recency_decay(d, half_life_days=60)
+        assert lesson > regular, (
+            f"Lesson decay {lesson} should be > regular {regular} at 30 days"
+        )
+
+    @patch("mycoswarm.library.check_embedding_model", return_value=None)
+    @patch("mycoswarm.library._bm25_sessions")
+    @patch("mycoswarm.library._bm25_docs")
+    @patch("mycoswarm.library._get_session_collection")
+    @patch("mycoswarm.library._get_collection")
+    @patch("mycoswarm.library.embed_text")
+    @patch("mycoswarm.library._get_embedding_model")
+    def test_search_all_applies_decay(
+        self, mock_get_model, mock_embed, mock_doc_col, mock_sess_col,
+        mock_bm25_docs, mock_bm25_sess, _mock_check,
+    ):
+        """search_all session hits include recency_decay field."""
+        mock_get_model.return_value = "nomic-embed-text"
+        mock_embed.return_value = [0.1, 0.2]
+
+        doc_col = MagicMock()
+        doc_col.count.return_value = 0
+        doc_col.query.return_value = {
+            "ids": [[]], "documents": [[]], "distances": [[]],
+            "metadatas": [[]],
+        }
+        mock_doc_col.return_value = doc_col
+
+        old_date = (datetime.now() - timedelta(days=60)).strftime("%Y-%m-%d")
+        sess_col = MagicMock()
+        sess_col.count.return_value = 1
+        sess_col.query.return_value = {
+            "ids": [["s1"]],
+            "documents": [["Old session about testing"]],
+            "distances": [[0.5]],
+            "metadatas": [[{
+                "date": old_date,
+                "topic": "testing",
+                "grounding_score": 1.0,
+            }]],
+        }
+        mock_sess_col.return_value = sess_col
+
+        mock_bm25_docs.search.return_value = []
+        mock_bm25_sess.search.return_value = []
+
+        _, session_hits = search_all("testing query", n_results=5)
+        assert len(session_hits) >= 1
+        hit = session_hits[0]
+        assert "recency_decay" in hit
+        assert hit["recency_decay"] < 1.0  # 60 days old → decayed

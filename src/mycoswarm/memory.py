@@ -455,12 +455,20 @@ def summarize_session_rich(messages: list[dict], model: str) -> dict | None:
                                 "Reflect on this conversation and produce a JSON "
                                 "object with these fields:\n"
                                 '  "summary": "1-2 sentence overview of what was discussed",\n'
-                                '  "decisions": ["list of decisions made"],\n'
-                                '  "lessons": ["things learned that would help in future"],\n'
-                                '  "surprises": ["unexpected findings or insights"],\n'
+                                '  "decisions": ["choices made and their reasoning"],\n'
+                                '  "lessons": ["reusable insights about the TOPICS discussed, '
+                                "not about the assistant's performance\"],\n"
+                                '  "surprises": ["unexpected findings or counter-intuitive results"],\n'
                                 '  "emotional_tone": one of: neutral, frustration, discovery, '
                                 "confusion, resolution, flow, stuck, exploratory, "
                                 "routine\n\n"
+                                "Rules:\n"
+                                "- lessons must be about the SUBJECT MATTER, not about how "
+                                "the conversation went. Bad: 'The assistant provided helpful answers.' "
+                                "Good: 'RAG context injected as a system message gets ignored by gemma3.'\n"
+                                "- decisions: only explicit choices with reasoning. Empty list if none.\n"
+                                "- surprises: counter-intuitive results only. Empty list if nothing surprising.\n"
+                                "- Keep each item to one sentence.\n"
                                 "Respond with ONLY the JSON object, no explanation."
                             ),
                         },

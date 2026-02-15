@@ -258,10 +258,10 @@ Reference: docs/ARCHITECTURE-MEMORY.md
 - [x] Schema v2 with backward-compatible migration via _migrate_fact() (2026-02-15)
 
 #### 21b: Decay Scoring
-- [ ] Session memories get recency-weighted scores
-- [ ] Referenced-again sessions get boosted
-- [ ] Old unreferenced sessions decay in retrieval priority
-- [ ] "Forgetting as technology"
+- [x] Session memories get recency-weighted scores via _recency_decay() — exponential decay with 30-day half-life, floor at 0.1 (2026-02-15)
+- [x] Lessons decay slower — 60-day half-life for topic=lesson_learned (2026-02-15)
+- [x] Old unreferenced sessions decay in retrieval priority — decay multiplied into RRF score alongside grounding_score (2026-02-15)
+- [x] "Forgetting as technology" — old sessions still retrievable but deprioritized (2026-02-15)
 
 #### 21c: Mode-Aware Retrieval
 - [x] Connect intent gates (Phase 20) to memory retrieval — `search_all(intent=)` adjusts candidates by mode/scope (2026-02-13)
@@ -487,8 +487,8 @@ Current session summaries are lossy — "we discussed Phase 20" discards the exp
 #### 29b: End-of-Session Reflection
 Active takeaway extraction before summarization. The system doesn't just log — it *reflects*.
 
-- [ ] **Reflection prompt:** "What was learned in this session that would help in future similar situations?"
-- [ ] **Decision extraction:** Identify choices made and their reasoning
+- [x] **Reflection prompt:** summarize_session_rich() now explicitly requests subject-matter lessons, not self-referential observations about the assistant (2026-02-15)
+- [x] **Decision extraction:** Structured JSON prompt extracts choices with reasoning (2026-02-15)
 - [ ] **Anti-pattern detection:** Flag recurring mistakes or frustration patterns
 - [ ] **Procedure candidates:** Surface reusable patterns for review → procedural memory (21d)
 

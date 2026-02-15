@@ -21,7 +21,34 @@ from pathlib import Path
 
 import httpx
 
+import math
+
 logger = logging.getLogger(__name__)
+
+
+# --- Recency Decay ---
+
+
+def _recency_decay(date_str: str, half_life_days: int = 30) -> float:
+    """Compute a recency multiplier between 0.1 and 1.0.
+
+    Uses exponential decay with configurable half-life.
+    A session from today scores 1.0.
+    A session from *half_life_days* ago scores ~0.5.
+    Never goes below 0.1 (old sessions still retrievable, just deprioritized).
+    """
+    try:
+        session_date = datetime.fromisoformat(date_str)
+    except (ValueError, TypeError):
+        return 0.5  # unknown date gets neutral score
+
+    age_days = (datetime.now() - session_date).days
+    if age_days <= 0:
+        return 1.0
+
+    decay = math.pow(0.5, age_days / half_life_days)
+    return max(0.1, round(decay, 4))
+
 
 # --- Constants ---
 
@@ -1281,7 +1308,13 @@ def search_all(
                 hit = sess_data[doc_id]
                 base_rrf = rrf_scores[doc_id]
                 gs = hit.get("grounding_score", 1.0)
-                hit["rrf_score"] = round(base_rrf * gs, 6)
+                # Lessons decay slower (60-day half-life vs 30)
+                if hit.get("topic") == "lesson_learned":
+                    decay = _recency_decay(hit.get("date", ""), half_life_days=60)
+                else:
+                    decay = _recency_decay(hit.get("date", ""))
+                hit["rrf_score"] = round(base_rrf * gs * decay, 6)
+                hit["recency_decay"] = decay
                 hit["source_type"] = "model_generated"
                 session_hits.append(hit)
     except Exception:
