@@ -79,7 +79,7 @@ Every version bump must include ALL of these steps:
 1. Bump version in pyproject.toml
 2. Run full test suite (pytest + smoke tests)
 3. Build wheel: python -m build
-4. User uploads to PyPI: twine upload dist/mycoswarm-X.Y.Z*
+4. Show the user the upload command: `twine upload dist/mycoswarm-X.Y.Z*` (user runs this manually)
 5. Create GitHub release: gh release create vX.Y.Z --title "..." --notes "..."
 6. Update all swarm nodes (naru, boa, uncho, pi)
 
