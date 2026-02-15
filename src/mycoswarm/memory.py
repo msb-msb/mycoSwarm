@@ -26,6 +26,12 @@ SESSIONS_PATH = MEMORY_DIR / "sessions.jsonl"
 
 OLLAMA_BASE = "http://localhost:11434"
 
+# Valid emotional tones for rich episodic summaries
+VALID_TONES = {
+    "frustration", "discovery", "confusion", "resolution",
+    "flow", "stuck", "exploratory", "routine", "neutral",
+}
+
 # Fact types — different retention and prompt behavior
 FACT_TYPE_PREFERENCE = "preference"  # User likes/dislikes, style choices
 FACT_TYPE_FACT = "fact"              # Objective info (name, location, etc.)
@@ -241,6 +247,10 @@ def compute_grounding_score(
 def save_session_summary(
     name: str, model: str, summary: str, count: int,
     grounding_score: float | None = None,
+    decisions: list[str] | None = None,
+    lessons: list[str] | None = None,
+    surprises: list[str] | None = None,
+    emotional_tone: str | None = None,
 ) -> None:
     """Append one session summary to the JSONL file and index into ChromaDB."""
     _ensure_dir()
@@ -254,6 +264,15 @@ def save_session_summary(
         "source_type": "model_generated",
         "grounding_score": grounding_score if grounding_score is not None else 1.0,
     }
+    if decisions:
+        entry["decisions"] = decisions
+    if lessons:
+        entry["lessons"] = lessons
+    if surprises:
+        entry["surprises"] = surprises
+    if emotional_tone:
+        entry["emotional_tone"] = emotional_tone
+
     with open(SESSIONS_PATH, "a") as f:
         f.write(json.dumps(entry) + "\n")
 
@@ -268,6 +287,15 @@ def save_session_summary(
                 date=timestamp[:10],
                 topic=t["topic"],
             )
+        # Index lessons as separate searchable chunks
+        if lessons:
+            for j, lesson in enumerate(lessons):
+                index_session_summary(
+                    session_id=f"{name}::lesson_{j}",
+                    summary=lesson,
+                    date=timestamp[:10],
+                    topic="lesson_learned",
+                )
     except Exception as e:
         logger.debug("Failed to index session summary: %s", e)
 
@@ -321,6 +349,138 @@ def summarize_session(messages: list[dict], model: str) -> str | None:
     except Exception as e:
         logger.debug("Session summarization failed: %s", e)
         return None
+
+
+def _sanitize_str_list(items: object) -> list[str]:
+    """Validate and clean a list-of-strings from model output."""
+    if not isinstance(items, list):
+        return []
+    result: list[str] = []
+    for x in items:
+        if isinstance(x, (str, int, float)):
+            s = str(x).strip()
+            if s:
+                result.append(s)
+    return result
+
+
+def _parse_rich_summary(
+    raw: str, messages: list[dict], model: str,
+) -> dict | None:
+    """Parse JSON from a rich summarization response.
+
+    Returns validated dict with: summary, decisions, lessons, surprises,
+    emotional_tone.  Falls back to ``_rich_fallback`` if JSON is invalid
+    or the summary field is empty.
+    """
+    json_str = raw
+    if "```" in json_str:
+        for block in json_str.split("```"):
+            block = block.strip()
+            if block.startswith("json"):
+                block = block[4:].strip()
+            if block.startswith("{"):
+                json_str = block
+                break
+
+    try:
+        parsed = json.loads(json_str)
+    except (json.JSONDecodeError, TypeError):
+        return _rich_fallback(messages, model)
+
+    if not isinstance(parsed, dict):
+        return _rich_fallback(messages, model)
+
+    summary = parsed.get("summary", "")
+    if not isinstance(summary, str) or not summary.strip():
+        return _rich_fallback(messages, model)
+
+    tone = parsed.get("emotional_tone", "neutral")
+    if not isinstance(tone, str) or tone not in VALID_TONES:
+        tone = "neutral"
+
+    return {
+        "summary": summary.strip(),
+        "decisions": _sanitize_str_list(parsed.get("decisions")),
+        "lessons": _sanitize_str_list(parsed.get("lessons")),
+        "surprises": _sanitize_str_list(parsed.get("surprises")),
+        "emotional_tone": tone,
+    }
+
+
+def _rich_fallback(messages: list[dict], model: str) -> dict | None:
+    """Fall back to plain summarize_session and wrap in rich format."""
+    summary = summarize_session(messages, model)
+    if not summary:
+        return None
+    return {
+        "summary": summary,
+        "decisions": [],
+        "lessons": [],
+        "surprises": [],
+        "emotional_tone": "neutral",
+    }
+
+
+def summarize_session_rich(messages: list[dict], model: str) -> dict | None:
+    """Structured session reflection — extracts summary, decisions, lessons,
+    surprises, and emotional tone.
+
+    Returns dict with keys: summary, decisions, lessons, surprises,
+    emotional_tone.  Falls back to plain summary on failure.
+    Returns None if the session is too short.
+    """
+    if len(messages) < 2:
+        return None
+
+    recent = messages[-30:]
+    trimmed = []
+    for m in recent:
+        content = m.get("content", "")
+        if len(content) > 500:
+            content = content[:500] + "..."
+        trimmed.append(f"{m['role']}: {content}")
+    transcript = "\n".join(trimmed)
+
+    try:
+        with httpx.Client(timeout=httpx.Timeout(5.0, read=45.0)) as client:
+            resp = client.post(
+                f"{OLLAMA_BASE}/api/chat",
+                json={
+                    "model": model,
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": (
+                                "Reflect on this conversation and produce a JSON "
+                                "object with these fields:\n"
+                                '  "summary": "1-2 sentence overview of what was discussed",\n'
+                                '  "decisions": ["list of decisions made"],\n'
+                                '  "lessons": ["things learned that would help in future"],\n'
+                                '  "surprises": ["unexpected findings or insights"],\n'
+                                '  "emotional_tone": one of: neutral, frustration, discovery, '
+                                "confusion, resolution, flow, stuck, exploratory, "
+                                "routine\n\n"
+                                "Respond with ONLY the JSON object, no explanation."
+                            ),
+                        },
+                        {"role": "user", "content": transcript},
+                    ],
+                    "options": {"temperature": 0.3, "num_predict": 400},
+                    "stream": False,
+                },
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            raw = data.get("message", {}).get("content", "").strip()
+            if not raw:
+                return _rich_fallback(messages, model)
+    except Exception as e:
+        logger.debug("Rich summarization failed, trying fallback: %s", e)
+        return _rich_fallback(messages, model)
+
+    result = _parse_rich_summary(raw, messages, model)
+    return result
 
 
 def split_session_topics(
@@ -394,14 +554,24 @@ def split_session_topics(
 
 
 def format_summaries_for_prompt(summaries: list[dict]) -> str:
-    """Format session summaries for system prompt injection."""
+    """Format session summaries for system prompt injection.
+
+    Includes tone tags, lessons (max 3), and decisions (max 2) when
+    available.  Backward compatible with old entries that lack these fields.
+    """
     if not summaries:
         return ""
     lines = ["Previous conversations:"]
     for s in summaries:
         ts = s.get("timestamp", "")[:10]  # date only
         summary = s.get("summary", "")
-        lines.append(f"- [{ts}] {summary}")
+        tone = s.get("emotional_tone", "")
+        tone_tag = f" ({tone})" if tone and tone != "neutral" else ""
+        lines.append(f"- [{ts}]{tone_tag} {summary}")
+        for d in s.get("decisions", [])[:2]:
+            lines.append(f"  Decision: {d}")
+        for le in s.get("lessons", [])[:3]:
+            lines.append(f"  Lesson: {le}")
     return "\n".join(lines)
 
 

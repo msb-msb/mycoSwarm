@@ -1047,21 +1047,35 @@ def cmd_chat(args):
 
         # Summarize session for persistent memory
         from mycoswarm.memory import (
-            summarize_session, save_session_summary, compute_grounding_score,
+            summarize_session_rich, save_session_summary,
+            compute_grounding_score,
         )
         # Only summarize if there are user+assistant messages (skip system-only)
         user_msgs = [m for m in messages if m["role"] in ("user", "assistant")]
         if len(user_msgs) >= 2:
-            print("   Summarizing session...", end=" ", flush=True)
-            summary = summarize_session(messages, model)
-            if summary:
+            print("   Reflecting on session...", end=" ", flush=True)
+            rich = summarize_session_rich(messages, model)
+            if rich:
                 user_texts = [m["content"] for m in user_msgs if m["role"] == "user"]
-                gs = compute_grounding_score(summary, user_texts, session_rag_context)
+                gs = compute_grounding_score(
+                    rich["summary"], user_texts, session_rag_context,
+                )
                 save_session_summary(
-                    session_name, model, summary, len(user_msgs),
+                    session_name, model, rich["summary"], len(user_msgs),
                     grounding_score=gs,
+                    decisions=rich.get("decisions"),
+                    lessons=rich.get("lessons"),
+                    surprises=rich.get("surprises"),
+                    emotional_tone=rich.get("emotional_tone"),
                 )
                 print(f"done. (grounding: {gs:.0%})")
+                tone = rich.get("emotional_tone", "neutral")
+                lessons = rich.get("lessons", [])
+                if tone != "neutral":
+                    print(f"   Tone: {tone}")
+                if lessons:
+                    for le in lessons[:2]:
+                        print(f"   Lesson: {le}")
             else:
                 print("skipped.")
         else:
