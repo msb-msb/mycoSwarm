@@ -1852,14 +1852,6 @@ class TestSessionBoost:
 
 
 class TestSearchAllIntent:
-    def test_chat_mode_skips_rag(self):
-        """intent mode=chat should return empty results without touching ChromaDB."""
-        doc_hits, session_hits = search_all(
-            "hello there", intent={"mode": "chat"}
-        )
-        assert doc_hits == []
-        assert session_hits == []
-
     @patch("mycoswarm.library.check_embedding_model", return_value=None)
     @patch("mycoswarm.library._bm25_sessions")
     @patch("mycoswarm.library._bm25_docs")

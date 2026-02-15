@@ -92,7 +92,13 @@ class TestFactStore:
         ]
         memory.save_facts(facts)
         loaded = memory.load_facts()
-        assert loaded == facts
+        # load_facts() migrates old-schema facts — check core fields + new defaults
+        assert len(loaded) == 1
+        assert loaded[0]["id"] == 10
+        assert loaded[0]["text"] == "Custom fact"
+        assert loaded[0]["added"] == "2026-01-01T00:00:00"
+        assert loaded[0]["type"] == "fact"
+        assert loaded[0]["reference_count"] == 0
 
     def test_load_corrupted_file(self, temp_memory_dir):
         (temp_memory_dir / "facts.json").write_text("not json")
@@ -426,4 +432,93 @@ class TestGroundingScore:
         entries = memory.load_session_summaries()
         assert len(entries) == 1
         assert entries[0]["grounding_score"] == 0.75
+
+
+# --- Phase 21a: Fact Lifecycle ---
+
+
+class TestFactLifecycle:
+    def test_add_fact_with_type(self):
+        """add_fact() stores the fact_type field."""
+        fact = memory.add_fact("prefers dark mode", fact_type="preference")
+        assert fact["type"] == "preference"
+        assert fact["reference_count"] == 0
+        loaded = memory.load_facts()
+        assert loaded[0]["type"] == "preference"
+
+    def test_add_fact_default_type(self):
+        """Default type is 'fact'."""
+        fact = memory.add_fact("Lives in Berkeley")
+        assert fact["type"] == "fact"
+
+    def test_add_fact_invalid_type_defaults(self):
+        """Invalid type falls back to 'fact'."""
+        fact = memory.add_fact("something", fact_type="bogus")
+        assert fact["type"] == "fact"
+
+    def test_reference_fact_updates_counter(self):
+        """reference_fact() increments counter and updates timestamp."""
+        fact = memory.add_fact("Test fact")
+        assert memory.reference_fact(fact["id"])
+        loaded = memory.load_facts()
+        assert loaded[0]["reference_count"] == 1
+        # Second reference
+        assert memory.reference_fact(fact["id"])
+        loaded = memory.load_facts()
+        assert loaded[0]["reference_count"] == 2
+
+    def test_reference_fact_nonexistent(self):
+        """reference_fact() returns False for missing ID."""
+        assert memory.reference_fact(999) is False
+
+    def test_get_stale_facts_none_when_fresh(self):
+        """Newly added facts are not stale."""
+        memory.add_fact("Fresh fact")
+        stale = memory.get_stale_facts(days=30)
+        assert stale == []
+
+    def test_get_stale_facts_old_fact(self):
+        """Facts unreferenced for >30 days are stale."""
+        fact = memory.add_fact("Old fact")
+        # Manually backdate the last_referenced
+        facts = memory.load_facts()
+        facts[0]["last_referenced"] = "2025-01-01T00:00:00"
+        memory.save_facts(facts)
+        stale = memory.get_stale_facts(days=30)
+        assert len(stale) == 1
+        assert stale[0]["text"] == "Old fact"
+
+    def test_ephemeral_stale_threshold_shorter(self):
+        """Ephemeral facts go stale after 7 days, not 30."""
+        memory.add_fact("Buy milk", fact_type="ephemeral")
+        facts = memory.load_facts()
+        facts[0]["last_referenced"] = "2025-12-01T00:00:00"
+        memory.save_facts(facts)
+        stale = memory.get_stale_facts(days=30)
+        assert len(stale) == 1
+        assert stale[0]["type"] == "ephemeral"
+
+    def test_migrate_fact_adds_missing_fields(self):
+        """_migrate_fact() backfills type, last_referenced, reference_count."""
+        old = {"id": 1, "text": "old", "added": "2026-01-01T00:00:00"}
+        migrated = memory._migrate_fact(old)
+        assert migrated["type"] == "fact"
+        assert migrated["last_referenced"] == "2026-01-01T00:00:00"
+        assert migrated["reference_count"] == 0
+
+    def test_format_facts_grouped_by_type(self):
+        """format_facts_for_prompt() groups facts by type."""
+        facts = [
+            {"id": 1, "text": "Mark lives in Berkeley", "type": "fact"},
+            {"id": 2, "text": "prefers Python", "type": "preference"},
+            {"id": 3, "text": "building mycoSwarm", "type": "project"},
+            {"id": 4, "text": "buy milk", "type": "ephemeral"},
+        ]
+        result = memory.format_facts_for_prompt(facts)
+        assert "Known facts about the user:" in result
+        assert "User preferences:" in result
+        assert "Active projects:" in result
+        assert "Temporary notes:" in result
+        # Facts should come before preferences in the output
+        assert result.index("Known facts") < result.index("User preferences")
 

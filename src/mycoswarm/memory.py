@@ -26,9 +26,33 @@ SESSIONS_PATH = MEMORY_DIR / "sessions.jsonl"
 
 OLLAMA_BASE = "http://localhost:11434"
 
+# Fact types — different retention and prompt behavior
+FACT_TYPE_PREFERENCE = "preference"  # User likes/dislikes, style choices
+FACT_TYPE_FACT = "fact"              # Objective info (name, location, etc.)
+FACT_TYPE_PROJECT = "project"        # Active project context
+FACT_TYPE_EPHEMERAL = "ephemeral"    # Temporary, auto-expires
+VALID_FACT_TYPES = {
+    FACT_TYPE_PREFERENCE,
+    FACT_TYPE_FACT,
+    FACT_TYPE_PROJECT,
+    FACT_TYPE_EPHEMERAL,
+}
+DEFAULT_FACT_TYPE = FACT_TYPE_FACT
+
 
 def _ensure_dir() -> None:
     MEMORY_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _migrate_fact(fact: dict) -> dict:
+    """Add missing fields to facts from older schema versions."""
+    if "type" not in fact:
+        fact["type"] = DEFAULT_FACT_TYPE
+    if "last_referenced" not in fact:
+        fact["last_referenced"] = fact.get("added", datetime.now().isoformat())
+    if "reference_count" not in fact:
+        fact["reference_count"] = 0
+    return fact
 
 
 # ---------------------------------------------------------------------------
@@ -36,12 +60,16 @@ def _ensure_dir() -> None:
 # ---------------------------------------------------------------------------
 
 def load_facts() -> list[dict]:
-    """Load facts from disk. Returns list of {id, text, added}."""
+    """Load facts from disk with migration for older schemas.
+
+    Returns list of {id, text, added, type, last_referenced, reference_count}.
+    """
     if not FACTS_PATH.exists():
         return []
     try:
         data = json.loads(FACTS_PATH.read_text())
-        return data.get("facts", [])
+        facts = data.get("facts", [])
+        return [_migrate_fact(f) for f in facts]
     except (json.JSONDecodeError, KeyError):
         return []
 
@@ -49,18 +77,27 @@ def load_facts() -> list[dict]:
 def save_facts(facts: list[dict]) -> None:
     """Write the full facts list to disk."""
     _ensure_dir()
-    data = {"version": 1, "facts": facts}
+    data = {"version": 2, "facts": facts}
     FACTS_PATH.write_text(json.dumps(data, indent=2))
 
 
-def add_fact(text: str) -> dict:
-    """Add a new fact. Returns the new fact dict."""
+def add_fact(text: str, fact_type: str = DEFAULT_FACT_TYPE) -> dict:
+    """Add a new fact. Returns the new fact dict.
+
+    fact_type: preference | fact | project | ephemeral
+    """
+    if fact_type not in VALID_FACT_TYPES:
+        fact_type = DEFAULT_FACT_TYPE
     facts = load_facts()
     next_id = max((f["id"] for f in facts), default=0) + 1
+    now = datetime.now().isoformat()
     fact = {
         "id": next_id,
         "text": text,
-        "added": datetime.now().isoformat(),
+        "type": fact_type,
+        "added": now,
+        "last_referenced": now,
+        "reference_count": 0,
     }
     facts.append(fact)
     save_facts(facts)
@@ -78,13 +115,69 @@ def remove_fact(fact_id: int) -> bool:
     return True
 
 
+def reference_fact(fact_id: int) -> bool:
+    """Mark a fact as referenced (updates timestamp + counter).
+
+    Call when a fact is retrieved for use in a prompt or response.
+    Returns True if found and updated.
+    """
+    facts = load_facts()
+    for f in facts:
+        if f["id"] == fact_id:
+            f["last_referenced"] = datetime.now().isoformat()
+            f["reference_count"] = f.get("reference_count", 0) + 1
+            save_facts(facts)
+            return True
+    return False
+
+
+def get_stale_facts(days: int = 30) -> list[dict]:
+    """Find facts unreferenced in the last N days.
+
+    Ephemeral facts use a shorter window (7 days).
+    Returns list of stale fact dicts.
+    """
+    facts = load_facts()
+    now = datetime.now()
+    stale = []
+    for f in facts:
+        threshold = 7 if f.get("type") == FACT_TYPE_EPHEMERAL else days
+        try:
+            last_ref = datetime.fromisoformat(f.get("last_referenced", f["added"]))
+            age_days = (now - last_ref).days
+            if age_days >= threshold:
+                stale.append(f)
+        except (ValueError, TypeError):
+            continue
+    return stale
+
+
 def format_facts_for_prompt(facts: list[dict]) -> str:
-    """Format facts for system prompt injection."""
+    """Format facts for system prompt injection, grouped by type."""
     if not facts:
         return ""
-    lines = ["Known facts about the user:"]
+
+    type_labels = {
+        FACT_TYPE_PREFERENCE: "User preferences",
+        FACT_TYPE_FACT: "Known facts about the user",
+        FACT_TYPE_PROJECT: "Active projects",
+        FACT_TYPE_EPHEMERAL: "Temporary notes",
+    }
+
+    # Group by type
+    grouped: dict[str, list[str]] = {}
     for f in facts:
-        lines.append(f"- {f['text']}")
+        ft = f.get("type", DEFAULT_FACT_TYPE)
+        grouped.setdefault(ft, []).append(f["text"])
+
+    lines = []
+    for ft in [FACT_TYPE_FACT, FACT_TYPE_PREFERENCE, FACT_TYPE_PROJECT, FACT_TYPE_EPHEMERAL]:
+        items = grouped.get(ft, [])
+        if items:
+            label = type_labels.get(ft, ft.title())
+            lines.append(f"{label}:")
+            for item in items:
+                lines.append(f"- {item}")
     return "\n".join(lines)
 
 

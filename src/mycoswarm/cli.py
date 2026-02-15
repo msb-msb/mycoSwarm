@@ -1030,9 +1030,9 @@ def cmd_chat(args):
     if messages:
         print(f"   Resumed: {len(messages)} messages")
     if daemon_up:
-        print("   /model /peers /rag /library /auto /remember /memories /forget /clear /quit")
+        print("   /model /peers /rag /library /auto /remember /memories /stale /forget /clear /quit")
     else:
-        print("   /model /rag /library /auto /remember /memories /forget /clear /quit")
+        print("   /model /rag /library /auto /remember /memories /stale /forget /clear /quit")
     print(f"{'─' * 50}")
 
     auto_tools = True  # agentic tool routing on by default
@@ -1142,11 +1142,26 @@ def cmd_chat(args):
             elif cmd == "/remember":
                 parts = user_input.split(maxsplit=1)
                 if len(parts) < 2:
-                    print("   Usage: /remember <fact>")
+                    print("   Usage: /remember [type:] <fact>")
+                    print("   Types: pref: | project: | temp: (default: fact)")
                     continue
+                raw_text = parts[1]
+                _type_prefixes = {
+                    "pref:": "preference",
+                    "preference:": "preference",
+                    "project:": "project",
+                    "temp:": "ephemeral",
+                    "ephemeral:": "ephemeral",
+                }
+                fact_type = "fact"
+                for _pfx, _ft in _type_prefixes.items():
+                    if raw_text.lower().startswith(_pfx):
+                        fact_type = _ft
+                        raw_text = raw_text[len(_pfx):].strip()
+                        break
                 from mycoswarm.memory import add_fact
-                fact = add_fact(parts[1])
-                print(f"   Remembered (#{fact['id']}): {fact['text']}")
+                fact = add_fact(raw_text, fact_type=fact_type)
+                print(f"   Remembered (#{fact['id']}, {fact_type}): {fact['text']}")
                 continue
 
             elif cmd == "/memories":
@@ -1156,7 +1171,23 @@ def cmd_chat(args):
                     print("   No facts stored. Use /remember <fact> to add one.")
                 else:
                     for f in facts:
-                        print(f"   #{f['id']}: {f['text']}")
+                        ftype = f.get("type", "fact")
+                        refs = f.get("reference_count", 0)
+                        print(f"   #{f['id']} ({ftype}, {refs} refs): {f['text']}")
+                continue
+
+            elif cmd == "/stale":
+                from mycoswarm.memory import get_stale_facts
+                stale = get_stale_facts(days=30)
+                if stale:
+                    print(f"   {len(stale)} stale fact(s):")
+                    for f in stale:
+                        ftype = f.get("type", "fact")
+                        last_ref = f.get("last_referenced", "unknown")[:10]
+                        print(f"   [{f['id']}] ({ftype}) {f['text']}")
+                        print(f"       Last referenced: {last_ref}")
+                else:
+                    print("   All facts recently referenced.")
                 continue
 
             elif cmd == "/forget":

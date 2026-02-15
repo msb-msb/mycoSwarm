@@ -1079,11 +1079,9 @@ def search_all(
     Returns (doc_hits, session_hits) so callers can format them
     with distinct labels ([D1]... vs [S1]...).
     """
-    # --- Intent-driven early exits and candidate adjustments ---
-    if intent is not None:
-        mode = intent.get("mode", "explore")
-        if mode == "chat":
-            return [], []
+    # --- Intent-driven candidate adjustments ---
+    # Note: tool=answer skips RAG entirely in cli.py before calling search_all.
+    # The mode field affects HOW retrieval works, not WHETHER it runs.
 
     model = _get_embedding_model(model)
 
