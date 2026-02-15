@@ -8,6 +8,7 @@ import pytest
 
 from mycoswarm.library import (
     _recency_decay,
+    _is_temporal_recency_query,
     chunk_text,
     chunk_text_pdf,
     clean_text,
@@ -2685,3 +2686,80 @@ class TestRecencyDecay:
         hit = session_hits[0]
         assert "recency_decay" in hit
         assert hit["recency_decay"] < 1.0  # 60 days old → decayed
+
+
+# --- Temporal Recency Boost ---
+
+
+class TestTemporalRecencyDetection:
+    def test_detects_last_time(self):
+        assert _is_temporal_recency_query("what were we talking about last time?")
+
+    def test_detects_recently(self):
+        assert _is_temporal_recency_query("what did we discuss recently?")
+
+    def test_detects_yesterday(self):
+        assert _is_temporal_recency_query("what did we talk about yesterday?")
+
+    def test_detects_previous(self):
+        assert _is_temporal_recency_query("continue our previous conversation")
+
+    def test_detects_what_did_we(self):
+        assert _is_temporal_recency_query("what did we decide about the architecture?")
+
+    def test_ignores_topical(self):
+        assert not _is_temporal_recency_query("what does the Wu Wei book say about effortless action?")
+
+    def test_ignores_casual(self):
+        assert not _is_temporal_recency_query("hey how are you doing?")
+
+    def test_ignores_factual(self):
+        assert not _is_temporal_recency_query("what is the capital of France?")
+
+    @patch("mycoswarm.library.check_embedding_model", return_value=None)
+    @patch("mycoswarm.library._bm25_sessions")
+    @patch("mycoswarm.library._bm25_docs")
+    @patch("mycoswarm.library._get_session_collection")
+    @patch("mycoswarm.library._get_collection")
+    @patch("mycoswarm.library.embed_text")
+    @patch("mycoswarm.library._get_embedding_model")
+    def test_temporal_boost_applied_in_search_all(
+        self, mock_get_model, mock_embed, mock_doc_col, mock_sess_col,
+        mock_bm25_docs, mock_bm25_sess, _mock_check,
+    ):
+        """Temporal recency query should boost the newest session highest."""
+        mock_get_model.return_value = "nomic-embed-text"
+        mock_embed.return_value = [0.1, 0.2]
+
+        doc_col = MagicMock()
+        doc_col.count.return_value = 0
+        doc_col.query.return_value = {
+            "ids": [[]], "documents": [[]], "distances": [[]],
+            "metadatas": [[]],
+        }
+        mock_doc_col.return_value = doc_col
+
+        today = datetime.now().strftime("%Y-%m-%d")
+        yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+        sess_col = MagicMock()
+        sess_col.count.return_value = 2
+        sess_col.query.return_value = {
+            "ids": [["old_session", "new_session"]],
+            "documents": [["Old topic discussion", "New topic discussion"]],
+            "distances": [[0.5, 0.5]],
+            "metadatas": [[
+                {"date": yesterday, "topic": "old", "grounding_score": 1.0},
+                {"date": today, "topic": "new", "grounding_score": 1.0},
+            ]],
+        }
+        mock_sess_col.return_value = sess_col
+        mock_bm25_docs.search.return_value = []
+        mock_bm25_sess.search.return_value = []
+
+        _, session_hits = search_all(
+            "what were we talking about last time?", n_results=5,
+        )
+        assert len(session_hits) == 2
+        # Newest session should rank first after temporal boost
+        assert session_hits[0]["date"] == today
+        assert session_hits[0]["rrf_score"] > session_hits[1]["rrf_score"]

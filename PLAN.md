@@ -265,6 +265,8 @@ Reference: docs/ARCHITECTURE-MEMORY.md
 
 #### 21c: Mode-Aware Retrieval
 - [x] Connect intent gates (Phase 20) to memory retrieval — `search_all(intent=)` adjusts candidates by mode/scope (2026-02-13)
+- [x] Temporal recency boost: _is_temporal_recency_query() detects "last time"/"recently"/"yesterday" queries, adds date-sorted bonus to session RRF scores so newest sessions rank first (2026-02-15)
+- [x] Results sorted by rrf_score before truncation for consistent ordering (2026-02-15)
 - [ ] Brainstorm/planning → broad retrieval, more results
 - [ ] Execution → narrow retrieval, precise constraints
 

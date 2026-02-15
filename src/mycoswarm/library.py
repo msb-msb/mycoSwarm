@@ -50,6 +50,20 @@ def _recency_decay(date_str: str, half_life_days: int = 30) -> float:
     return max(0.1, round(decay, 4))
 
 
+# --- Temporal Recency Detection ---
+
+_TEMPORAL_RECENCY_RE = re.compile(
+    r'\b(?:last\s+time|earlier\s+today|yesterday|just\s+now|before|recently|'
+    r'previous(?:ly)?|last\s+session|last\s+chat|most\s+recent|what\s+did\s+we)\b',
+    re.IGNORECASE,
+)
+
+
+def _is_temporal_recency_query(query: str) -> bool:
+    """Detect if query is asking about recent conversations by time, not topic."""
+    return bool(_TEMPORAL_RECENCY_RE.search(query))
+
+
 # --- Constants ---
 
 LIBRARY_DIR = Path("~/mycoswarm-docs/").expanduser()
@@ -1326,6 +1340,17 @@ def search_all(
         for hit in doc_hits:
             hit["rrf_score"] = round(hit.get("rrf_score", 0) * 2.0, 6)
 
+    # --- Temporal recency boost: "last time" / "recently" → newest sessions first ---
+    if session_hits and _is_temporal_recency_query(query):
+        dated_hits = sorted(
+            session_hits,
+            key=lambda h: h.get("date", ""),
+            reverse=True,
+        )
+        for i, hit in enumerate(dated_hits):
+            bonus = max(0.1 - (i * 0.02), 0.0)
+            hit["rrf_score"] = round(hit.get("rrf_score", 0) + bonus, 6)
+
     # --- Contradiction detection: drop session hits that contradict docs ---
     if doc_hits and session_hits:
         session_hits = _detect_contradictions(doc_hits, session_hits)
@@ -1344,6 +1369,10 @@ def search_all(
             query, session_hits,
             llm_model=rerank_model, top_k=n_results, text_key="summary",
         )
+
+    # Sort by rrf_score descending before truncation
+    doc_hits.sort(key=lambda h: h.get("rrf_score", 0), reverse=True)
+    session_hits.sort(key=lambda h: h.get("rrf_score", 0), reverse=True)
 
     # Final truncation: never return more than n_results
     doc_hits = doc_hits[:n_results]
