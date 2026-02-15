@@ -251,9 +251,11 @@ Design test for every gate: "Does this make the system more curious, clear, calm
 Reference: docs/ARCHITECTURE-MEMORY.md
 
 #### 21a: Fact Lifecycle Tags
-- [ ] Add `type` field to facts: preference, fact, project, ephemeral
-- [ ] Different retention rules per type
-- [ ] Staleness detection: flag facts unreferenced in N sessions
+- [x] Add `type` field to facts: preference, fact, project, ephemeral (2026-02-15)
+- [x] Different retention rules per type: ephemeral stales at 7 days, others at 30 (2026-02-15)
+- [x] Staleness detection: get_stale_facts() flags facts unreferenced past threshold (2026-02-15)
+- [x] CLI: /remember type prefixes (pref:, project:, temp:), /memories shows type+refs, /stale command (2026-02-15)
+- [x] Schema v2 with backward-compatible migration via _migrate_fact() (2026-02-15)
 
 #### 21b: Decay Scoring
 - [ ] Session memories get recency-weighted scores
