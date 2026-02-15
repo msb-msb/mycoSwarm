@@ -231,13 +231,21 @@
 - **Known issue discovered**: hallucination feedback loop — a single poisoned session summary (model hallucinated PLAN.md content) got indexed into session_memory, then retrieved as context for future queries, causing the model to repeat the hallucination with increasing confidence. Fixed with debug mode poison prevention and session reindex, but needs structural fix → see Phase 21g: Self-Correcting Memory
 
 ### Phase 20b: Human Gap Architecture (Pre-Processing Gates)
-- [ ] Timing Gate: Wu Wei module — should I act now, later, or not at all?
-- [ ] Intent Resolution: parse ambiguity, check reversibility, clarify when needed
-- [ ] Confidence Calibration: hedge spectrum instead of uniform confidence
-- [ ] Emotional Trajectory: rolling state vector from interaction metadata
-- [ ] Graceful Degradation: fail gracefully with partial help, not errors
-- [ ] Social Field Awareness: group dynamics, authority, visibility
-- [ ] Productive Friction: trust-gated pushback on user decisions
+Reference: docs/ARCHITECTURE-COGNITIVE.md — IFS 8 C's as design principles
+
+Each gate maps to an IFS Self-energy quality. The 8 C's aren't features to implement — they're emergent properties of a well-designed system. These mappings serve as both design guides and health metrics.
+
+- [ ] **Timing Gate → Calm:** Wu Wei module — should I act now, later, or not at all? The system is comfortable with uncertainty.
+- [ ] **Intent Resolution → Curiosity:** Parse ambiguity, check reversibility, clarify when needed. The system asks before it assumes.
+- [ ] **Confidence Calibration → Clarity:** Hedge spectrum instead of uniform confidence. The system knows what it doesn't know.
+- [ ] **Emotional Trajectory → Compassion:** Rolling state vector from interaction metadata. The system reads the human, not just the query.
+- [ ] **Graceful Degradation → Calm + Courage:** Fail gracefully with partial help, not errors. Comfortable saying "I can partially answer this."
+- [ ] **Social Field Awareness → Connectedness:** Group dynamics, authority, visibility. Awareness of context beyond the immediate query.
+- [ ] **Productive Friction → Courage:** Trust-gated pushback on user decisions. Says "are you sure?" when confidence is low.
+- [ ] **Cross-Domain Synthesis → Creativity:** Connect insights across knowledge domains — a Wu Wei passage informs a debugging strategy.
+- [ ] **Source Trust → Confidence:** Use verified RAG context over speculation. Trust what's been retrieved.
+
+Design test for every gate: "Does this make the system more curious, clear, calm?" If a gate increases confidence but reduces clarity, it's out of balance — like an IFS part that's taken over.
 
 ### Phase 21: Memory Architecture
 Reference: docs/ARCHITECTURE-MEMORY.md
@@ -258,10 +266,19 @@ Reference: docs/ARCHITECTURE-MEMORY.md
 - [ ] Brainstorm/planning → broad retrieval, more results
 - [ ] Execution → narrow retrieval, precise constraints
 
-#### 21d: Procedural Memory
-- [ ] New memory type: exemplar store
-- [ ] "How we solved X before" — success/fail patterns
-- [ ] Stored separately from episodic and factual memory
+#### 21d: Procedural Memory & Wisdom Layer
+Reference: Lucek/CoALA procedural memory + IFS value-informed reasoning
+
+Procedural memory isn't just "how to do X" — it's "why we do it this way" and "what to avoid." In IFS terms, procedural memory without ethical grounding produces a system that's skilled but not wise.
+
+- [ ] New memory type: exemplar store (procedures.jsonl + ChromaDB procedural_memory collection)
+- [ ] "How we solved X before" — success/fail patterns with problem signature matching
+- [ ] **Value-informed procedures:** Store not just the solution but the reasoning: "we chose this approach because [principle]"
+- [ ] **Anti-patterns:** Explicitly store what *not* to do and why (e.g., "don't inject RAG as system message — model ignores it")
+- [ ] Stored separately from episodic and factual memory with dedicated retrieval path
+- [ ] **Procedural retrieval trigger:** When intent mode=execute or problem signature matches known pattern, pull relevant procedures
+- [ ] **Procedure growth from experience:** End-of-session extraction identifies reusable patterns → auto-creates procedure candidates for review
+- [ ] **Ethical reasoning domain:** Wisdom from Taoism, IFS, martial arts philosophy indexed as procedural knowledge — shapes *how* the system reasons, not just *what* it knows
 
 #### 21e: Two-Stage Document Ingest
 - [ ] Extract structured entities/facts first, then chunk for semantic
@@ -282,6 +299,16 @@ Reference: Learned from Phase 20 debugging — single poisoned session summary d
 - [x] Summary grounding score: 0-1 score stored with each summary via compute_grounding_score(). Low scores reduce RRF ranking and trigger contradiction checks (2026-02-14)
 
 Principle: "The system should naturally resist corruption rather than requiring manual purges. Wu Wei — self-correcting flow."
+
+Planned (21g continued):
+- [ ] **Per-claim grounding:** Score individual claims within summaries, not whole summaries. Strip hallucinated claims before saving. (Discovered: summary with 9 real claims + 1 hallucination scored 0.7, passing the gate)
+- [ ] **Poison loop detection:** Detect when the same ungrounded claim appears across multiple summaries. Auto-quarantine affected sessions.
+- [ ] **Grounding score decay:** Low-confidence summaries lose retrieval priority over time even if above 0.3 threshold
+
+IFS insight: The poison cycle is an IFS *part* taking over — the "helpful part" that would rather fabricate than sit with uncertainty. The immune system is Self-energy returning: Clarity (knowing what you don't know), Calm (not rushing to fill gaps).
+
+- [x] Released v0.1.9 (2026-02-15): Phase 21g Step 3 (contradiction detection), PDF TOC extraction, paragraph-aware chunking, smoke test suite (5 scripts + book test), 270 unit tests + 22 smoke checks
+- [x] Smoke test suite: tests/smoke/ — RAG grounding (4), poison resistance (3), memory priority (6), intent classification (5), swarm distribution (4), book ingestion (7). Runner: run_all.sh
 
 ### Phase 22: RAG Architecture
 Reference: docs/ARCHITECTURE-RAG.md
@@ -408,8 +435,10 @@ Reference: Lessons from Wise Advisor multi-domain RAG system
 - [ ] Store source_type in chunk metadata for retrieval weighting
 
 #### 28b: Book Ingestion
-- [ ] Chapter/section-aware chunking for PDFs
-- [ ] Table of contents extraction for section headers
+- [x] Chapter/section-aware chunking for PDFs (2026-02-15)
+- [x] Table of contents extraction for section headers via pymupdf get_toc() (2026-02-15)
+- [x] Paragraph-aware chunking: split on \n\n first, merge to ~500 words, sentence-boundary fallback (2026-02-15)
+- [x] Heuristic heading detection fallback when no TOC present (2026-02-15)
 - [ ] Key concept extraction per chapter (fact store integration)
 - [ ] Large file handling: progress bar, incremental indexing
 
@@ -436,6 +465,74 @@ Reference: Lessons from Wise Advisor multi-domain RAG system
 - [ ] Unified search_all() with source_type filter parameter
 
 Principle: "Different knowledge streams flow at different speeds. The system should honor each stream's natural rhythm — Wu Wei applied to information architecture."
+
+### Phase 29: IFS-Informed Cognitive Architecture
+Reference: docs/ARCHITECTURE-COGNITIVE.md
+Influences: IFS (Richard Schwartz), CoALA framework (Lucek), Wu Wei philosophy
+
+The thesis: most AI memory systems are engineered as databases — store, retrieve, rank. Human cognition is a living system with multiple memory types, emotional regulation, self-correction, and wisdom accumulated through experience. mycoSwarm integrates psychological models with distributed local AI.
+
+#### 29a: Rich Episodic Memory
+Current session summaries are lossy — "we discussed Phase 20" discards the experience. Rich episodes store what happened, what was decided, what was learned, and what surprised us.
+
+- [ ] **Experience record schema:** {timestamp, topic, what_happened, decisions_made, lessons_learned, surprises, emotional_tone, grounding_score}
+- [ ] **Structured summarization prompt:** End-of-session LLM call that extracts fields, not just topic summary
+- [ ] **Temporal + emotional retrieval:** "times we were stuck" or "breakthroughs" as valid queries
+- [ ] **Episode linking:** Connect related episodes across sessions (e.g., multi-day debugging arc)
+
+#### 29b: End-of-Session Reflection
+Active takeaway extraction before summarization. The system doesn't just log — it *reflects*.
+
+- [ ] **Reflection prompt:** "What was learned in this session that would help in future similar situations?"
+- [ ] **Decision extraction:** Identify choices made and their reasoning
+- [ ] **Anti-pattern detection:** Flag recurring mistakes or frustration patterns
+- [ ] **Procedure candidates:** Surface reusable patterns for review → procedural memory (21d)
+
+#### 29c: Interaction Quality Tracking
+Model the emotional trajectory of conversations, not just their content.
+
+- [ ] **Quality tags:** frustration, discovery, confusion, resolution, flow, stuck
+- [ ] **Turn-level annotation:** Tag individual turns, not just whole sessions
+- [ ] **Adaptation trigger:** When frustration detected, adjust response style (more scaffolding, slower pace)
+- [ ] **Flow detection:** Recognize when user is in creative/productive flow → minimize interruption
+
+#### 29d: 8 C's Health Dashboard
+Measurable metrics for each IFS Self-energy quality. The system's "therapy report."
+
+- [ ] **Curiosity score:** Intent classification accuracy. How often does the system ask vs. assume?
+- [ ] **Clarity score:** Grounding score distribution. Hallucination rate over time.
+- [ ] **Calm score:** Appropriate deferral rate. Partial-answer quality.
+- [ ] **Compassion score:** Interaction quality trend. Frustration-to-resolution ratio.
+- [ ] **Creativity score:** Cross-source retrieval diversity. Novel domain combinations in responses.
+- [ ] **Confidence score:** Source priority adherence. Citation rate.
+- [ ] **Courage score:** Productive friction events. Pushback appropriateness.
+- [ ] **Connectedness score:** Session recall accuracy. Cross-session reference quality.
+- [ ] **Aggregate Self-energy metric:** Weighted combination — system health at a glance.
+
+#### 29e: Cross-Domain Wisdom
+The system connects principles across knowledge domains — a Wu Wei insight informs a coding decision.
+
+- [ ] **Wisdom retrieval mode:** When intent=explore, retrieve across ALL domains, not just the query's apparent domain
+- [ ] **Principle extraction:** Index philosophical/ethical principles as first-class retrievable objects
+- [ ] **Analogy generation:** "This debugging problem is like [Tai Chi concept]" — cross-domain metaphor synthesis
+- [ ] **Wise Advisor integration:** Import 12-domain knowledge system as semantic + procedural memory
+
+Principle: "The 8 C's are health metrics, not features. They emerge from balanced architecture — just as in IFS, Self-energy emerges when the parts are balanced."
+
+### Phase 30: Publishing Strategy
+Reference: docs/ARCHITECTURE-COGNITIVE.md — Section 6
+
+#### 30a: InsiderLLM Articles
+- [ ] **"Why Your AI Keeps Lying: The Hallucination Feedback Loop"** — Poison cycle discovery, immune system approach. Technical audience.
+- [ ] **"Beyond Transformers: Building Memory That Learns"** — Lucek's CoALA adapted for local models. Four memory types. AI engineer audience.
+- [ ] **"The 8 C's of Healthy AI: What Therapy Teaches Us About System Design"** — IFS framework applied to AI. Broader tech/philosophy audience.
+- [ ] **"Wu Wei and the Art of Not Answering"** — Timing Gate, confidence calibration, Eastern philosophy meets AI design. Cross-disciplinary, potentially viral.
+- [ ] **"Distributed Wisdom: Running a Thinking Network on $200 Hardware"** — Full mycoSwarm stack, 5-node swarm, privacy-first. Self-hosted/budget AI audience.
+
+#### 30b: White Paper
+- [ ] **"Cognitive Architecture for Distributed Local AI: Integrating Psychological Models with RAG"** — 15-20 pages, academic-adjacent
+- [ ] Structure: Introduction → CoALA/IFS/Wu Wei background → Four memory streams → 8 C's framework → Implementation → Case study (Phase 20 poison cycle) → Evaluation → Future work
+- [ ] Target: genuinely novel contribution — nobody has published on IFS-informed AI architecture running on distributed local hardware
 
 ## Next
 
