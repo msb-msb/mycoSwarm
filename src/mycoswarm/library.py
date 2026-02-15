@@ -154,9 +154,259 @@ def chunk_text(
     return chunks
 
 
+def chunk_text_pdf(text: str, target_size: int = CHUNK_SIZE) -> list[str]:
+    """Split PDF text into chunks at paragraph boundaries.
+
+    Splits on paragraph breaks (``\\n\\n``) first, then merges consecutive
+    paragraphs into chunks of up to *target_size* words.  Single paragraphs
+    that exceed the target are split at sentence boundaries (``. ``).
+    """
+    paragraphs = [p.strip() for p in re.split(r"\n\n+", text) if p.strip()]
+    if not paragraphs:
+        return []
+
+    chunks: list[str] = []
+    current_words: list[str] = []
+    current_count = 0
+
+    for para in paragraphs:
+        para_words = para.split()
+        para_count = len(para_words)
+
+        # Oversized paragraph → split at sentence boundaries
+        if para_count > target_size:
+            # Flush accumulator first
+            if current_words:
+                chunks.append(" ".join(current_words))
+                current_words = []
+                current_count = 0
+
+            sentences = re.split(r"(?<=[.!?])\s+", para)
+            sent_words: list[str] = []
+            sent_count = 0
+            for sent in sentences:
+                sw = sent.split()
+                if sent_count + len(sw) > target_size and sent_words:
+                    chunks.append(" ".join(sent_words))
+                    sent_words = []
+                    sent_count = 0
+                sent_words.extend(sw)
+                sent_count += len(sw)
+            if sent_words:
+                chunks.append(" ".join(sent_words))
+            continue
+
+        # Would adding this paragraph exceed the target?
+        if current_count + para_count > target_size and current_words:
+            chunks.append(" ".join(current_words))
+            current_words = []
+            current_count = 0
+
+        current_words.extend(para_words)
+        current_count += para_count
+
+    if current_words:
+        chunks.append(" ".join(current_words))
+
+    return chunks
+
+
 # --- Section Heading Extraction ---
 
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.+)", re.MULTILINE)
+
+
+def _extract_pdf_toc(path: Path) -> tuple[list[tuple[int, str, int]], list[str]] | None:
+    """Try to extract the TOC/outline and per-page texts from a PDF.
+
+    Returns ``(toc, page_texts)`` where *toc* is a list of
+    ``(level, title, page_number)`` tuples (1-indexed page numbers) and
+    *page_texts* is a list of extracted text per page.
+
+    Returns ``None`` if pymupdf is unavailable or the PDF has no TOC.
+    """
+    try:
+        import pymupdf
+    except ImportError:
+        return None
+
+    try:
+        doc = pymupdf.open(str(path))
+    except Exception:
+        return None
+
+    try:
+        toc = doc.get_toc()  # [(level, title, page), ...]
+        if not toc:
+            return None
+
+        page_texts: list[str] = []
+        for page in doc:
+            page_texts.append(page.get_text())
+
+        return toc, page_texts
+    finally:
+        doc.close()
+
+
+def _sections_from_toc(
+    toc: list[tuple[int, str, int]],
+    page_texts: list[str],
+    text: str,
+    chunks: list[str],
+) -> list[str]:
+    """Map each chunk to a TOC section using page-based word offsets.
+
+    *toc* entries are ``(level, title, page)`` with 1-indexed pages.
+    *page_texts* is the per-page text list (0-indexed).
+    *text* and *chunks* are the cleaned/chunked versions used for indexing.
+    """
+    # Build a per-word section label from the TOC + page boundaries.
+    # Walk through page_texts, track cumulative word count, and assign
+    # each word the TOC section that is active at that page.
+
+    # Sort TOC entries by page (stable — preserves order within a page)
+    sorted_toc = sorted(toc, key=lambda e: e[2])
+
+    # Build page → section title mapping.
+    # For each page, the active section is the *last* TOC entry whose
+    # page number is <= current page.
+    total_pages = len(page_texts)
+    page_section: list[str] = ["untitled"] * total_pages
+    current_title = "untitled"
+    toc_idx = 0
+    for page_num in range(1, total_pages + 1):  # 1-indexed
+        while toc_idx < len(sorted_toc) and sorted_toc[toc_idx][2] <= page_num:
+            current_title = sorted_toc[toc_idx][1]
+            toc_idx += 1
+        page_section[page_num - 1] = current_title
+
+    # Build per-word heading array by walking page_texts.
+    word_headings: list[str] = []
+    for page_idx, pt in enumerate(page_texts):
+        section = page_section[page_idx]
+        for _ in pt.split():
+            word_headings.append(section)
+
+    # Match each chunk to the heading array using the same prefix-matching
+    # approach as _extract_pdf_sections / _extract_chunk_sections.
+    all_words = text.split()
+    sections: list[str] = []
+    search_from = 0
+    for chunk in chunks:
+        chunk_words = chunk.split()
+        if not chunk_words:
+            sections.append("untitled")
+            continue
+
+        prefix = chunk_words[:5]
+        found = False
+        for idx in range(search_from, len(all_words) - len(prefix) + 1):
+            if all_words[idx : idx + len(prefix)] == prefix:
+                sections.append(
+                    word_headings[idx] if idx < len(word_headings) else "untitled"
+                )
+                search_from = idx
+                found = True
+                break
+        if not found:
+            # Wrap-around search
+            for idx in range(0, len(all_words) - len(prefix) + 1):
+                if all_words[idx : idx + len(prefix)] == prefix:
+                    sections.append(
+                        word_headings[idx]
+                        if idx < len(word_headings)
+                        else "untitled"
+                    )
+                    found = True
+                    break
+            if not found:
+                sections.append("untitled")
+
+    return sections
+
+
+def _is_pdf_heading(line: str) -> bool:
+    """Heuristic: is *line* likely a section heading in a PDF?
+
+    True when the line is short (< 10 words) **and** either ALL CAPS
+    or Title Case (first letter of every significant word capitalised).
+    """
+    words = line.split()
+    if not words or len(words) >= 10:
+        return False
+
+    stripped = line.strip()
+    if not stripped or not any(c.isalpha() for c in stripped):
+        return False
+
+    # ALL CAPS (ignoring digits and punctuation)
+    alpha_chars = [c for c in stripped if c.isalpha()]
+    if alpha_chars and all(c.isupper() for c in alpha_chars):
+        return True
+
+    # Title Case — every word of 4+ chars starts uppercase
+    significant = [w for w in words if len(w) >= 4]
+    if significant and all(w[0].isupper() for w in significant):
+        return True
+
+    return False
+
+
+def _extract_pdf_sections(text: str, chunks: list[str]) -> list[str]:
+    """Map each chunk to the nearest detected PDF heading above it.
+
+    Walks through the original text line-by-line, applying the
+    ``_is_pdf_heading`` heuristic.  Builds a per-word heading array
+    (same approach as ``_extract_chunk_sections``) and resolves each
+    chunk's section by matching its first words.
+    """
+    lines = text.splitlines()
+    current_heading = "untitled"
+    word_headings: list[str] = []
+    prev_blank = True  # first line counts as "preceded by blank"
+
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            prev_blank = True
+            continue
+
+        if prev_blank and _is_pdf_heading(stripped):
+            current_heading = stripped
+        prev_blank = False
+
+        for _ in stripped.split():
+            word_headings.append(current_heading)
+
+    all_words = text.split()
+
+    sections: list[str] = []
+    search_from = 0
+    for chunk in chunks:
+        chunk_words = chunk.split()
+        if not chunk_words:
+            sections.append("untitled")
+            continue
+
+        prefix = chunk_words[:5]
+        found = False
+        for idx in range(search_from, len(all_words) - len(prefix) + 1):
+            if all_words[idx : idx + len(prefix)] == prefix:
+                sections.append(word_headings[idx] if idx < len(word_headings) else "untitled")
+                search_from = idx
+                found = True
+                break
+        if not found:
+            for idx in range(0, len(all_words) - len(prefix) + 1):
+                if all_words[idx : idx + len(prefix)] == prefix:
+                    sections.append(word_headings[idx] if idx < len(word_headings) else "untitled")
+                    found = True
+                    break
+            if not found:
+                sections.append("untitled")
+
+    return sections
 
 
 def _extract_chunk_sections(text: str, chunks: list[str]) -> list[str]:
@@ -738,6 +988,78 @@ def _detect_contradictions(
     return kept
 
 
+def _detect_poison_loops(
+    doc_hits: list[dict], session_hits: list[dict],
+) -> list[dict]:
+    """Quarantine session hits carrying repeated ungrounded claims.
+
+    Poison loops occur when a hallucinated claim in one session summary
+    gets retrieved and amplified into subsequent summaries.  Detection:
+
+    1. Extract key terms (capitalized words >3 chars) from each
+       low-grounding session hit (grounding_score < 0.5).
+    2. Find terms repeated across 2+ such sessions.
+    3. Check if those terms appear in any doc hit — if so, grounded.
+    4. Session hits where >50% of key terms are repeated AND ungrounded
+       are flagged with poison_flag=True and excluded.
+
+    Returns the filtered session_hits list.
+    """
+    if len(session_hits) < 2:
+        return session_hits
+
+    # Build doc corpus for grounding check
+    doc_corpus = " ".join(h.get("text", "").lower() for h in doc_hits)
+
+    # Extract terms from each session; track which low-grounding sessions
+    # carry each term
+    term_sessions: dict[str, list[int]] = {}  # term → indices of low-gs sessions
+    session_terms: list[set[str]] = []
+
+    for i, sh in enumerate(session_hits):
+        gs = sh.get("grounding_score", 1.0)
+        terms: set[str] = set()
+        for w in sh.get("summary", "").split():
+            cleaned = w.strip(".,;:!?\"'()-").lower()
+            if len(cleaned) > 3 and w[0:1].isupper():
+                terms.add(cleaned)
+        session_terms.append(terms)
+
+        if gs < 0.5:
+            for t in terms:
+                term_sessions.setdefault(t, []).append(i)
+
+    # Find repeated terms that are NOT grounded in any doc
+    poisoned_terms: set[str] = set()
+    for term, indices in term_sessions.items():
+        if len(indices) >= 2 and term not in doc_corpus:
+            poisoned_terms.add(term)
+
+    if not poisoned_terms:
+        return session_hits
+
+    # Quarantine low-grounding sessions where majority of terms are poisoned
+    kept: list[dict] = []
+    for i, sh in enumerate(session_hits):
+        gs = sh.get("grounding_score", 1.0)
+        if gs >= 0.5:
+            kept.append(sh)
+            continue
+
+        terms = session_terms[i]
+        if not terms:
+            kept.append(sh)
+            continue
+
+        poisoned_count = sum(1 for t in terms if t in poisoned_terms)
+        if poisoned_count / len(terms) > 0.5:
+            sh["poison_flag"] = True
+        else:
+            kept.append(sh)
+
+    return kept
+
+
 def search_all(
     query: str,
     n_results: int = 5,
@@ -977,6 +1299,10 @@ def search_all(
     if doc_hits and session_hits:
         session_hits = _detect_contradictions(doc_hits, session_hits)
 
+    # --- Poison loop detection: quarantine repeated ungrounded claims ---
+    if len(session_hits) >= 2:
+        session_hits = _detect_poison_loops(doc_hits, session_hits)
+
     # --- LLM re-ranking ---
     if do_rerank and (doc_hits or session_hits):
         doc_hits = rerank(
@@ -1052,7 +1378,12 @@ def ingest_file(path: Path, model: str | None = None) -> dict:
     text = extract_file_text(path)
     doc_type = path.suffix.lower()
     text = clean_text(text, doc_type)
-    chunks = chunk_text(text)
+
+    # PDF: paragraph-aware chunking + heading detection
+    if doc_type == ".pdf":
+        chunks = chunk_text_pdf(text)
+    else:
+        chunks = chunk_text(text)
 
     if not chunks:
         return {"file": path.name, "chunks": 0, "model": model}
@@ -1060,7 +1391,16 @@ def ingest_file(path: Path, model: str | None = None) -> dict:
     collection = _get_collection(model)
 
     # Extract section headings and file metadata
-    sections = _extract_chunk_sections(text, chunks)
+    if doc_type == ".pdf":
+        # Try TOC/outline first; fall back to heuristic heading detection
+        toc_data = _extract_pdf_toc(path)
+        if toc_data is not None:
+            toc, page_texts = toc_data
+            sections = _sections_from_toc(toc, page_texts, text, chunks)
+        else:
+            sections = _extract_pdf_sections(text, chunks)
+    else:
+        sections = _extract_chunk_sections(text, chunks)
     try:
         file_date = os.path.getmtime(path)
     except OSError:

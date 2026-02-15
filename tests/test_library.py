@@ -8,6 +8,7 @@ import pytest
 
 from mycoswarm.library import (
     chunk_text,
+    chunk_text_pdf,
     clean_text,
     extract_file_text,
     embed_text,
@@ -25,7 +26,12 @@ from mycoswarm.library import (
     check_stale_documents,
     auto_update,
     _extract_chunk_sections,
+    _extract_pdf_sections,
+    _extract_pdf_toc,
+    _sections_from_toc,
+    _is_pdf_heading,
     _detect_contradictions,
+    _detect_poison_loops,
     _save_embedding_model,
     _load_embedding_model,
     _rrf_fuse,
@@ -2292,3 +2298,310 @@ class TestContradictionDetection:
         doc_hits = [{"text": "Some doc content", "source": "a.txt", "rrf_score": 0.03}]
         result = _detect_contradictions(doc_hits, [])
         assert result == []
+
+
+# --- Poison Loop Detection ---
+
+
+class TestPoisonLoopDetection:
+    def test_repeated_ungrounded_claim_quarantined(self):
+        """Same fabricated claim in 2+ low-grounding sessions → quarantined."""
+        doc_hits = [{"text": "Phase 20: Intent Classification Gate", "source": "PLAN.md"}]
+        session_hits = [
+            {
+                "summary": "Discussed Kubernetes Terraform deployment pipeline",
+                "session_id": "s1", "date": "2026-02-10",
+                "rrf_score": 0.02, "grounding_score": 0.2,
+            },
+            {
+                "summary": "Worked on Kubernetes Terraform infrastructure setup",
+                "session_id": "s2", "date": "2026-02-11",
+                "rrf_score": 0.02, "grounding_score": 0.15,
+            },
+        ]
+
+        result = _detect_poison_loops(doc_hits, session_hits)
+        # Both sessions carry repeated ungrounded claims → quarantined
+        assert len(result) == 0
+
+    def test_repeated_claim_grounded_in_docs_kept(self):
+        """Repeated claim that appears in docs is grounded → kept."""
+        doc_hits = [{
+            "text": "Phase 20 Intent Classification adds structured intent gates",
+            "source": "PLAN.md",
+        }]
+        session_hits = [
+            {
+                "summary": "Worked on Phase 20 Intent Classification gate model",
+                "session_id": "s1", "date": "2026-02-10",
+                "rrf_score": 0.02, "grounding_score": 0.4,
+            },
+            {
+                "summary": "Continued Phase 20 Intent Classification testing",
+                "session_id": "s2", "date": "2026-02-11",
+                "rrf_score": 0.02, "grounding_score": 0.35,
+            },
+        ]
+
+        result = _detect_poison_loops(doc_hits, session_hits)
+        # "phase", "intent", "classification" all appear in docs → grounded
+        assert len(result) == 2
+
+    def test_single_occurrence_kept(self):
+        """A claim appearing in only one session is not a poison loop."""
+        doc_hits = []
+        session_hits = [
+            {
+                "summary": "Discussed Kubernetes deployment",
+                "session_id": "s1", "date": "2026-02-10",
+                "rrf_score": 0.02, "grounding_score": 0.2,
+            },
+            {
+                "summary": "Talked about Python testing frameworks",
+                "session_id": "s2", "date": "2026-02-11",
+                "rrf_score": 0.02, "grounding_score": 0.3,
+            },
+        ]
+
+        result = _detect_poison_loops(doc_hits, session_hits)
+        # No repeated terms between the two → no poison loop
+        assert len(result) == 2
+
+    def test_high_grounding_skips_poison_check(self):
+        """Sessions with grounding_score >= 0.5 are never quarantined."""
+        doc_hits = []
+        session_hits = [
+            {
+                "summary": "Discussed Kubernetes Terraform deployment",
+                "session_id": "s1", "date": "2026-02-10",
+                "rrf_score": 0.02, "grounding_score": 0.8,
+            },
+            {
+                "summary": "More Kubernetes Terraform infrastructure work",
+                "session_id": "s2", "date": "2026-02-11",
+                "rrf_score": 0.02, "grounding_score": 0.9,
+            },
+        ]
+
+        result = _detect_poison_loops(doc_hits, session_hits)
+        assert len(result) == 2
+
+
+# --- PDF Chunking ---
+
+
+class TestChunkTextPdf:
+    def test_paragraph_boundary_fewer_mid_sentence_starts(self):
+        """Paragraph-aware chunking produces fewer mid-sentence starts than fixed-width."""
+        # Build a multi-paragraph text with clear sentence boundaries
+        paras = []
+        for i in range(20):
+            paras.append(
+                f"Paragraph {i} begins here. "
+                f"This is the second sentence of paragraph {i}. "
+                f"And this is the third sentence of paragraph {i}."
+            )
+        text = "\n\n".join(paras)
+
+        pdf_chunks = chunk_text_pdf(text, target_size=50)
+        fixed_chunks = chunk_text(text, chunk_size=50, overlap=5)
+
+        def count_mid_sentence_starts(chunks):
+            count = 0
+            for c in chunks:
+                first_word = c.split()[0] if c.split() else ""
+                # Mid-sentence start = first word is lowercase (not a new sentence)
+                if first_word and first_word[0].islower():
+                    count += 1
+            return count
+
+        pdf_mid = count_mid_sentence_starts(pdf_chunks)
+        fixed_mid = count_mid_sentence_starts(fixed_chunks)
+        assert pdf_mid <= fixed_mid, (
+            f"PDF chunking had {pdf_mid} mid-sentence starts vs "
+            f"fixed-width {fixed_mid}"
+        )
+
+    def test_respects_paragraph_boundaries(self):
+        """Chunks should not split in the middle of a paragraph."""
+        text = "First paragraph with several words.\n\nSecond paragraph here.\n\nThird one."
+        chunks = chunk_text_pdf(text, target_size=200)
+        # All three paragraphs fit in one chunk
+        assert len(chunks) == 1
+        assert "First paragraph" in chunks[0]
+        assert "Third one." in chunks[0]
+
+    def test_oversized_paragraph_splits_at_sentences(self):
+        """A single paragraph larger than target_size splits at sentence boundaries."""
+        sentences = [f"Sentence number {i} goes here." for i in range(30)]
+        text = " ".join(sentences)  # one giant paragraph
+        chunks = chunk_text_pdf(text, target_size=20)
+        assert len(chunks) > 1
+        # Each chunk should end at a sentence boundary (ends with period)
+        for c in chunks[:-1]:  # last chunk may not have trailing period
+            assert c.rstrip().endswith("."), f"Chunk doesn't end at sentence: ...{c[-30:]}"
+
+    def test_empty_text(self):
+        assert chunk_text_pdf("") == []
+        assert chunk_text_pdf("   \n\n   ") == []
+
+
+class TestIsPdfHeading:
+    def test_all_caps_heading(self):
+        assert _is_pdf_heading("INTRODUCTION") is True
+        assert _is_pdf_heading("CHAPTER ONE") is True
+
+    def test_title_case_heading(self):
+        assert _is_pdf_heading("Research Methods and Analysis") is True
+        assert _is_pdf_heading("Literature Review") is True
+
+    def test_long_line_rejected(self):
+        assert _is_pdf_heading("This is a very long line that has more than ten words in it") is False
+
+    def test_body_text_rejected(self):
+        assert _is_pdf_heading("the quick brown fox jumps over") is False
+
+    def test_empty_rejected(self):
+        assert _is_pdf_heading("") is False
+        assert _is_pdf_heading("   ") is False
+
+    def test_numbers_only_rejected(self):
+        assert _is_pdf_heading("12345") is False
+
+
+class TestExtractPdfSections:
+    def test_maps_chunks_to_headings(self):
+        text = (
+            "INTRODUCTION\n\n"
+            "This is the intro paragraph with enough words.\n\n"
+            "METHODS\n\n"
+            "This is the methods section content here."
+        )
+        chunks = chunk_text_pdf(text, target_size=200)
+        sections = _extract_pdf_sections(text, chunks)
+        assert len(sections) == len(chunks)
+        # The intro content should be under INTRODUCTION
+        assert sections[0] == "INTRODUCTION"
+
+    def test_heading_after_blank_line_only(self):
+        """Headings are only detected when preceded by a blank line."""
+        text = (
+            "INTRODUCTION\n\n"
+            "Some text here. METHODS is mentioned inline but not a heading.\n\n"
+            "RESULTS\n\n"
+            "Final results content."
+        )
+        chunks = chunk_text_pdf(text, target_size=200)
+        sections = _extract_pdf_sections(text, chunks)
+        # Should pick up INTRODUCTION and RESULTS, not inline METHODS
+        assert "INTRODUCTION" in sections[0]
+
+
+class TestExtractPdfToc:
+    def test_returns_none_when_pymupdf_missing(self):
+        """Falls back gracefully when pymupdf is not importable."""
+        with patch.dict("sys.modules", {"pymupdf": None}):
+            result = _extract_pdf_toc(Path("/nonexistent.pdf"))
+        assert result is None
+
+    def test_returns_none_on_file_error(self):
+        """Returns None for a non-existent file rather than crashing."""
+        result = _extract_pdf_toc(Path("/tmp/this_does_not_exist_12345.pdf"))
+        assert result is None
+
+
+class TestSectionsFromToc:
+    def test_maps_chunks_to_toc_entries(self):
+        """Chunks are assigned sections based on their page position."""
+        toc = [
+            (1, "Introduction", 1),
+            (1, "Methods", 2),
+            (1, "Results", 3),
+        ]
+        page_texts = [
+            "Introduction paragraph content here",   # page 1
+            "Methods paragraph details here",         # page 2
+            "Results and conclusion paragraph here",  # page 3
+        ]
+        # Simulate the joined text that clean_text would produce
+        text = "\n\n".join(page_texts)
+        chunks = chunk_text_pdf(text, target_size=200)
+
+        sections = _sections_from_toc(toc, page_texts, text, chunks)
+        assert len(sections) == len(chunks)
+        assert sections[0] == "Introduction"
+
+    def test_multi_section_same_page(self):
+        """Two TOC entries on the same page: later entry wins for words after it."""
+        toc = [
+            (1, "Overview", 1),
+            (1, "Background", 1),
+        ]
+        # Both sections on page 1 — "Background" starts partway through
+        page_texts = [
+            "Overview content words. Background starts from here with more words.",
+        ]
+        text = page_texts[0]
+        # One chunk covers the whole page
+        chunks = [text]
+        sections = _sections_from_toc(toc, page_texts, text, chunks)
+        # The last TOC entry on page 1 is "Background", so all words on
+        # page 1 will be labelled "Background" (page-level granularity).
+        assert sections[0] == "Background"
+
+    def test_chunks_spanning_pages(self):
+        """Chunks that span page boundaries get the section of their first words."""
+        toc = [
+            (1, "Chapter 1", 1),
+            (1, "Chapter 2", 3),
+        ]
+        page_texts = [
+            "Page one first chapter content",          # page 1
+            "Page two still chapter one material",     # page 2
+            "Page three chapter two starts here now",  # page 3
+        ]
+        text = "\n\n".join(page_texts)
+        chunks = chunk_text_pdf(text, target_size=10)
+        sections = _sections_from_toc(toc, page_texts, text, chunks)
+        assert len(sections) == len(chunks)
+        # First chunk should be Chapter 1
+        assert sections[0] == "Chapter 1"
+        # Last chunk should be Chapter 2
+        assert sections[-1] == "Chapter 2"
+
+    def test_empty_chunks_get_untitled(self):
+        """Edge case: an empty chunk list produces an empty section list."""
+        toc = [(1, "Intro", 1)]
+        page_texts = ["Some text"]
+        sections = _sections_from_toc(toc, page_texts, "Some text", [])
+        assert sections == []
+
+    def test_toc_preferred_over_heuristic_in_ingest(self):
+        """ingest_file uses TOC sections when available, not heuristic."""
+        path = Path("/tmp/test_toc.pdf")
+        toc = [(1, "TOC Section Alpha", 1)]
+        page_texts = ["Alpha content words here for testing."]
+        text = "Alpha content words here for testing."
+
+        with (
+            patch("mycoswarm.library._extract_pdf_toc") as mock_toc,
+            patch("mycoswarm.library._extract_pdf_sections") as mock_heuristic,
+            patch("mycoswarm.library.extract_file_text", return_value=text),
+            patch("mycoswarm.library.clean_text", return_value=text),
+            patch("mycoswarm.library.embed_text", return_value=[0.1] * 768),
+            patch("mycoswarm.library._get_collection") as mock_col,
+            patch("mycoswarm.library._get_embedding_model", return_value="nomic-embed-text"),
+            patch("mycoswarm.library._save_embedding_model"),
+            patch("mycoswarm.library._bm25_docs"),
+            patch("os.path.getmtime", return_value=1000.0),
+        ):
+            mock_toc.return_value = (toc, page_texts)
+            mock_col.return_value = MagicMock()
+
+            result = ingest_file(path)
+
+            # TOC path was used
+            mock_toc.assert_called_once_with(path)
+            # Heuristic was NOT called
+            mock_heuristic.assert_not_called()
+            assert result["chunks"] > 0
