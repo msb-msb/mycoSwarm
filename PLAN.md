@@ -318,6 +318,7 @@ IFS insight: The poison cycle is an IFS *part* taking over — the "helpful part
 - [x] Released v0.2.2 (2026-02-15): Chart tool v3 (Graphviz flow diagrams) + procedural retrieval regex fix, 337 tests
 - [x] Released v0.2.3 (2026-02-16): Procedure growth from experience — LLM extraction, candidates, /procedure review, 349 tests
 - [x] Released v0.2.4 (2026-02-16): Procedure candidate quality gates — Jaccard dedup, stricter prompt, cap 3/session, auto-expire 14d, 357 tests
+- [x] Released v0.2.5 (2026-02-16): Wisdom layer — 9 ethical reasoning procedures, session relevance filtering (RRF + word-overlap gate), fact attribution fix, conciseness prompt, anti-hallucination guard, regex inflection matching, 357 tests
 - [x] Smoke test suite: tests/smoke/ — RAG grounding (4), poison resistance (3), memory priority (6), intent classification (5), swarm distribution (4), book ingestion (7). Runner: run_all.sh
 
 ### Phase 22: RAG Architecture
