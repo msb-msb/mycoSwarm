@@ -535,11 +535,11 @@ Principle: "The 8 C's are health metrics, not features. They emerge from balance
 Reference: docs/ARCHITECTURE-COGNITIVE.md — Section 6
 
 #### 30a: InsiderLLM Articles
-- [ ] **"Why Your AI Keeps Lying: The Hallucination Feedback Loop"** — Poison cycle discovery, immune system approach. Technical audience.
+- [x] **"Why Your AI Keeps Lying: The Hallucination Feedback Loop"** — Poison cycle discovery, immune system approach. Technical audience. (2026-02-15)
 - [ ] **"Beyond Transformers: Building Memory That Learns"** — Lucek's CoALA adapted for local models. Four memory types. AI engineer audience.
 - [ ] **"The 8 C's of Healthy AI: What Therapy Teaches Us About System Design"** — IFS framework applied to AI. Broader tech/philosophy audience.
 - [ ] **"Wu Wei and the Art of Not Answering"** — Timing Gate, confidence calibration, Eastern philosophy meets AI design. Cross-disciplinary, potentially viral.
-- [ ] **"Distributed Wisdom: Running a Thinking Network on $200 Hardware"** — Full mycoSwarm stack, 5-node swarm, privacy-first. Self-hosted/budget AI audience.
+- [x] **"Distributed Wisdom: Running a Thinking Network on $200 Hardware"** — Full mycoSwarm stack, 5-node swarm, privacy-first. Self-hosted/budget AI audience. (2026-02-15)
 
 #### 30b: White Paper
 - [ ] **"Cognitive Architecture for Distributed Local AI: Integrating Psychological Models with RAG"** — 15-20 pages, academic-adjacent
