@@ -1345,8 +1345,9 @@ def cmd_chat(args):
                         for p in active:
                             uses = p.get("use_count", 0)
                             print(f"  [{p['id']}] (used {uses}x) {p['problem'][:60]}")
+                        print(f"\n  {len(active)} active, {len(candidates)} candidate(s)")
                         if candidates:
-                            print(f"\n  \U0001f4cb {len(candidates)} candidate(s) pending review \u2014 /procedure review")
+                            print(f"  \U0001f4cb {len(candidates)} candidate(s) pending review \u2014 /procedure review")
                     continue
 
                 elif subcmd.startswith("add "):
