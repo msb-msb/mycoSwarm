@@ -1525,7 +1525,7 @@ def search_all(
     procedure_hits: list[dict] = []
     _mode = intent.get("mode", "explore") if intent else "explore"
     _PROBLEM_RE = re.compile(
-        r'\b(error|bug|fix|issue|fail|broke|wrong|how\s+to|why\s+does|'
+        r'\b(error|bug|fix|issue|fail|broke|broken|wrong|crash|stuck|slow|missing|unexpected|weird|ignored|how\s+to|why\s+does|'
         r'doesn.t\s+work|not\s+working|problem|debug|solve)\b',
         re.IGNORECASE,
     )

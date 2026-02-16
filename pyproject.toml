@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mycoswarm"
-version = "0.2.1"
+version = "0.2.2"
 description = "Distributed AI framework — grow your own cluster from whatever hardware you've got"
 readme = "README.md"
 license = "MIT"
@@ -46,7 +46,8 @@ mycoswarm = "mycoswarm.cli:main"
 [project.optional-dependencies]
 pdf = ["pymupdf>=1.24.0"]
 rag = ["chromadb>=0.4.0", "rank-bm25>=0.2.2"]
-all = ["pymupdf>=1.24.0", "chromadb>=0.4.0", "rank-bm25>=0.2.2"]
+charts = ["matplotlib", "graphviz"]
+all = ["pymupdf>=1.24.0", "chromadb>=0.4.0", "rank-bm25>=0.2.2", "matplotlib", "graphviz"]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.24",
