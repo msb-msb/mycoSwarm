@@ -2,6 +2,7 @@
 
 import json
 import pytest
+from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
@@ -18,6 +19,8 @@ from mycoswarm.memory import (
     approve_procedure,
     reject_procedure,
     extract_procedure_from_lesson,
+    expire_old_candidates,
+    _is_duplicate_procedure,
     PROCEDURES_PATH,
 )
 
@@ -290,3 +293,123 @@ class TestExtractProcedure:
         mock_post.side_effect = Exception("Connection refused")
         result = extract_procedure_from_lesson("Some lesson")
         assert result is None
+
+
+class TestDuplicateDetection:
+    @patch("mycoswarm.library.index_procedure", return_value=True)
+    def test_exact_duplicate_detected(self, mock_idx):
+        """Exact same problem text should be detected as duplicate."""
+        add_procedure("RAG context ignored by local models", "Inject into user message")
+        assert _is_duplicate_procedure("RAG context ignored by local models") is True
+
+    @patch("mycoswarm.library.index_procedure", return_value=True)
+    def test_paraphrase_detected(self, mock_idx):
+        """Paraphrased problem with high word overlap should be detected."""
+        add_procedure(
+            "RAG context in system message gets ignored by local models",
+            "Inject into user message",
+        )
+        assert _is_duplicate_procedure(
+            "Local models ignore system message RAG context"
+        ) is True
+
+    @patch("mycoswarm.library.index_procedure", return_value=True)
+    def test_different_passes(self, mock_idx):
+        """Unrelated problem should not be flagged as duplicate."""
+        add_procedure("RAG context ignored by local models", "Inject into user message")
+        assert _is_duplicate_procedure(
+            "Python asyncio error handling"
+        ) is False
+
+    def test_empty_procedures_no_duplicate(self):
+        """No existing procedures means nothing is a duplicate."""
+        assert _is_duplicate_procedure("Any problem at all") is False
+
+
+class TestSessionCap:
+    @patch("mycoswarm.library.index_procedure", return_value=True)
+    @patch("mycoswarm.memory.extract_procedure_from_lesson")
+    @patch("mycoswarm.memory.split_session_topics", return_value=[{"topic": "general", "summary": "test"}])
+    @patch("mycoswarm.library.index_session_summary")
+    def test_max_3_candidates_per_session(self, mock_idx_sess, mock_split, mock_extract, mock_idx):
+        """Only 3 candidates should be created per session even with 6 lessons."""
+        from mycoswarm.memory import save_session_summary
+        mock_extract.return_value = {
+            "problem": "unique problem",
+            "solution": "unique solution",
+            "reasoning": "reason",
+            "anti_patterns": [],
+            "tags": [],
+        }
+        # Make each call return a truly different problem so dedup doesn't trigger
+        different_problems = [
+            "RAG context gets ignored by local models",
+            "asyncio create_task swallows exceptions silently",
+            "ChromaDB collection count mismatch after reindex",
+            "zeroconf mDNS announcements stop after network change",
+            "BM25 index returns stale results after document deletion",
+            "FastAPI endpoint timeout when Ollama is overloaded",
+        ]
+        call_count = [0]
+        def unique_extract(*args, **kwargs):
+            idx = call_count[0]
+            call_count[0] += 1
+            return {
+                "problem": different_problems[idx % len(different_problems)],
+                "solution": "fix it",
+                "reasoning": "reason",
+                "anti_patterns": [],
+                "tags": [],
+            }
+        mock_extract.side_effect = unique_extract
+
+        save_session_summary(
+            name="test-cap",
+            model="test",
+            summary="test summary",
+            count=10,
+            lessons=["lesson1", "lesson2", "lesson3", "lesson4", "lesson5", "lesson6"],
+        )
+        candidates = load_procedure_candidates()
+        assert len(candidates) == 3
+
+
+class TestAutoExpire:
+    def test_expires_old_candidates(self, tmp_procedures):
+        """Candidates older than 14 days should be expired."""
+        old_date = (datetime.now() - timedelta(days=15)).isoformat()
+        proc = {
+            "id": "proc_001", "status": "candidate",
+            "problem": "old problem", "solution": "old solution",
+            "created": old_date, "last_used": old_date, "use_count": 0,
+        }
+        tmp_procedures.write_text(json.dumps(proc) + "\n")
+        count = expire_old_candidates()
+        assert count == 1
+        assert load_procedure_candidates() == []
+
+    def test_keeps_recent_candidates(self, tmp_procedures):
+        """Candidates less than 14 days old should survive."""
+        recent_date = (datetime.now() - timedelta(days=5)).isoformat()
+        proc = {
+            "id": "proc_001", "status": "candidate",
+            "problem": "recent problem", "solution": "recent solution",
+            "created": recent_date, "last_used": recent_date, "use_count": 0,
+        }
+        tmp_procedures.write_text(json.dumps(proc) + "\n")
+        count = expire_old_candidates()
+        assert count == 0
+        assert len(load_procedure_candidates()) == 1
+
+    def test_keeps_active_procedures(self, tmp_procedures):
+        """Active procedures should never be expired regardless of age."""
+        old_date = (datetime.now() - timedelta(days=30)).isoformat()
+        proc = {
+            "id": "proc_001", "status": "active",
+            "problem": "old active", "solution": "still valid",
+            "created": old_date, "last_used": old_date, "use_count": 5,
+        }
+        tmp_procedures.write_text(json.dumps(proc) + "\n")
+        count = expire_old_candidates()
+        assert count == 0
+        assert len(load_active_procedures()) == 1

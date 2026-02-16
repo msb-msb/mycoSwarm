@@ -303,8 +303,13 @@ def save_session_summary(
         logger.debug("Failed to index session summary: %s", e)
 
     # --- Procedure candidate extraction (Phase 21d) ---
+    expire_old_candidates()
     if lessons:
+        candidates_added = 0
         for lesson in lessons:
+            if candidates_added >= 3:
+                logger.debug("Procedure candidate cap (3) reached for session")
+                break
             try:
                 extracted = extract_procedure_from_lesson(
                     lesson,
@@ -312,11 +317,15 @@ def save_session_summary(
                     session_context=summary[:200] if summary else "",
                 )
                 if extracted:
+                    if _is_duplicate_procedure(extracted["problem"]):
+                        logger.debug("Skipping duplicate procedure candidate: %s", lesson[:60])
+                        continue
                     candidate = add_procedure_candidate(
                         lesson,
                         extracted=extracted,
                         session_name=name,
                     )
+                    candidates_added += 1
                     logger.debug(
                         "Procedure candidate %s from lesson: %s",
                         candidate["id"],
@@ -781,6 +790,63 @@ def promote_lesson_to_procedure(
     )
 
 
+def _tokenize_problem(text: str) -> set[str]:
+    """Tokenize a problem string into a set of lowercase words (>=3 chars)."""
+    import re as _re
+    cleaned = _re.sub(r'[^\w\s]', '', text.lower())
+    return {w for w in cleaned.split() if len(w) >= 3}
+
+
+def _is_duplicate_procedure(problem: str, threshold: float = 0.6) -> bool:
+    """Check if a problem is too similar to any existing procedure.
+
+    Uses Jaccard similarity on word tokens. Returns True if any
+    existing procedure (active or candidate) exceeds threshold.
+    """
+    new_tokens = _tokenize_problem(problem)
+    if not new_tokens:
+        return False
+    for p in load_procedures():
+        existing_tokens = _tokenize_problem(p.get("problem", ""))
+        if not existing_tokens:
+            continue
+        intersection = len(new_tokens & existing_tokens)
+        union = len(new_tokens | existing_tokens)
+        if union > 0 and intersection / union >= threshold:
+            return True
+    return False
+
+
+def expire_old_candidates(days: int = 14) -> int:
+    """Remove candidate procedures older than N days.
+
+    Only affects candidates — active procedures are never expired.
+    Returns count of expired candidates.
+    """
+    from datetime import timedelta
+    procs = load_procedures()
+    cutoff = datetime.now() - timedelta(days=days)
+    keep = []
+    expired = 0
+    for p in procs:
+        if p.get("status") == "candidate":
+            try:
+                created = datetime.fromisoformat(p.get("created", ""))
+                if created < cutoff:
+                    expired += 1
+                    continue
+            except (ValueError, TypeError):
+                pass
+        keep.append(p)
+    if expired:
+        _ensure_dir()
+        with open(PROCEDURES_PATH, "w") as f:
+            for p in keep:
+                f.write(json.dumps(p) + "\n")
+        logger.info("Expired %d unreviewed procedure candidates (>%d days old)", expired, days)
+    return expired
+
+
 # ---------------------------------------------------------------------------
 # Layer 3b: Procedure Growth from Experience
 # ---------------------------------------------------------------------------
@@ -796,12 +862,23 @@ def extract_procedure_from_lesson(
     Returns dict with problem/solution/reasoning/anti_patterns/tags,
     or None if the lesson isn't procedural.
     """
-    prompt = f"""Analyze this lesson from a development session and determine if it contains a reusable procedure — a pattern that could help solve similar problems in the future.
+    prompt = f"""Analyze this lesson and determine if it contains a REUSABLE DEBUGGING PATTERN or TECHNICAL DECISION — something that would help solve a similar problem in the future.
 
 Lesson: "{lesson}"
 {f'Session context: {session_context}' if session_context else ''}
 
-If this lesson contains a reusable procedure, respond with ONLY this JSON (no markdown fences):
+Return is_procedural: true ONLY if this describes:
+- A specific technical problem and its solution
+- A debugging strategy that transfers to other situations
+- A design decision with clear reasoning
+
+Return is_procedural: false if this is:
+- A general observation or fact
+- Domain knowledge without a problem/solution pattern
+- An opinion or preference
+- Something obvious that any developer would know
+
+If procedural, respond with ONLY this JSON (no markdown fences):
 {{
     "is_procedural": true,
     "problem": "What problem or situation triggers this procedure (1-2 sentences)",
@@ -811,7 +888,7 @@ If this lesson contains a reusable procedure, respond with ONLY this JSON (no ma
     "tags": ["3-5 relevant topic tags"]
 }}
 
-If this lesson is just an observation, opinion, or fact without an actionable pattern, respond with:
+If not procedural, respond with:
 {{"is_procedural": false}}"""
 
     try:
@@ -898,7 +975,11 @@ def add_procedure_candidate(
 
 
 def load_procedure_candidates() -> list[dict]:
-    """Load only candidate (unreviewed) procedures."""
+    """Load only candidate (unreviewed) procedures.
+
+    Automatically expires old candidates (>14 days) before returning.
+    """
+    expire_old_candidates()
     return [p for p in load_procedures() if p.get("status") == "candidate"]
 
 
