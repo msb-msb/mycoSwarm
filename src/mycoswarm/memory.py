@@ -1077,7 +1077,11 @@ def build_memory_system_prompt(query: str | None = None) -> str:
     facts = load_facts()
     facts_text = format_facts_for_prompt(facts)
     if facts_text:
-        parts.append(facts_text)
+        parts.append(
+            "The following are facts about THE USER that they asked you to "
+            "remember. Refer to these using 'you' (second person), not 'I'.\n"
+            + facts_text
+        )
 
     # Try semantic session search first, fall back to chronological
     session_text = ""
@@ -1110,5 +1114,11 @@ def build_memory_system_prompt(query: str | None = None) -> str:
             "when the current problem matches the pattern. If a procedure "
             "is marked as a failure, avoid that approach."
         )
+
+    parts.append(
+        "Be concise \u2014 short sentences, minimal padding. Apply procedures "
+        "naturally without quoting them verbatim. Don't reference unrelated "
+        "session memories. Only cite sources that directly answer the query."
+    )
 
     return "\n\n".join(parts)

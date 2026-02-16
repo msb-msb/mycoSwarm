@@ -1549,6 +1549,7 @@ def cmd_chat(args):
             # --- RAG search (docs + sessions via search_all with intent) ---
             doc_hits: list[dict] = []
             session_hits: list[dict] = []
+            procedure_hits: list[dict] = []
             if need_rag or past_ref:
                 scope = (intent_result or {}).get("scope", "all")
                 if scope in ("session", "personal"):
@@ -1580,6 +1581,23 @@ def cmd_chat(args):
                         print(f"🐛 DEBUG: DOC HIT [{_di}]: source={_dh.get('source')} chunk={_dh.get('chunk_index')} rrf={_dh.get('rrf_score', 'n/a')} text={_dh.get('text', '')[:100]!r}", flush=True)
                     for _si, _sh in enumerate(session_hits, 1):
                         print(f"🐛 DEBUG: SESSION HIT [{_si}]: date={_sh.get('date')} topic={_sh.get('topic', '')} text={_sh.get('summary', '')[:100]!r}", flush=True)
+
+            # --- Procedural retrieval (independent of RAG path) ---
+            if not procedure_hits:
+                import re as _pre
+                _PROBLEM_RE = _pre.compile(
+                    r'\b(error|bug|fix|issue|fail|broke|broken|wrong|crash|stuck|slow|missing|'
+                    r'unexpected|weird|ignored|uncertain|unsure|confus\w*|not sure|too many|complex|'
+                    r'overwhelm\w*|struggl\w*|frustrat\w*|how\s+to|why\s+does|doesn.t\s+work|not\s+working|'
+                    r'problem|debug|solve|where\s+do\s+i\s+start|should\s+i)\b',
+                    _pre.IGNORECASE,
+                )
+                if _PROBLEM_RE.search(user_input):
+                    try:
+                        from mycoswarm.library import search_procedures
+                        procedure_hits = search_procedures(user_input, n_results=3)
+                    except Exception as e:
+                        logger.debug("Procedural retrieval failed: %s", e)
 
             # --- Format results ---
             for ri, hit in enumerate(doc_hits, 1):
