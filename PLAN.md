@@ -280,6 +280,7 @@ Procedural memory isn't just "how to do X" — it's "why we do it this way" and 
 - [x] **Anti-patterns:** Explicitly store what *not* to do and why (e.g., "don't inject RAG as system message — model ignores it") (2026-02-15)
 - [x] Stored separately from episodic and factual memory with dedicated retrieval path (2026-02-15)
 - [x] **Procedural retrieval trigger:** When intent mode=execute or problem signature matches known pattern, pull relevant procedures (2026-02-15)
+- [x] **Expanded retrieval regex:** Added ignored, broken, crash, stuck, slow, missing, unexpected, weird to _PROBLEM_RE trigger pattern (2026-02-15)
 - [ ] **Value-informed procedures:** Store not just the solution but the reasoning (schema supports it, needs prompt refinement)
 - [ ] **Procedure growth from experience:** End-of-session extraction identifies reusable patterns → auto-creates procedure candidates for review
 - [ ] **Ethical reasoning domain:** Wisdom from Taoism, IFS, martial arts philosophy indexed as procedural knowledge — shapes *how* the system reasons, not just *what* it knows
@@ -312,6 +313,9 @@ Planned (21g continued):
 IFS insight: The poison cycle is an IFS *part* taking over — the "helpful part" that would rather fabricate than sit with uncertainty. The immune system is Self-energy returning: Clarity (knowing what you don't know), Calm (not rushing to fill gaps).
 
 - [x] Released v0.1.9 (2026-02-15): Phase 21g Step 3 (contradiction detection), PDF TOC extraction, paragraph-aware chunking, smoke test suite (5 scripts + book test), 270 unit tests + 22 smoke checks
+- [x] Released v0.2.0 (2026-02-15): Cognitive architecture foundations — fact lifecycle tags, decay scoring, temporal recency boost, rich episodic memory, 337 tests
+- [x] Released v0.2.1 (2026-02-15): Phase 21d procedural memory — exemplar store, search, /procedure CLI, 337 tests
+- [x] Released v0.2.2 (2026-02-15): Chart tool v3 (Graphviz flow diagrams) + procedural retrieval regex fix, 337 tests
 - [x] Smoke test suite: tests/smoke/ — RAG grounding (4), poison resistance (3), memory priority (6), intent classification (5), swarm distribution (4), book ingestion (7). Runner: run_all.sh
 
 ### Phase 22: RAG Architecture
@@ -374,14 +378,16 @@ Reference: docs/adam-lucek-research-notes.md (Video 3)
 
 ### Phase 26: Chart & Visualization Tool
 
-- [ ] `mycoswarm chart` CLI command: generate charts from data
-- [ ] Input: JSON data file or inline key=value pairs
-- [ ] Chart types: line, bar, comparison table, before/after
-- [ ] Output: PNG saved to specified path
-- [ ] matplotlib as optional dependency (not required for core)
+- [x] Chart tool v3: `src/mycoswarm/chart.py` — publication-ready charts for InsiderLLM (2026-02-15)
+- [x] Chart types: bar, line, comparison table, before/after, flow diagram (2026-02-15)
+- [x] Bar/line/table/before_after: matplotlib engine (2026-02-15)
+- [x] Flow diagrams: Graphviz engine — proper layout, arrows connect to box edges (2026-02-15)
+- [x] JSON spec input: `chart_from_json()` for CLI/automation (2026-02-15)
+- [x] InsiderLLM dark theme with brand colors, watermark, DejaVu Sans fonts (2026-02-15)
+- [x] Optional dependencies: `pip install mycoswarm[charts]` (matplotlib + graphviz) (2026-02-15)
+- [x] Output: PNG at configurable DPI (default 180) (2026-02-15)
+- [ ] `mycoswarm chart` CLI command (currently module-only, no CLI subcommand yet)
 - [ ] Integration with code_run handler for sandboxed rendering
-- [ ] InsiderLLM asset pipeline: generate article visuals from benchmark data
-- [ ] Style template matching InsiderLLM brand (dark theme, clean, minimal)
 
 Example usage:
 ```
