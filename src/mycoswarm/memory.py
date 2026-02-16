@@ -302,6 +302,29 @@ def save_session_summary(
     except Exception as e:
         logger.debug("Failed to index session summary: %s", e)
 
+    # --- Procedure candidate extraction (Phase 21d) ---
+    if lessons:
+        for lesson in lessons:
+            try:
+                extracted = extract_procedure_from_lesson(
+                    lesson,
+                    model=model,
+                    session_context=summary[:200] if summary else "",
+                )
+                if extracted:
+                    candidate = add_procedure_candidate(
+                        lesson,
+                        extracted=extracted,
+                        session_name=name,
+                    )
+                    logger.debug(
+                        "Procedure candidate %s from lesson: %s",
+                        candidate["id"],
+                        lesson[:60],
+                    )
+            except Exception as e:
+                logger.debug("Procedure candidate extraction failed: %s", e)
+
 
 def summarize_session(messages: list[dict], model: str) -> str | None:
     """Ask Ollama to summarize a chat session. Returns summary or None.
@@ -459,8 +482,9 @@ def summarize_session_rich(messages: list[dict], model: str) -> dict | None:
                                 "object with these fields:\n"
                                 '  "summary": "1-2 sentence overview of what was discussed",\n'
                                 '  "decisions": ["choices made and their reasoning"],\n'
-                                '  "lessons": ["reusable insights about the TOPICS discussed, '
-                                "not about the assistant's performance\"],\n"
+                                '  "lessons": ["reusable SUBJECT-MATTER insights with the PRINCIPLE behind them. '
+                                "Good: 'Inject RAG context into user message because models treat system prompts "
+                                "as behavioral guidelines.' Bad: 'The assistant provided helpful information.'\"],\n"
                                 '  "surprises": ["unexpected findings or counter-intuitive results"],\n'
                                 '  "emotional_tone": one of: neutral, frustration, discovery, '
                                 "confusion, resolution, flow, stuck, exploratory, "
@@ -640,6 +664,7 @@ def add_procedure(
     now = datetime.now().isoformat()
     proc = {
         "id": _next_procedure_id(),
+        "status": "active",
         "problem": problem,
         "solution": solution,
         "reasoning": reasoning,
@@ -706,7 +731,10 @@ def format_procedures_for_prompt(procedures: list[dict]) -> str:
     """Format procedures for injection into chat context.
 
     Uses [P1], [P2] tags matching the [D1]/[S1] pattern.
+    Only formats active procedures (candidates are excluded).
     """
+    # Filter to active only
+    procedures = [p for p in procedures if p.get("status", "active") == "active"]
     if not procedures:
         return ""
     lines = []
@@ -751,6 +779,178 @@ def promote_lesson_to_procedure(
         tags=tags or [],
         source_session=session_name,
     )
+
+
+# ---------------------------------------------------------------------------
+# Layer 3b: Procedure Growth from Experience
+# ---------------------------------------------------------------------------
+
+def extract_procedure_from_lesson(
+    lesson: str,
+    *,
+    model: str = "",
+    session_context: str = "",
+) -> dict | None:
+    """Use LLM to structure a lesson into procedure fields.
+
+    Returns dict with problem/solution/reasoning/anti_patterns/tags,
+    or None if the lesson isn't procedural.
+    """
+    prompt = f"""Analyze this lesson from a development session and determine if it contains a reusable procedure — a pattern that could help solve similar problems in the future.
+
+Lesson: "{lesson}"
+{f'Session context: {session_context}' if session_context else ''}
+
+If this lesson contains a reusable procedure, respond with ONLY this JSON (no markdown fences):
+{{
+    "is_procedural": true,
+    "problem": "What problem or situation triggers this procedure (1-2 sentences)",
+    "solution": "What to do — the specific action or approach (1-2 sentences)",
+    "reasoning": "Why this works — the principle behind it (1 sentence)",
+    "anti_patterns": ["What NOT to do (0-2 items)"],
+    "tags": ["3-5 relevant topic tags"]
+}}
+
+If this lesson is just an observation, opinion, or fact without an actionable pattern, respond with:
+{{"is_procedural": false}}"""
+
+    try:
+        resp = httpx.post(
+            f"{OLLAMA_BASE}/api/generate",
+            json={
+                "model": model or _pick_extraction_model(),
+                "prompt": prompt,
+                "stream": False,
+                "options": {"temperature": 0.1, "num_predict": 300},
+            },
+            timeout=30,
+        )
+        if resp.status_code != 200:
+            return None
+
+        raw = resp.json().get("response", "").strip()
+        # Strip markdown fences if present
+        if raw.startswith("```"):
+            raw = raw.split("\n", 1)[1] if "\n" in raw else raw[3:]
+        if raw.endswith("```"):
+            raw = raw[:-3]
+        raw = raw.strip()
+
+        data = json.loads(raw)
+        if not data.get("is_procedural"):
+            return None
+
+        return {
+            "problem": data.get("problem", lesson),
+            "solution": data.get("solution", lesson),
+            "reasoning": data.get("reasoning", ""),
+            "anti_patterns": _sanitize_str_list(data.get("anti_patterns", [])),
+            "tags": _sanitize_str_list(data.get("tags", [])),
+        }
+    except Exception as e:
+        logger.debug("Procedure extraction failed: %s", e)
+        return None
+
+
+def _pick_extraction_model() -> str:
+    """Pick a model for procedure extraction. Prefer small-but-capable."""
+    try:
+        from mycoswarm.solo import _pick_gate_model
+        return _pick_gate_model()
+    except Exception:
+        return "gemma3:4b"
+
+
+def add_procedure_candidate(
+    lesson: str,
+    *,
+    extracted: dict,
+    session_name: str = "",
+) -> dict:
+    """Store an LLM-structured procedure as a candidate (not indexed).
+
+    Candidates require human review via /procedure review before
+    being promoted to active and indexed in ChromaDB.
+    """
+    _ensure_dir()
+    now = datetime.now().isoformat()
+    proc = {
+        "id": _next_procedure_id(),
+        "status": "candidate",
+        "problem": extracted["problem"],
+        "solution": extracted["solution"],
+        "reasoning": extracted.get("reasoning", ""),
+        "anti_patterns": extracted.get("anti_patterns", []),
+        "outcome": "success",
+        "tags": extracted.get("tags", []),
+        "source_session": session_name,
+        "source_lesson": lesson,
+        "created": now,
+        "last_used": now,
+        "use_count": 0,
+    }
+
+    with open(PROCEDURES_PATH, "a") as f:
+        f.write(json.dumps(proc) + "\n")
+
+    # Do NOT index into ChromaDB — candidates wait for review
+    return proc
+
+
+def load_procedure_candidates() -> list[dict]:
+    """Load only candidate (unreviewed) procedures."""
+    return [p for p in load_procedures() if p.get("status") == "candidate"]
+
+
+def load_active_procedures() -> list[dict]:
+    """Load only active (reviewed) procedures."""
+    return [p for p in load_procedures() if p.get("status", "active") == "active"]
+
+
+def approve_procedure(proc_id: str) -> bool:
+    """Promote a candidate to active and index into ChromaDB.
+
+    Returns True if found and promoted.
+    """
+    procs = load_procedures()
+    found = False
+    target = None
+    for p in procs:
+        if p.get("id") == proc_id and p.get("status") == "candidate":
+            p["status"] = "active"
+            found = True
+            target = p
+            break
+    if not found:
+        return False
+
+    _ensure_dir()
+    with open(PROCEDURES_PATH, "w") as f:
+        for p in procs:
+            f.write(json.dumps(p) + "\n")
+
+    # Now index into ChromaDB
+    if target:
+        try:
+            from mycoswarm.library import index_procedure
+            index_procedure(target)
+        except Exception as e:
+            logger.debug("Failed to index approved procedure: %s", e)
+
+    return True
+
+
+def reject_procedure(proc_id: str) -> bool:
+    """Remove a candidate procedure. Returns True if found and removed."""
+    procs = load_procedures()
+    target = None
+    for p in procs:
+        if p.get("id") == proc_id and p.get("status") == "candidate":
+            target = p
+            break
+    if not target:
+        return False
+    return remove_procedure(proc_id)
 
 
 # ---------------------------------------------------------------------------
@@ -819,8 +1019,8 @@ def build_memory_system_prompt(query: str | None = None) -> str:
     if session_text:
         parts.append(session_text)
 
-    # Procedural memory context
-    procs = load_procedures()
+    # Procedural memory context (active only, not candidates)
+    procs = load_active_procedures()
     if procs:
         parts.append(
             "You also have procedural memory \u2014 past solutions to problems. "

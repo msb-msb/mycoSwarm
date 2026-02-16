@@ -281,8 +281,8 @@ Procedural memory isn't just "how to do X" — it's "why we do it this way" and 
 - [x] Stored separately from episodic and factual memory with dedicated retrieval path (2026-02-15)
 - [x] **Procedural retrieval trigger:** When intent mode=execute or problem signature matches known pattern, pull relevant procedures (2026-02-15)
 - [x] **Expanded retrieval regex:** Added ignored, broken, crash, stuck, slow, missing, unexpected, weird to _PROBLEM_RE trigger pattern (2026-02-15)
-- [ ] **Value-informed procedures:** Store not just the solution but the reasoning (schema supports it, needs prompt refinement)
-- [ ] **Procedure growth from experience:** End-of-session extraction identifies reusable patterns → auto-creates procedure candidates for review
+- [x] **Value-informed procedures:** Extraction prompt asks for reasoning/principle behind each procedure. Session reflection prompt updated to capture principles in lessons. (2026-02-16)
+- [x] **Procedure growth from experience:** End-of-session extraction evaluates lessons via LLM, structures as problem/solution/reasoning, stores as candidates for human review via `/procedure review`. (2026-02-16)
 - [ ] **Ethical reasoning domain:** Wisdom from Taoism, IFS, martial arts philosophy indexed as procedural knowledge — shapes *how* the system reasons, not just *what* it knows
 
 #### 21e: Two-Stage Document Ingest

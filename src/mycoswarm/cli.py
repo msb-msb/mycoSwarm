@@ -1340,10 +1340,13 @@ def cmd_chat(args):
                         print("  No procedures stored yet.")
                         print("  Add one: /procedure add <problem> | <solution>")
                     else:
-                        for p in procs:
-                            outcome = "ok" if p["outcome"] == "success" else "FAIL"
+                        active = [p for p in procs if p.get("status", "active") == "active"]
+                        candidates = [p for p in procs if p.get("status") == "candidate"]
+                        for p in active:
                             uses = p.get("use_count", 0)
-                            print(f"  [{p['id']}] ({outcome}, used {uses}x) {p['problem'][:60]}")
+                            print(f"  [{p['id']}] (used {uses}x) {p['problem'][:60]}")
+                        if candidates:
+                            print(f"\n  \U0001f4cb {len(candidates)} candidate(s) pending review \u2014 /procedure review")
                     continue
 
                 elif subcmd.startswith("add "):
@@ -1389,8 +1392,57 @@ def cmd_chat(args):
                         print(f"  Promoted {promoted} lessons to procedures.")
                     continue
 
+                elif subcmd == "review":
+                    from mycoswarm.memory import (
+                        load_procedure_candidates,
+                        approve_procedure,
+                        reject_procedure,
+                    )
+                    candidates = load_procedure_candidates()
+                    if not candidates:
+                        print("  No procedure candidates to review.")
+                        continue
+
+                    print(f"  {len(candidates)} candidate(s) to review:\n")
+                    for c in candidates:
+                        print(f"  \u250c\u2500 {c['id']} \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500")
+                        print(f"  \u2502 Problem:  {c['problem']}")
+                        print(f"  \u2502 Solution: {c['solution']}")
+                        if c.get("reasoning"):
+                            print(f"  \u2502 Why:      {c['reasoning']}")
+                        for ap in c.get("anti_patterns", []):
+                            print(f"  \u2502 Avoid:    {ap}")
+                        if c.get("tags"):
+                            print(f"  \u2502 Tags:     {', '.join(c['tags'])}")
+                        if c.get("source_lesson"):
+                            print(f"  \u2502 Lesson:   {c['source_lesson'][:80]}")
+                        print(f"  \u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500")
+
+                        choice = ""
+                        while True:
+                            choice = input("  [a]pprove / [r]eject / [s]kip / [q]uit review? ").strip().lower()
+                            if choice in ("a", "approve"):
+                                if approve_procedure(c["id"]):
+                                    print(f"  \u2713 Approved and indexed: {c['id']}")
+                                break
+                            elif choice in ("r", "reject"):
+                                if reject_procedure(c["id"]):
+                                    print(f"  \u2717 Rejected: {c['id']}")
+                                break
+                            elif choice in ("s", "skip"):
+                                print(f"  \u2014 Skipped: {c['id']}")
+                                break
+                            elif choice in ("q", "quit"):
+                                print("  Review ended.")
+                                break
+                            else:
+                                print("  Type a/r/s/q")
+                        if choice in ("q", "quit"):
+                            break
+                    continue
+
                 else:
-                    print("  /procedure list | add <problem>|<solution> | remove <id> | promote")
+                    print("  /procedure list | add <problem>|<solution> | remove <id> | promote | review")
                     continue
 
             else:
