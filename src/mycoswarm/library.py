@@ -1000,6 +1000,25 @@ def search_sessions(
                 "score": round(distance, 4),
             })
 
+    # Word-overlap gate: drop hits with zero content-word overlap
+    _stop = {"the", "and", "for", "are", "but", "not", "you", "all", "can",
+             "has", "had", "was", "her", "his", "its", "our", "who", "how",
+             "this", "that", "with", "from", "they", "been", "have", "will",
+             "what", "when", "were", "your", "does", "than", "them", "then",
+             "some", "into", "also", "just", "about", "which", "their", "there"}
+    query_tokens = {w.lower() for w in query.split() if len(w) >= 3} - _stop
+    if query_tokens and hits:
+        hits = [
+            h for h in hits
+            if bool(
+                query_tokens
+                & (
+                    {w for w in (h.get("summary", "") + " " + h.get("topic", "")).lower().split() if len(w) >= 3}
+                    - _stop
+                )
+            )
+        ]
+
     return hits
 
 
@@ -1556,6 +1575,24 @@ def search_all(
     # Sort by rrf_score descending before truncation
     doc_hits.sort(key=lambda h: h.get("rrf_score", 0), reverse=True)
     session_hits.sort(key=lambda h: h.get("rrf_score", 0), reverse=True)
+
+    # Drop session hits below minimum relevance threshold
+    _MIN_SESSION_RRF = 0.002
+    session_hits = [h for h in session_hits if h.get("rrf_score", 0) >= _MIN_SESSION_RRF]
+
+    # Word-overlap gate: drop session hits with zero content-word overlap
+    _stop = {"the", "and", "for", "are", "but", "not", "you", "all", "can",
+             "has", "had", "was", "her", "his", "its", "our", "who", "how",
+             "this", "that", "with", "from", "they", "been", "have", "will",
+             "what", "when", "were", "your", "does", "than", "them", "then",
+             "some", "into", "also", "just", "about", "which", "their", "there"}
+    _query_tokens = {w.lower() for w in query.split() if len(w) >= 3} - _stop
+    if _query_tokens:
+        def _has_overlap(hit: dict) -> bool:
+            text = (hit.get("summary", "") + " " + hit.get("topic", "")).lower()
+            hit_words = {w for w in text.split() if len(w) >= 3} - _stop
+            return bool(_query_tokens & hit_words)
+        session_hits = [h for h in session_hits if _has_overlap(h)]
 
     # Final truncation: never return more than n_results
     doc_hits = doc_hits[:n_results]

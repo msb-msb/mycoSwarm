@@ -1118,7 +1118,10 @@ def build_memory_system_prompt(query: str | None = None) -> str:
     parts.append(
         "Be concise \u2014 short sentences, minimal padding. Apply procedures "
         "naturally without quoting them verbatim. Don't reference unrelated "
-        "session memories. Only cite sources that directly answer the query."
+        "session memories. Only cite sources that directly answer the query.\n"
+        "NEVER fabricate citations. If no [S], [D], or [P] tags appear in "
+        "your context, do not invent them. Do not claim 'we discussed this' "
+        "unless a specific session memory is present in your context."
     )
 
     return "\n\n".join(parts)
