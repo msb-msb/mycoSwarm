@@ -40,11 +40,13 @@ FACT_TYPE_PREFERENCE = "preference"  # User likes/dislikes, style choices
 FACT_TYPE_FACT = "fact"              # Objective info (name, location, etc.)
 FACT_TYPE_PROJECT = "project"        # Active project context
 FACT_TYPE_EPHEMERAL = "ephemeral"    # Temporary, auto-expires
+FACT_TYPE_IDENTITY = "identity"      # Core identity, never decays or stales
 VALID_FACT_TYPES = {
     FACT_TYPE_PREFERENCE,
     FACT_TYPE_FACT,
     FACT_TYPE_PROJECT,
     FACT_TYPE_EPHEMERAL,
+    FACT_TYPE_IDENTITY,
 }
 DEFAULT_FACT_TYPE = FACT_TYPE_FACT
 
@@ -150,6 +152,8 @@ def get_stale_facts(days: int = 30) -> list[dict]:
     now = datetime.now()
     stale = []
     for f in facts:
+        if f.get("type") == FACT_TYPE_IDENTITY:
+            continue  # identity facts never go stale
         threshold = 7 if f.get("type") == FACT_TYPE_EPHEMERAL else days
         try:
             last_ref = datetime.fromisoformat(f.get("last_referenced", f["added"]))

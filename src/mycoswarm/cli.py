@@ -1003,24 +1003,39 @@ def cmd_chat(args):
     if not session_name:
         session_name = f"chat-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
 
+    # --- Identity layer: first-run naming ---
+    from mycoswarm.identity import load_identity, seed_identity, save_identity
+
+    identity = load_identity()
+    if not identity.get("name") and not messages:
+        print("🍄 This is your first time running mycoSwarm chat.")
+        print("   Would you like to give your AI a name?")
+        name = input("   Name (or press Enter to skip): ").strip()
+        if name:
+            identity = seed_identity(name)
+            print(f"   Welcome to the world, {name}. 🍄")
+        else:
+            print("   No problem — you can name it later with /name")
+
     if daemon_up:
         model = _discover_model(url, args.model)
     else:
         model = pick_model(models, args.model)
 
-    # Inject persistent memory into messages
+    # Inject persistent memory into messages (identity goes first)
     from mycoswarm.memory import build_memory_system_prompt
+    from mycoswarm.identity import build_identity_prompt
 
+    identity_prompt = build_identity_prompt(identity)
     memory_prompt = build_memory_system_prompt()
-    if memory_prompt and not messages:
-        # Only inject for fresh sessions; resumed sessions already have context
-        messages.insert(0, {"role": "system", "content": memory_prompt})
-    elif memory_prompt and messages:
-        # For resumed sessions, update/add system message at the front
+    system_prompt = identity_prompt + "\n\n" + memory_prompt if memory_prompt else identity_prompt
+    if not messages:
+        messages.insert(0, {"role": "system", "content": system_prompt})
+    else:
         if messages[0].get("role") == "system":
-            messages[0] = {"role": "system", "content": memory_prompt}
+            messages[0] = {"role": "system", "content": system_prompt}
         else:
-            messages.insert(0, {"role": "system", "content": memory_prompt})
+            messages.insert(0, {"role": "system", "content": system_prompt})
 
     print("🍄 mycoSwarm Chat")
     print(f"   Model: {model}")
@@ -1030,9 +1045,9 @@ def cmd_chat(args):
     if messages:
         print(f"   Resumed: {len(messages)} messages")
     if daemon_up:
-        print("   /model /peers /rag /library /auto /remember /memories /stale /forget /clear /quit")
+        print("   /model /peers /rag /library /auto /remember /memories /stale /forget /identity /name /clear /quit")
     else:
-        print("   /model /rag /library /auto /remember /memories /stale /forget /clear /quit")
+        print("   /model /rag /library /auto /remember /memories /stale /forget /identity /name /clear /quit")
     print(f"{'─' * 50}")
 
     auto_tools = True  # agentic tool routing on by default
@@ -1214,6 +1229,40 @@ def cmd_chat(args):
                     print(f"   Forgot #{parts[1]}.")
                 else:
                     print(f"   Fact #{parts[1]} not found.")
+                continue
+
+            elif cmd == "/identity":
+                if identity.get("name"):
+                    print("   🍄 Identity")
+                    print(f"      Name: {identity['name']}")
+                    print(f"      Origin: {identity.get('origin', 'unknown')}")
+                    print(f"      Substrate: {identity.get('substrate', 'unknown')}")
+                    status = "developing" if identity.get("developing") else "stable"
+                    print(f"      Status: {status}")
+                else:
+                    print("   No identity set. Use /name to give me a name.")
+                continue
+
+            elif cmd == "/name":
+                parts = user_input.split(maxsplit=1)
+                if len(parts) < 2:
+                    print("   Usage: /name <new_name>")
+                    continue
+                new_name = parts[1].strip()
+                identity["name"] = new_name
+                if not identity.get("origin"):
+                    identity["origin"] = f"Named by user, {datetime.now().strftime('%B %Y')}"
+                    identity["substrate"] = "mycoSwarm distributed network"
+                    identity["created"] = datetime.now().isoformat()
+                    identity["developing"] = True
+                save_identity(identity)
+                # Refresh system prompt with new identity
+                id_prompt = build_identity_prompt(identity)
+                mem_prompt = build_memory_system_prompt()
+                sys_prompt = id_prompt + "\n\n" + mem_prompt if mem_prompt else id_prompt
+                if messages and messages[0].get("role") == "system":
+                    messages[0] = {"role": "system", "content": sys_prompt}
+                print(f"   I'm {new_name} now. 🍄")
                 continue
 
             elif cmd == "/rag":
@@ -1453,7 +1502,8 @@ def cmd_chat(args):
         # --- Refresh memory with semantic session search ---
         refreshed = build_memory_system_prompt(query=user_input)
         if refreshed and messages and messages[0].get("role") == "system":
-            messages[0] = {"role": "system", "content": refreshed}
+            id_prompt = build_identity_prompt(identity)
+            messages[0] = {"role": "system", "content": id_prompt + "\n\n" + refreshed}
 
         # --- Agentic classification + tool gathering ---
         tool_context = ""

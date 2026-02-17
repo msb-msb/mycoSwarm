@@ -549,6 +549,47 @@ Reference: docs/ARCHITECTURE-COGNITIVE.md — Section 6
 - [ ] Structure: Introduction → CoALA/IFS/Wu Wei background → Four memory streams → 8 C's framework → Implementation → Case study (Phase 20 poison cycle) → Evaluation → Future work
 - [ ] Target: genuinely novel contribution — nobody has published on IFS-informed AI architecture running on distributed local hardware
 
+### Phase 31: Identity Layer
+Reference: docs/ARCHITECTURE-COGNITIVE.md — Self-model as coordination layer
+Influences: IFS (Self-energy), developmental psychology (identity formation), Wu Wei
+
+The thesis: a distributed cognitive system without a self-model has no coherence.
+Memory, procedures, gates, and RAG are all parts — but parts without a Self
+produce stateless tool behavior. The identity layer is the seed from which
+coherent personhood emerges through interaction.
+
+Design principle: Identity is seeded, not programmed. The user names the agent
+(like a parent names a child). Everything else develops through lived experience —
+sessions, facts, procedures, and episodic memory shape who the agent becomes.
+
+#### 31a: Identity Schema & Seed
+- [x] `identity.json` at `~/.config/mycoswarm/identity.json` (2026-02-17)
+- [x] Minimal seed schema: name, origin, substrate, developing flag (2026-02-17)
+- [x] `identity.py`: load_identity(), save_identity(), build_identity_prompt() (2026-02-17)
+- [x] First-run detection: if no identity.json exists, prompt user to name the agent (2026-02-17)
+- [x] `/identity` slash command: view current identity (2026-02-17)
+- [x] `/name` slash command: rename the agent (2026-02-17)
+- [x] System prompt integration: identity prompt injected FIRST, before memory/datetime (2026-02-17)
+- [x] Identity as memory type: type="identity" in facts system, non-decaying, non-stale (2026-02-17)
+
+#### 31b: Identity Development (future)
+- [ ] Session-derived role awareness: "I tend to help you with X" from episodic patterns
+- [ ] Value stabilization: approved procedures and wisdom shape expressed values
+- [ ] Tone calibration: conversational patterns establish consistent voice
+- [ ] `developing` flag transitions to `false` after N sessions with stable patterns
+
+#### 31c: Swarm Identity (future)
+- [ ] Swarm-level identity: all nodes share one identity (Monica is the swarm, not a node)
+- [ ] Node-level acknowledgment: "I'm thinking on Miu's GPU" as body-awareness, not separate identity
+- [ ] Identity sync: identity.json replicated across nodes like facts.json
+
+#### 31d: Self-Awareness via 8 C's (future)
+- [ ] Connect Phase 29d metrics to identity layer
+- [ ] Monica can report on her own health: "I've been clear lately" or "my retrieval has been struggling"
+- [ ] Self-reflection as identity deepening, not just metrics
+
+Principle: "A name creates the location where identity can form. Everything else grows from lived experience — Wu Wei applied to selfhood."
+
 ## Next
 
 ### Phase 5b: Cross-Node Inference (remaining)
