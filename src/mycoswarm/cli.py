@@ -1045,9 +1045,9 @@ def cmd_chat(args):
     if messages:
         print(f"   Resumed: {len(messages)} messages")
     if daemon_up:
-        print("   /model /peers /rag /library /auto /remember /memories /stale /forget /identity /name /clear /quit")
+        print("   /model /peers /rag /library /auto /remember /memories /stale /forget /identity /name /vitals /clear /quit")
     else:
-        print("   /model /rag /library /auto /remember /memories /stale /forget /identity /name /clear /quit")
+        print("   /model /rag /library /auto /remember /memories /stale /forget /identity /name /vitals /clear /quit")
     print(f"{'─' * 50}")
 
     auto_tools = True  # agentic tool routing on by default
@@ -1097,6 +1097,7 @@ def cmd_chat(args):
             print("   (too short to summarize)")
 
     intent_result = None  # Updated each turn by auto-tools classification
+    _last_vitals = None   # Most recent vital signs for /vitals display
 
     while True:
         try:
@@ -1263,6 +1264,14 @@ def cmd_chat(args):
                 if messages and messages[0].get("role") == "system":
                     messages[0] = {"role": "system", "content": sys_prompt}
                 print(f"   I'm {new_name} now. 🍄")
+                continue
+
+            elif cmd == "/vitals":
+                if _last_vitals is not None:
+                    _vname = identity.get("name", "Monica")
+                    print(f"   {_last_vitals.detailed_display(_vname)}")
+                else:
+                    print("   No vitals yet — ask me something first.")
                 continue
 
             elif cmd == "/rag":
@@ -1768,11 +1777,36 @@ def cmd_chat(args):
 
             tps = metrics.get("tokens_per_second", 0)
             duration = metrics.get("duration_seconds", 0)
+            response_tokens = int(tps * duration) if tps and duration else 0
             tools_label = f" | tools: {'+'.join(tool_sources)}" if tool_sources else ""
             print(
                 f"\n\n{'─' * 50}\n"
                 f"  ⏱  {duration:.1f}s | {tps:.1f} tok/s | {model}{tools_label}"
             )
+
+            # --- Vital signs ---
+            from mycoswarm.vitals import compute_vitals
+            from mycoswarm.memory import load_facts
+            _dont_know = any(
+                p in full_text.lower()
+                for p in ("i don't know", "i don't recall", "i'm not sure", "i don't have")
+            )
+            _facts = load_facts()
+            _vitals = compute_vitals(
+                source_count=len(doc_hits) + len(session_hits),
+                session_hits=len(session_hits),
+                doc_hits=len(doc_hits),
+                procedure_hits=len(procedure_hits),
+                fact_hits=len(_facts),
+                intent=intent_result,
+                response_tokens=response_tokens,
+                said_dont_know=_dont_know,
+            )
+            _alerts = _vitals.alerts()
+            for _a in _alerts:
+                print(f"  💭 {_a}")
+            print(f"  {_vitals.status_bar()}")
+            _last_vitals = _vitals
             continue
 
         # Daemon mode — submit via API
@@ -1826,6 +1860,7 @@ def cmd_chat(args):
 
         tps = metrics.get("tokens_per_second", 0)
         duration = metrics.get("duration_seconds", 0)
+        response_tokens = int(tps * duration) if tps and duration else 0
         node_id = metrics.get("node_id", "")
         tools_label = f" | tools: {'+'.join(tool_sources)}" if tool_sources else ""
         print(
@@ -1833,6 +1868,30 @@ def cmd_chat(args):
             f"  ⏱  {duration:.1f}s | {tps:.1f} tok/s | "
             f"{model} | node: {node_id}{tools_label}"
         )
+
+        # --- Vital signs ---
+        from mycoswarm.vitals import compute_vitals
+        from mycoswarm.memory import load_facts
+        _dont_know = any(
+            p in full_text.lower()
+            for p in ("i don't know", "i don't recall", "i'm not sure", "i don't have")
+        )
+        _facts = load_facts()
+        _vitals = compute_vitals(
+            source_count=len(doc_hits) + len(session_hits),
+            session_hits=len(session_hits),
+            doc_hits=len(doc_hits),
+            procedure_hits=len(procedure_hits),
+            fact_hits=len(_facts),
+            intent=intent_result,
+            response_tokens=response_tokens,
+            said_dont_know=_dont_know,
+        )
+        _alerts = _vitals.alerts()
+        for _a in _alerts:
+            print(f"  💭 {_a}")
+        print(f"  {_vitals.status_bar()}")
+        _last_vitals = _vitals
 
 
 def cmd_library(args):

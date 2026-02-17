@@ -583,7 +583,12 @@ sessions, facts, procedures, and episodic memory shape who the agent becomes.
 - [ ] Node-level acknowledgment: "I'm thinking on Miu's GPU" as body-awareness, not separate identity
 - [ ] Identity sync: identity.json replicated across nodes like facts.json
 
-#### 31d: Self-Awareness via 8 C's (future)
+#### 31d: 8 C's Vital Signs (Self-Awareness)
+- [x] `vitals.py`: compute_vitals() derives 8 C's scores from existing signals (2026-02-17)
+- [x] Status bar after each response: 🧭 Ca:0.8 Cl:0.9 Cu:0.7 Co:0.6 ... (2026-02-17)
+- [x] `/vitals` slash command: detailed breakdown with explanations (2026-02-17)
+- [x] Alert mode: Monica flags when a score drops below threshold (2026-02-17)
+- [ ] Vitals logged per-turn in session for longitudinal tracking
 - [ ] Connect Phase 29d metrics to identity layer
 - [ ] Monica can report on her own health: "I've been clear lately" or "my retrieval has been struggling"
 - [ ] Self-reflection as identity deepening, not just metrics
