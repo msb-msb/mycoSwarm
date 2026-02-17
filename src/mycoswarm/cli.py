@@ -1549,6 +1549,7 @@ def cmd_chat(args):
         doc_hits: list[dict] = []
         session_hits: list[dict] = []
         procedure_hits: list[dict] = []
+        rag_context_parts: list[str] = []
 
         if auto_tools and len(user_input.split()) >= 5:
             print("   🤔 Classifying...", end="\r", flush=True)
@@ -1610,8 +1611,17 @@ def cmd_chat(args):
             need_web = classification in ("web_search", "web_and_rag")
             need_rag = classification in ("rag", "web_and_rag")
 
+            # Self-concept queries look like casual chat to intent classifier
+            # but need procedural wisdom (e.g. "what is love?", "who are you?")
+            import re as _re_sc
+            _self_concept = bool(_re_sc.search(
+                r'\b(what\s+is|what\s+does\s+it\s+mean|how\s+do\s+you\s+feel|do\s+you\s+experience|'
+                r'who\s+are\s+you|what\s+are\s+you|your\s+name|your\s+favou?rite|your\s+opinion|'
+                r'do\s+you\s+like|do\s+you\s+want|do\s+you\s+think)\b',
+                user_input, _re_sc.IGNORECASE,
+            ))
+
             web_context_parts: list[str] = []
-            rag_context_parts: list[str] = []
 
             # --- Web search ---
             if need_web:
@@ -1641,9 +1651,11 @@ def cmd_chat(args):
             doc_hits: list[dict] = []
             session_hits: list[dict] = []
             procedure_hits: list[dict] = []
-            if need_rag or past_ref:
+            if need_rag or past_ref or _self_concept:
                 scope = (intent_result or {}).get("scope", "all")
-                if scope in ("session", "personal"):
+                if _self_concept and not need_rag and not past_ref:
+                    print("   🔮 Searching wisdom...", end="", flush=True)
+                elif scope in ("session", "personal"):
                     print("   💭 Searching past conversations...", end="", flush=True)
                 elif scope in ("docs", "documents"):
                     print("   📚 Checking your documents...", end="", flush=True)
@@ -1683,7 +1695,7 @@ def cmd_chat(args):
                     r'problem|debug|solve|where\s+do\s+i\s+start|should\s+i)\b',
                     _pre.IGNORECASE,
                 )
-                if _PROBLEM_RE.search(user_input):
+                if _PROBLEM_RE.search(user_input) or _self_concept:
                     try:
                         from mycoswarm.library import search_procedures
                         procedure_hits = search_procedures(user_input, n_results=3)
@@ -1747,6 +1759,36 @@ def cmd_chat(args):
             # Accumulate RAG context for session grounding check
             if rag_context_parts:
                 session_rag_context.extend(rag_context_parts)
+
+        # --- Self-concept procedure search (runs even for short messages) ---
+        if not procedure_hits:
+            import re as _re_sc2
+            if _re_sc2.search(
+                r'\b(what\s+is|what\s+does\s+it\s+mean|how\s+do\s+you\s+feel|do\s+you\s+experience|'
+                r'who\s+are\s+you|what\s+are\s+you|your\s+name|your\s+favou?rite|your\s+opinion|'
+                r'do\s+you\s+like|do\s+you\s+want|do\s+you\s+think)\b',
+                user_input, _re_sc2.IGNORECASE,
+            ):
+                try:
+                    from mycoswarm.library import search_procedures
+                    procedure_hits = search_procedures(user_input, n_results=3)
+                    if procedure_hits:
+                        from mycoswarm.memory import format_procedures_for_prompt, reference_procedure
+                        proc_text = format_procedures_for_prompt(procedure_hits)
+                        rag_context_parts.append(f"\nRelevant procedures (past solutions):\n{proc_text}")
+                        for p in procedure_hits:
+                            reference_procedure(p.get("id", ""))
+                        tool_sources.append("docs")
+                        # Build tool_context if not already set
+                        if not tool_context and rag_context_parts:
+                            tool_context = (
+                                "Use the following context to answer. "
+                                "Cite using [P1], [P2] for known procedures.\n\n"
+                                "RETRIEVED CONTEXT (documents and past conversations):\n"
+                                + "\n\n".join(rag_context_parts)
+                            )
+                except Exception:
+                    pass
 
         # --- Timing gate (always runs, even when auto_tools is off) ---
         _seconds_since_last = None

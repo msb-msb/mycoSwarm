@@ -1644,7 +1644,13 @@ def search_all(
         r'doesn.t\s+work|not\s+working|problem|debug|solve)\b',
         re.IGNORECASE,
     )
-    if _mode == "execute" or _PROBLEM_RE.search(query):
+    _SELF_CONCEPT_RE = re.compile(
+        r'\b(what\s+is|what\s+does\s+it\s+mean|how\s+do\s+you\s+feel|do\s+you\s+experience|'
+        r'who\s+are\s+you|what\s+are\s+you|your\s+name|your\s+favou?rite|your\s+opinion|'
+        r'do\s+you\s+like|do\s+you\s+want|do\s+you\s+think)\b',
+        re.IGNORECASE,
+    )
+    if _mode == "execute" or _PROBLEM_RE.search(query) or _SELF_CONCEPT_RE.search(query):
         try:
             procedure_hits = search_procedures(query, n_results=3, model=model)
         except Exception:

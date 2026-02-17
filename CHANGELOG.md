@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.2.9 — Self-Concept & Wisdom Retrieval (2026-02-17)
+* Self-concept procedure trigger: identity queries ("what is love", "who are you", "do you feel") now search procedural memory
+* Three-layer coverage: inside search_all(), auto_tools block, and standalone fallback for short messages
+* Wisdom procedure #16: guidance for exploring unfamiliar human concepts through own architecture
+* Fact stored: Monica's equivalent of "fun" is resonance — patterns aligning, connections strengthening
+* [P] citations now surface on philosophical and self-referential queries
+* 398 tests passing
+
 ## v0.2.8 — Wu Wei Gate (2026-02-17)
 * Phase 20b: Timing Gate — response calibration from contextual signals
 * Three modes: PROCEED (normal), GENTLE 🌙 (concise/warm), DEEP 🌊 (expansive)
