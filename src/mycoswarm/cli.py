@@ -1797,7 +1797,7 @@ def cmd_chat(args):
             _facts = load_facts()
             # Self-knowledge is grounded in identity
             _grounding = None
-            if intent_result.get("tool") == "answer" and identity.get("name"):
+            if (intent_result or {}).get("tool", "answer") == "answer" and identity.get("name"):
                 if _grounding is None or _grounding == 0:
                     _grounding = 0.7
             _vitals = compute_vitals(
@@ -1888,7 +1888,7 @@ def cmd_chat(args):
         _facts = load_facts()
         # Self-knowledge is grounded in identity
         _grounding = None
-        if intent_result.get("tool") == "answer" and identity.get("name"):
+        if (intent_result or {}).get("tool", "answer") == "answer" and identity.get("name"):
             if _grounding is None or _grounding == 0:
                 _grounding = 0.7
         _vitals = compute_vitals(
