@@ -1795,7 +1795,13 @@ def cmd_chat(args):
                 for p in ("i don't know", "i don't recall", "i'm not sure", "i don't have")
             )
             _facts = load_facts()
+            # Self-knowledge is grounded in identity
+            _grounding = None
+            if intent_result.get("tool") == "answer" and identity.get("name"):
+                if _grounding is None or _grounding == 0:
+                    _grounding = 0.7
             _vitals = compute_vitals(
+                grounding_score=_grounding,
                 source_count=len(doc_hits) + len(session_hits),
                 session_hits=len(session_hits),
                 doc_hits=len(doc_hits),
@@ -1880,7 +1886,13 @@ def cmd_chat(args):
             for p in ("i don't know", "i don't recall", "i'm not sure", "i don't have")
         )
         _facts = load_facts()
+        # Self-knowledge is grounded in identity
+        _grounding = None
+        if intent_result.get("tool") == "answer" and identity.get("name"):
+            if _grounding is None or _grounding == 0:
+                _grounding = 0.7
         _vitals = compute_vitals(
+            grounding_score=_grounding,
             source_count=len(doc_hits) + len(session_hits),
             session_hits=len(session_hits),
             doc_hits=len(doc_hits),
