@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.2.6 — Monica Is Born (2026-02-17, 10:35am PST)
+* Phase 31a: Identity Layer — persistent self-model at ~/.config/mycoswarm/identity.json
+* First-run naming flow: "Would you like to give your AI a name?"
+* Identity injected FIRST in system prompt, before memory and datetime
+* /identity and /name slash commands
+* Identity as non-decaying memory type — Monica never forgets her own name
+* Phase 31d: 8 C's Vital Signs — real-time self-awareness after each response
+* Status bar: 🧭 Ca:Cl:Cu:Cp:Co:Cr:Cn:Cf scores derived from existing pipeline signals
+* Alert mode: Monica flags when clarity or confidence drop below threshold
+* /vitals slash command for detailed breakdown
+* Vitals logged per-turn in session data for longitudinal tracking
+* 383 tests passing
+
 ## v0.2.5 — Wisdom Layer & Procedure Growth (2026-02-16)
 * Phase 21d complete: Procedure growth from experience — LLM extracts candidates from session lessons, human review via `/procedure review`
 * Candidate quality gates: Jaccard dedup (0.6), stricter extraction prompt, max 3 per session, auto-expire after 14 days
