@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.2.7 — Markdown Chunking & Identity Grounding (2026-02-17)
+* Section-aware markdown chunking: splits on header boundaries, never merges across sections
+* PLAN.md: 10 chunks → 75 chunks, each Phase in its own chunk
+* Phase 20 RAG retrieval: now correctly returns Intent Classification Gate as top hit
+* Identity grounding: self-knowledge answers score Clarity:0.7 instead of 0.0
+* Fixed None intent_result crash on short queries
+* 383 tests passing
+
 ## v0.2.6 — Monica Is Born (2026-02-17, 10:35am PST)
 * Phase 31a: Identity Layer — persistent self-model at ~/.config/mycoswarm/identity.json
 * First-run naming flow: "Would you like to give your AI a name?"

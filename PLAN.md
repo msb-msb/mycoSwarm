@@ -444,8 +444,10 @@ mycoswarm email triage    — sort inbox into buckets
 Reference: Lessons from Wise Advisor multi-domain RAG system
 
 #### 28a: Source Type Detection
+- [x] Markdown-aware chunking: split on `#{1,4}` section headers, each section gets its own chunk (2026-02-17)
+- [x] PDF paragraph-aware chunking (2026-02-15)
+- [x] `ingest_file()` routes `.md` → `chunk_text_markdown()`, `.pdf` → `chunk_text_pdf()`, else → `chunk_text()` (2026-02-17)
 - [ ] Auto-detect source type on ingest: book, transcript, newsletter, working doc, code
-- [ ] Apply type-specific chunking strategy per source
 - [ ] Store source_type in chunk metadata for retrieval weighting
 
 #### 28b: Book Ingestion
@@ -589,6 +591,8 @@ sessions, facts, procedures, and episodic memory shape who the agent becomes.
 - [x] Status bar after each response: 🧭 Ca:0.8 Cl:0.9 Cu:0.7 Co:0.6 ... (2026-02-17)
 - [x] `/vitals` slash command: detailed breakdown with explanations (2026-02-17)
 - [x] Alert mode: Monica flags when a score drops below threshold (2026-02-17)
+- [x] Identity grounding: answer-type queries with identity.json set grounding_score=0.7 so Clarity/Confidence reflect self-knowledge (2026-02-17)
+- [x] Safe None handling: intent_result defaults to "answer" when intent classification is skipped (2026-02-17)
 - [ ] Vitals logged per-turn in session for longitudinal tracking
 - [ ] Connect Phase 29d metrics to identity layer
 - [ ] Monica can report on her own health: "I've been clear lately" or "my retrieval has been struggling"
