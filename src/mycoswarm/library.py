@@ -252,6 +252,102 @@ def chunk_text_pdf(text: str, target_size: int = CHUNK_SIZE) -> list[str]:
     return chunks
 
 
+_MD_HEADING_RE = re.compile(r"^(#{1,4})\s+(.+)", re.MULTILINE)
+
+
+def chunk_text_markdown(text: str, target_size: int = CHUNK_SIZE) -> list[str]:
+    """Split markdown text into chunks respecting section headers.
+
+    Priority order:
+    1. Split on section headers (# through ####) — never merge across these
+    2. If a section exceeds *target_size* words, split on paragraph
+       boundaries within that section
+    3. If a single paragraph exceeds the limit, split at sentence boundaries
+    4. Small sections (below target_size) are kept as individual chunks —
+       NOT merged with neighbors, preserving section isolation
+    """
+    # Split text into sections by heading boundaries
+    sections: list[tuple[str, str]] = []  # (heading_line, body)
+    lines = text.split("\n")
+    current_heading = ""
+    current_lines: list[str] = []
+
+    for line in lines:
+        if _MD_HEADING_RE.match(line):
+            # Flush previous section
+            if current_lines or current_heading:
+                body = "\n".join(current_lines).strip()
+                if body or current_heading:
+                    sections.append((current_heading, body))
+            current_heading = line
+            current_lines = []
+        else:
+            current_lines.append(line)
+
+    # Flush final section
+    body = "\n".join(current_lines).strip()
+    if body or current_heading:
+        sections.append((current_heading, body))
+
+    if not sections:
+        return []
+
+    chunks: list[str] = []
+    for heading, body in sections:
+        # Build section text with heading included
+        section_text = (heading + "\n" + body).strip() if heading else body
+        if not section_text:
+            continue
+
+        word_count = len(section_text.split())
+        if word_count <= target_size:
+            # Small section — keep as single chunk
+            chunks.append(section_text)
+        else:
+            # Oversized section — split on paragraph boundaries
+            paragraphs = [p.strip() for p in re.split(r"\n\n+", section_text) if p.strip()]
+            current_words: list[str] = []
+            current_count = 0
+
+            for para in paragraphs:
+                para_words = para.split()
+                para_count = len(para_words)
+
+                # Oversized paragraph — split at sentence boundaries
+                if para_count > target_size:
+                    if current_words:
+                        chunks.append(" ".join(current_words))
+                        current_words = []
+                        current_count = 0
+                    sentences = re.split(r"(?<=[.!?])\s+", para)
+                    sent_words: list[str] = []
+                    sent_count = 0
+                    for sent in sentences:
+                        sw = sent.split()
+                        if sent_count + len(sw) > target_size and sent_words:
+                            chunks.append(" ".join(sent_words))
+                            sent_words = []
+                            sent_count = 0
+                        sent_words.extend(sw)
+                        sent_count += len(sw)
+                    if sent_words:
+                        chunks.append(" ".join(sent_words))
+                    continue
+
+                if current_count + para_count > target_size and current_words:
+                    chunks.append(" ".join(current_words))
+                    current_words = []
+                    current_count = 0
+
+                current_words.extend(para_words)
+                current_count += para_count
+
+            if current_words:
+                chunks.append(" ".join(current_words))
+
+    return chunks
+
+
 # --- Section Heading Extraction ---
 
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.+)", re.MULTILINE)
@@ -1659,9 +1755,11 @@ def ingest_file(path: Path, model: str | None = None) -> dict:
     doc_type = path.suffix.lower()
     text = clean_text(text, doc_type)
 
-    # PDF: paragraph-aware chunking + heading detection
+    # Choose chunking strategy by file type
     if doc_type == ".pdf":
         chunks = chunk_text_pdf(text)
+    elif doc_type == ".md":
+        chunks = chunk_text_markdown(text)
     else:
         chunks = chunk_text(text)
 
