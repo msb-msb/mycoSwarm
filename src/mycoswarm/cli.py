@@ -1517,6 +1517,9 @@ def cmd_chat(args):
         # --- Agentic classification + tool gathering ---
         tool_context = ""
         tool_sources: list[str] = []
+        doc_hits: list[dict] = []
+        session_hits: list[dict] = []
+        procedure_hits: list[dict] = []
 
         if auto_tools and len(user_input.split()) >= 5:
             print("   🤔 Classifying...", end="\r", flush=True)
