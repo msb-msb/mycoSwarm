@@ -1045,9 +1045,9 @@ def cmd_chat(args):
     if messages:
         print(f"   Resumed: {len(messages)} messages")
     if daemon_up:
-        print("   /model /peers /rag /library /auto /remember /memories /stale /forget /identity /name /vitals /clear /quit")
+        print("   /model /peers /rag /library /auto /remember /memories /stale /forget /identity /name /vitals /timing /clear /quit")
     else:
-        print("   /model /rag /library /auto /remember /memories /stale /forget /identity /name /vitals /clear /quit")
+        print("   /model /rag /library /auto /remember /memories /stale /forget /identity /name /vitals /timing /clear /quit")
     print(f"{'─' * 50}")
 
     auto_tools = True  # agentic tool routing on by default
@@ -1098,6 +1098,12 @@ def cmd_chat(args):
 
     intent_result = None  # Updated each turn by auto-tools classification
     _last_vitals = None   # Most recent vital signs for /vitals display
+    _last_turn_time = None   # Tracks time between turns (for timing gate)
+    _turn_count = 0          # Session turn count (for timing gate)
+    _last_timing = None      # Most recent TimingDecision for /timing display
+
+    from datetime import datetime as _dt_timing
+    from mycoswarm.timing import evaluate_timing, TimingMode
 
     while True:
         try:
@@ -1272,6 +1278,29 @@ def cmd_chat(args):
                     print(f"   {_last_vitals.detailed_display(_vname)}")
                 else:
                     print("   No vitals yet — ask me something first.")
+                continue
+
+            elif cmd == "/timing":
+                from datetime import datetime as _dt_now
+                _now = _dt_now.now()
+                print("🕐 Timing Gate")
+                print("─────────────────────────")
+                if _last_timing is not None:
+                    print(f"  Mode:     {_last_timing.mode.value.upper()} {_last_timing.status_indicator()}")
+                else:
+                    print("  Mode:     PROCEED ▶ (no turns yet)")
+                print(f"  Time:     {_now.strftime('%I:%M %p').lstrip('0')} ({'late night' if _now.hour >= 23 or _now.hour < 6 else 'early morning' if _now.hour < 9 else 'morning peak' if _now.hour < 12 else 'afternoon' if _now.hour < 17 else 'evening'})")
+                print(f"  Session:  turn {_turn_count} of current session")
+                if _last_turn_time is not None:
+                    _gap = (_now - _last_turn_time).total_seconds()
+                    print(f"  Gap:      {_gap:.0f}s since last message")
+                else:
+                    print("  Gap:      (first message)")
+                if _last_timing is not None and _last_timing.reasons:
+                    print("  Reasons:")
+                    for _r in _last_timing.reasons:
+                        print(f"    • {_r}")
+                print("─────────────────────────")
                 continue
 
             elif cmd == "/rag":
@@ -1719,6 +1748,22 @@ def cmd_chat(args):
             if rag_context_parts:
                 session_rag_context.extend(rag_context_parts)
 
+        # --- Timing gate (always runs, even when auto_tools is off) ---
+        _seconds_since_last = None
+        if _last_turn_time is not None:
+            _seconds_since_last = (_dt_timing.now() - _last_turn_time).total_seconds()
+        _timing = evaluate_timing(
+            current_time=_dt_timing.now(),
+            session_turn_count=_turn_count,
+            seconds_since_last_turn=_seconds_since_last,
+            user_message_length=len(user_input),
+            intent=intent_result,
+            frustration_detected=(
+                _last_vitals is not None and _last_vitals.compassion < 0.4
+            ),
+        )
+        _last_timing = _timing
+
         # --- Send message ---
         messages.append({"role": "user", "content": user_input})
 
@@ -1754,6 +1799,13 @@ def cmd_chat(args):
                 "content": _send_msgs[0]["content"].replace(_no_net, _web_aware),
             }
 
+        # --- Inject timing modifier into system prompt ---
+        if _timing.prompt_modifier and _send_msgs and _send_msgs[0].get("role") == "system":
+            _send_msgs[0] = {
+                **_send_msgs[0],
+                "content": _send_msgs[0]["content"] + "\n\n" + _timing.prompt_modifier,
+            }
+
         if debug:
             if tool_context:
                 print(f"🐛 DEBUG: PROMPT: tool_context ({len(tool_context)} chars):", flush=True)
@@ -1787,6 +1839,12 @@ def cmd_chat(args):
                 f"  ⏱  {duration:.1f}s | {tps:.1f} tok/s | {model}{tools_label}"
             )
 
+            # --- Timing indicator ---
+            if _timing.mode != TimingMode.PROCEED:
+                _t_indicator = _timing.status_indicator()
+                _t_reason_text = "; ".join(_timing.reasons[:2])
+                print(f"  {_t_indicator} {_timing.mode.value}: {_t_reason_text}")
+
             # --- Vital signs ---
             from mycoswarm.vitals import compute_vitals
             from mycoswarm.memory import load_facts
@@ -1800,6 +1858,11 @@ def cmd_chat(args):
             if (intent_result or {}).get("tool", "answer") == "answer" and identity.get("name"):
                 if _grounding is None or _grounding == 0:
                     _grounding = 0.7
+            # Chat-mode or very short messages: neutral grounding (no alarming alerts)
+            if _grounding is None and (
+                (intent_result or {}).get("mode") == "chat" or len(user_input) < 10
+            ):
+                _grounding = 0.6
             _vitals = compute_vitals(
                 grounding_score=_grounding,
                 source_count=len(doc_hits) + len(session_hits),
@@ -1816,6 +1879,10 @@ def cmd_chat(args):
                 print(f"  💭 {_a}")
             print(f"  {_vitals.status_bar()}")
             _last_vitals = _vitals
+
+            # --- Update turn tracking ---
+            _last_turn_time = _dt_timing.now()
+            _turn_count += 1
             continue
 
         # Daemon mode — submit via API
@@ -1878,6 +1945,12 @@ def cmd_chat(args):
             f"{model} | node: {node_id}{tools_label}"
         )
 
+        # --- Timing indicator ---
+        if _timing.mode != TimingMode.PROCEED:
+            _t_indicator = _timing.status_indicator()
+            _t_reason_text = "; ".join(_timing.reasons[:2])
+            print(f"  {_t_indicator} {_timing.mode.value}: {_t_reason_text}")
+
         # --- Vital signs ---
         from mycoswarm.vitals import compute_vitals
         from mycoswarm.memory import load_facts
@@ -1891,6 +1964,11 @@ def cmd_chat(args):
         if (intent_result or {}).get("tool", "answer") == "answer" and identity.get("name"):
             if _grounding is None or _grounding == 0:
                 _grounding = 0.7
+        # Chat-mode or very short messages: neutral grounding (no alarming alerts)
+        if _grounding is None and (
+            (intent_result or {}).get("mode") == "chat" or len(user_input) < 10
+        ):
+            _grounding = 0.6
         _vitals = compute_vitals(
             grounding_score=_grounding,
             source_count=len(doc_hits) + len(session_hits),
@@ -1907,6 +1985,10 @@ def cmd_chat(args):
             print(f"  💭 {_a}")
         print(f"  {_vitals.status_bar()}")
         _last_vitals = _vitals
+
+        # --- Update turn tracking ---
+        _last_turn_time = _dt_timing.now()
+        _turn_count += 1
 
 
 def cmd_library(args):

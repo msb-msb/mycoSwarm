@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.2.8 — Wu Wei Gate (2026-02-17)
+* Phase 20b: Timing Gate — response calibration from contextual signals
+* Three modes: PROCEED (normal), GENTLE 🌙 (concise/warm), DEEP 🌊 (expansive)
+* Eight heuristic signals: time of day, interaction recency, rapid-fire detection, session length, message length, intent mode, frustration, first message
+* Timing modifier injected into system prompt — no LLM call, <1ms
+* /timing slash command shows current gate state and active reasons
+* Section-aware markdown chunking: splits on header boundaries, never merges across sections
+* PLAN.md chunking: 10 → 75 chunks, correct Phase retrieval
+* Chat grounding fix: casual messages no longer trigger false "grounding is thin" alerts
+* Identity grounding: self-knowledge answers score Clarity:0.7 instead of 0.0
+* 398 tests passing
+
 ## v0.2.7 — Markdown Chunking & Identity Grounding (2026-02-17)
 * Section-aware markdown chunking: splits on header boundaries, never merges across sections
 * PLAN.md: 10 chunks → 75 chunks, each Phase in its own chunk

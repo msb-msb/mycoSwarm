@@ -235,7 +235,7 @@ Reference: docs/ARCHITECTURE-COGNITIVE.md — IFS 8 C's as design principles
 
 Each gate maps to an IFS Self-energy quality. The 8 C's aren't features to implement — they're emergent properties of a well-designed system. These mappings serve as both design guides and health metrics.
 
-- [ ] **Timing Gate → Calm:** Wu Wei module — should I act now, later, or not at all? The system is comfortable with uncertainty.
+- [x] **Timing Gate → Calm:** Wu Wei module — should I act now, later, or not at all? The system is comfortable with uncertainty. (2026-02-17)
 - [ ] **Intent Resolution → Curiosity:** Parse ambiguity, check reversibility, clarify when needed. The system asks before it assumes.
 - [ ] **Confidence Calibration → Clarity:** Hedge spectrum instead of uniform confidence. The system knows what it doesn't know.
 - [ ] **Emotional Trajectory → Compassion:** Rolling state vector from interaction metadata. The system reads the human, not just the query.
@@ -246,6 +246,42 @@ Each gate maps to an IFS Self-energy quality. The 8 C's aren't features to imple
 - [ ] **Source Trust → Confidence:** Use verified RAG context over speculation. Trust what's been retrieved.
 
 Design test for every gate: "Does this make the system more curious, clear, calm?" If a gate increases confidence but reduces clarity, it's out of balance — like an IFS part that's taken over.
+
+### Phase 20b: Timing Gate (Wu Wei Gate)
+Reference: docs/ARCHITECTURE-INTENT.md — Gap #2: Timing
+Influences: Wu Wei (action through non-action), Tai Chi (yield before push)
+
+The thesis: agents fire on every input with equal urgency. A healthy mind
+knows when to act, when to wait, and when to yield. The Timing Gate runs
+before the main response and outputs a TimingDecision that shapes HOW
+Monica responds — not just WHAT she says.
+
+This is not about suppressing responses in chat (the user asked, so answer).
+It's about calibrating depth, tone, and energy based on context signals.
+
+#### 20b-1: TimingGate Core
+- [x] `timing.py`: TimingMode enum, TimingDecision dataclass, evaluate_timing() function (2026-02-17)
+- [x] Eight input signals: time_of_day, interaction_recency, rapid-fire, session_length, message_length, intent_mode, frustration, first_message (2026-02-17)
+- [x] Three outputs: PROCEED (normal), GENTLE (soften/shorten), DEEP (expand/explore) (2026-02-17)
+- [x] No LLM call — pure heuristic computation, <1ms (2026-02-17)
+- [x] Timing modifier injected into system prompt as behavioral guidance (2026-02-17)
+
+#### 20b-2: Response Calibration
+- [x] Late night (after 11pm) + short messages → GENTLE: shorter, warmer responses (2026-02-17)
+- [x] Early morning + exploratory intent → DEEP: thorough, expansive responses (2026-02-17)
+- [x] Rapid-fire messages (<15s between turns) → GENTLE: concise, don't overwhelm (2026-02-17)
+- [x] Long session (>20 turns) → GENTLE: fatigue awareness, suggest break (2026-02-17)
+- [x] Frustration detected (from vitals) → GENTLE: scaffold, slow down (2026-02-17)
+- [x] First message of session → warm greeting energy (2026-02-17)
+- [x] After long absence (>24h) → reconnection tone (2026-02-17)
+- [x] /timing slash command: display current gate state and all active signals (2026-02-17)
+- [x] 15 tests in tests/test_timing.py (2026-02-17)
+
+#### 20b-3: Agentic Action Gate (future)
+- [ ] For proactive actions (not chat): SUPPRESS / DEFER / PROCEED
+- [ ] Applies to: automated suggestions, scheduled tasks, procedure extraction
+- [ ] Irreversible actions require PROCEED + confirmation
+- [ ] Low-urgency actions auto-DEFER to next natural interaction
 
 ### Phase 21: Memory Architecture
 Reference: docs/ARCHITECTURE-MEMORY.md
