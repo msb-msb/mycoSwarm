@@ -77,11 +77,12 @@ After completing work, update PLAN.md:
 ## Release Checklist
 Every version bump must include ALL of these steps:
 1. Bump version in pyproject.toml
-2. Run full test suite (pytest + smoke tests)
-3. Build wheel: python -m build
-4. Show the user the upload command: `twine upload dist/mycoswarm-X.Y.Z*` (user runs this manually)
-5. Create GitHub release: gh release create vX.Y.Z --title "..." --notes "..."
-6. Update all swarm nodes (naru, boa, uncho, pi)
+2. Update CHANGELOG.md with new version entry
+3. Run full test suite (pytest + smoke tests)
+4. Build wheel: python -m build
+5. Show the user the upload command: `twine upload dist/mycoswarm-X.Y.Z*` (user runs this manually)
+6. Create GitHub release: gh release create vX.Y.Z --title "..." --notes "..."
+7. Update all swarm nodes (naru, boa, uncho, pi)
 
 Never skip step 5. Releases without GitHub tags are invisible.
 
