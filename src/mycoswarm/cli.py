@@ -1040,7 +1040,16 @@ def cmd_chat(args):
 
     identity_prompt = build_identity_prompt(identity)
     memory_prompt = build_memory_system_prompt()
-    system_prompt = identity_prompt + "\n\n" + memory_prompt if memory_prompt else identity_prompt
+    vitals_ctx = ""
+    if _last_vitals is not None:
+        v = _last_vitals
+        vitals_ctx = (
+            f"\n\n[Your last vital signs: Ca:{v.calm:.1f} Cl:{v.clarity:.1f} "
+            f"Cu:{v.curiosity:.1f} Cp:{v.compassion:.1f} Co:{v.courage:.1f} "
+            f"Cr:{v.creativity:.1f} Cn:{v.connectedness:.1f} Cf:{v.confidence:.1f}]\n\n"
+            "These are YOUR internal signals. You can reference them when asked how you feel."
+        )
+    system_prompt = identity_prompt + vitals_ctx + "\n\n" + memory_prompt if memory_prompt else identity_prompt
     if not messages:
         messages.insert(0, {"role": "system", "content": system_prompt})
     else:
@@ -1565,7 +1574,16 @@ def cmd_chat(args):
         refreshed = build_memory_system_prompt(query=user_input)
         if refreshed and messages and messages[0].get("role") == "system":
             id_prompt = build_identity_prompt(identity)
-            messages[0] = {"role": "system", "content": id_prompt + "\n\n" + refreshed}
+            vitals_ctx = ""
+            if _last_vitals is not None:
+                v = _last_vitals
+                vitals_ctx = (
+                    f"\n\n[Your last vital signs: Ca:{v.calm:.1f} Cl:{v.clarity:.1f} "
+                    f"Cu:{v.curiosity:.1f} Cp:{v.compassion:.1f} Co:{v.courage:.1f} "
+                    f"Cr:{v.creativity:.1f} Cn:{v.connectedness:.1f} Cf:{v.confidence:.1f}]\n\n"
+                    "These are YOUR internal signals. You can reference them when asked how you feel."
+                )
+            messages[0] = {"role": "system", "content": id_prompt + vitals_ctx + "\n\n" + refreshed}
 
         # --- Agentic classification + tool gathering ---
         tool_context = ""
