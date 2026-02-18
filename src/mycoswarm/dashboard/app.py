@@ -93,6 +93,7 @@ def create_app(daemon_port: int = 7890) -> FastAPI:
                 "gpu_name": p.get("gpu_name"),
                 "vram_total_mb": p.get("vram_total_mb", 0),
                 "models": p.get("available_models", []),
+                "version": p.get("version", ""),
                 "last_seen": last_seen,
                 "online": online,
             }
@@ -112,12 +113,16 @@ def create_app(daemon_port: int = 7890) -> FastAPI:
                     "architecture": ps.get("architecture", ""),
                     "uptime": ps.get("uptime_seconds", 0),
                 })
+                # Prefer version from live /status over mDNS
+                if ps.get("version"):
+                    peer_data["version"] = ps["version"]
 
             peers.append(peer_data)
 
         local = {
             "node_id": status.get("node_id", ""),
             "hostname": status.get("hostname", ""),
+            "version": status.get("version", ""),
             "node_tier": status.get("node_tier", ""),
             "gpu": status.get("gpu"),
             "vram_total_mb": status.get("vram_total_mb", 0),

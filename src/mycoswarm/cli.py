@@ -165,19 +165,31 @@ def cmd_swarm(args):
     print("🍄 mycoSwarm — Swarm Status")
     print("=" * 60)
 
-    print(f"\n📍 This Node: {status['hostname']} [{status['node_tier'].upper()}]")
+    local_ver = status.get('version', '')
+    ver_label = f" (v{local_ver})" if local_ver else ""
+    print(f"\n📍 This Node: {status['hostname']}{ver_label} [{status['node_tier'].upper()}]")
     if status.get('gpu'):
         print(f"   GPU: {status['gpu']} ({status['vram_total_mb']} MB VRAM)")
     print(f"   Caps: {', '.join(status['capabilities'])}")
     print(f"   Models: {len(status.get('ollama_models', []))}")
     print(f"   Uptime: {status['uptime_seconds']:.0f}s")
 
+    # Collect all versions for mismatch detection
+    all_versions = [local_ver] if local_ver else []
+    for p in peers_data:
+        if p.get('version'):
+            all_versions.append(p['version'])
+    max_version = max(all_versions, default="") if all_versions else ""
+
     if peers_data:
         print(f"\n🌐 Peers ({len(peers_data)}):")
         for p in peers_data:
             gpu_info = f" [{p['gpu_name']}]" if p.get('gpu_name') else ""
             tier = p['node_tier'].upper()
-            print(f"   • {p['hostname']} ({p['ip']}) [{tier}]{gpu_info}")
+            p_ver = p.get('version', '')
+            behind = " ⚠ behind" if p_ver and max_version and p_ver != max_version else ""
+            p_ver_label = f" (v{p_ver}{behind})" if p_ver else ""
+            print(f"   • {p['hostname']}{p_ver_label} ({p['ip']}) [{tier}]{gpu_info}")
             print(f"     Caps: {', '.join(p['capabilities'])}")
             if p['vram_total_mb'] > 0:
                 print(f"     VRAM: {p['vram_total_mb']} MB")
@@ -1162,11 +1174,23 @@ def cmd_chat(args):
                 try:
                     with httpx.Client(timeout=5) as client:
                         peers = client.get(f"{url}/peers").json()
+                        _local_status = client.get(f"{url}/status").json()
                     if peers:
+                        _all_vers = []
+                        _lv = _local_status.get("version", "")
+                        if _lv:
+                            _all_vers.append(_lv)
+                        for p in peers:
+                            if p.get("version"):
+                                _all_vers.append(p["version"])
+                        _max_ver = max(_all_vers, default="") if _all_vers else ""
                         for p in peers:
                             gpu = f" [{p['gpu_name']}]" if p.get("gpu_name") else ""
+                            _pv = p.get("version", "")
+                            _bh = " ⚠ behind" if _pv and _max_ver and _pv != _max_ver else ""
+                            _pv_label = f" (v{_pv}{_bh})" if _pv else ""
                             print(
-                                f"   • {p['hostname']} ({p['ip']}) "
+                                f"   • {p['hostname']}{_pv_label} ({p['ip']}) "
                                 f"[{p['node_tier'].upper()}]{gpu}"
                             )
                     else:

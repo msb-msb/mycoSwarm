@@ -25,6 +25,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from mycoswarm import __version__
 from mycoswarm.node import NodeIdentity, build_identity
 from mycoswarm.discovery import PeerRegistry
 
@@ -82,6 +83,7 @@ class HealthResponse(BaseModel):
     status: str
     uptime_seconds: float
     peer_count: int
+    version: str = ""
 
 
 class PeerResponse(BaseModel):
@@ -95,6 +97,7 @@ class PeerResponse(BaseModel):
     vram_total_mb: int
     available_models: list[str]
     last_seen: float
+    version: str = ""
 
 
 # --- Task Queue ---
@@ -227,6 +230,7 @@ def create_api(
             status="ok",
             uptime_seconds=round(time.time() - start_time, 1),
             peer_count=registry.count,
+            version=__version__,
         )
 
     @app.get("/identity")
@@ -249,6 +253,7 @@ def create_api(
                 vram_total_mb=p.vram_total_mb,
                 available_models=p.available_models,
                 last_seen=p.last_seen,
+                version=p.version,
             )
             for p in peers
         ]
@@ -530,6 +535,7 @@ def create_api(
         return {
             "node_id": identity.node_id,
             "hostname": identity.hostname,
+            "version": __version__,
             "node_tier": identity.node_tier,
             "capabilities": identity.capabilities,
             "gpu": identity.gpu_name,

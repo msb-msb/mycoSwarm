@@ -10,6 +10,7 @@ import time
 import uuid
 from dataclasses import dataclass, field, asdict
 
+from mycoswarm import __version__
 from mycoswarm.hardware import HardwareProfile, detect_all
 from mycoswarm.capabilities import (
     Capability,
@@ -109,6 +110,6 @@ def build_identity(
         ollama_running=profile.ollama_running,
         available_models=[m.name for m in profile.ollama_models],
         timestamp=time.time(),
-        version="0.1.0",
+        version=__version__,
         notes=caps.notes,
     )

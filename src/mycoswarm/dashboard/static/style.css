@@ -138,6 +138,16 @@ header h1 {
     letter-spacing: 0.5px;
 }
 
+.node-version {
+    font-size: 12px;
+    font-weight: 400;
+    color: #808090;
+}
+
+.node-version.behind {
+    color: #ffaa4c;
+}
+
 .node-tier.gpu { background: #1a3a1a; color: #4cff4c; }
 .node-tier.cpu { background: #2a2a1a; color: #ffcc4c; }
 .node-tier.hybrid { background: #1a2a3a; color: #4cccff; }

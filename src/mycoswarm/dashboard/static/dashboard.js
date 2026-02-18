@@ -110,11 +110,19 @@ window.__toggleModels = function (el) {
     );
   }
 
-  function renderCard(node, isLocal) {
+  function renderCard(node, isLocal, maxVersion) {
     var online = isLocal ? true : node.online;
     var statusClass = online ? "online" : "offline";
     var statusText = online ? "online" : "offline";
     var tc = tierClass(node.node_tier);
+
+    // Version display
+    var ver = node.version || "";
+    var versionHtml = "";
+    if (ver) {
+      var behind = maxVersion && ver !== maxVersion;
+      versionHtml = ' <span class="node-version' + (behind ? " behind" : "") + '">(v' + esc(ver) + (behind ? " &#x26A0; behind" : "") + ')</span>';
+    }
 
     // Address line
     var addr = "";
@@ -204,6 +212,7 @@ window.__toggleModels = function (el) {
       '<div class="node-header">' +
       '<span class="node-hostname">' +
       esc(node.hostname) +
+      versionHtml +
       (isLocal ? " (this node)" : "") +
       "</span>" +
       '<span class="node-tier ' +
@@ -270,12 +279,19 @@ window.__toggleModels = function (el) {
       setConnected(true);
       updateSummary(data.summary);
 
+      // Find highest version across all nodes for mismatch detection
+      var allVersions = [];
+      if (data.local && data.local.version) allVersions.push(data.local.version);
+      (data.peers || []).forEach(function (p) { if (p.version) allVersions.push(p.version); });
+      allVersions.sort(function (a, b) { return a.localeCompare(b, undefined, { numeric: true }); });
+      var maxVersion = allVersions.length ? allVersions[allVersions.length - 1] : "";
+
       var html = "";
       if (data.local) {
-        html += renderCard(data.local, true);
+        html += renderCard(data.local, true, maxVersion);
       }
       (data.peers || []).forEach(function (peer) {
-        html += renderCard(peer, false);
+        html += renderCard(peer, false, maxVersion);
       });
 
       $nodes.innerHTML = html || '<p class="placeholder">No nodes found.</p>';
