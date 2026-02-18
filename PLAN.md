@@ -188,7 +188,7 @@
 - [x] Unit tests for document library/RAG — 23 tests → 25 tests (added reindex-sessions tests)
 - [x] Unit tests for persistent memory — 21 tests → 30 tests (added topic splitting tests)
 - [x] Unit tests for agentic chat classification — 9 tests
-- [x] 129 tests passing total
+- [x] 129 tests passing at Phase 18 completion (now 398 as of v0.2.9)
 
 ### Phase 19: RAG Level 2 Improvements
 - [x] Metadata on chunks: source filename, section heading, file date, document type
@@ -356,6 +356,9 @@ IFS insight: The poison cycle is an IFS *part* taking over — the "helpful part
 - [x] Released v0.2.4 (2026-02-16): Procedure candidate quality gates — Jaccard dedup, stricter prompt, cap 3/session, auto-expire 14d, 357 tests
 - [x] Released v0.2.5 (2026-02-16): Wisdom layer — 9 ethical reasoning procedures, session relevance filtering (RRF + word-overlap gate), fact attribution fix, conciseness prompt, anti-hallucination guard, regex inflection matching, 357 tests
 - [x] Released v0.2.6 (2026-02-17): Monica Is Born — Phase 31a identity layer (seed schema, first-run naming, /identity, /name), Phase 31d 8 C's vital signs (status bar, alerts, /vitals), identity as non-decaying memory type, 383 tests
+- [x] Released v0.2.7 (2026-02-17): Markdown Chunking & Identity Grounding — section-aware markdown chunker (PLAN.md 10→75 chunks), identity grounding fix, None intent_result fix, 383 tests
+- [x] Released v0.2.8 (2026-02-17): Wu Wei Gate — Phase 20b Timing Gate with PROCEED/GENTLE/DEEP modes, 8 heuristic signals, /timing command, 398 tests
+- [x] Released v0.2.9 (2026-02-17): Self-Concept & Wisdom Retrieval — self-concept procedure trigger (_SELF_CONCEPT_RE), chat grounding fix, 398 tests
 - [x] Smoke test suite: tests/smoke/ — RAG grounding (4), poison resistance (3), memory priority (6), intent classification (5), swarm distribution (4), book ingestion (7). Runner: run_all.sh
 
 ### Phase 22: RAG Architecture
@@ -483,6 +486,7 @@ Reference: Lessons from Wise Advisor multi-domain RAG system
 - [x] Markdown-aware chunking: split on `#{1,4}` section headers, each section gets its own chunk (2026-02-17)
 - [x] PDF paragraph-aware chunking (2026-02-15)
 - [x] `ingest_file()` routes `.md` → `chunk_text_markdown()`, `.pdf` → `chunk_text_pdf()`, else → `chunk_text()` (2026-02-17)
+- [x] Section-aware chunking: splits on headers first, then paragraphs. PLAN.md: 10 → 75 chunks (2026-02-17)
 - [ ] Auto-detect source type on ingest: book, transcript, newsletter, working doc, code
 - [ ] Store source_type in chunk metadata for retrieval weighting
 
@@ -552,16 +556,18 @@ Model the emotional trajectory of conversations, not just their content.
 
 #### 29d: 8 C's Health Dashboard
 Measurable metrics for each IFS Self-energy quality. The system's "therapy report."
+Note: Core vitals implemented in Phase 31d. This phase covers the longitudinal dashboard.
 
-- [ ] **Curiosity score:** Intent classification accuracy. How often does the system ask vs. assume?
-- [ ] **Clarity score:** Grounding score distribution. Hallucination rate over time.
-- [ ] **Calm score:** Appropriate deferral rate. Partial-answer quality.
-- [ ] **Compassion score:** Interaction quality trend. Frustration-to-resolution ratio.
-- [ ] **Creativity score:** Cross-source retrieval diversity. Novel domain combinations in responses.
-- [ ] **Confidence score:** Source priority adherence. Citation rate.
-- [ ] **Courage score:** Productive friction events. Pushback appropriateness.
-- [ ] **Connectedness score:** Session recall accuracy. Cross-session reference quality.
+- [x] **Calm score:** Response stability, tool complexity (implemented as Ca in vitals.py, 2026-02-17)
+- [x] **Clarity score:** Grounding score, source quality (implemented as Cl in vitals.py, 2026-02-17)
+- [x] **Curiosity score:** Retrieval breadth, explore vs recall (implemented as Cu in vitals.py, 2026-02-17)
+- [x] **Compassion score:** Fact/session engagement, personalization (implemented as Cp in vitals.py, 2026-02-17)
+- [x] **Courage score:** Honesty about uncertainty, "I don't know" (implemented as Co in vitals.py, 2026-02-17)
+- [x] **Creativity score:** Procedure hits, cross-domain connections (implemented as Cr in vitals.py, 2026-02-17)
+- [x] **Confidence score:** Grounding × source count (implemented as Cf in vitals.py, 2026-02-17)
+- [x] **Connectedness score:** Session depth, fact references, history (implemented as Cn in vitals.py, 2026-02-17)
 - [ ] **Aggregate Self-energy metric:** Weighted combination — system health at a glance.
+- [ ] **Longitudinal dashboard:** Track vitals across sessions, visualize trends over time
 
 #### 29e: Cross-Domain Wisdom
 The system connects principles across knowledge domains — a Wu Wei insight informs a coding decision.
@@ -580,6 +586,7 @@ Reference: docs/ARCHITECTURE-COGNITIVE.md — Section 6
 - [x] **"Why Your AI Keeps Lying: The Hallucination Feedback Loop"** — Poison cycle discovery, immune system approach. Technical audience. (2026-02-15)
 - [ ] **"Beyond Transformers: Building Memory That Learns"** — Lucek's CoALA adapted for local models. Four memory types. AI engineer audience.
 - [ ] **"The 8 C's of Healthy AI: What Therapy Teaches Us About System Design"** — IFS framework applied to AI. Broader tech/philosophy audience.
+- [x] **"What Happens When You Give a Local AI an Identity (And Then Ask It About Love)"** — Monica's birth, identity layer, 8 C's vitals, Wu Wei Timing Gate, philosophical dialogues. (2026-02-17)
 - [ ] **"Wu Wei and the Art of Not Answering"** — Timing Gate, confidence calibration, Eastern philosophy meets AI design. Cross-disciplinary, potentially viral.
 - [x] **"Distributed Wisdom: Running a Thinking Network on $200 Hardware"** — Full mycoSwarm stack, 5-node swarm, privacy-first. Self-hosted/budget AI audience. (2026-02-15)
 
@@ -617,10 +624,19 @@ sessions, facts, procedures, and episodic memory shape who the agent becomes.
 - [ ] Tone calibration: conversational patterns establish consistent voice
 - [ ] `developing` flag transitions to `false` after N sessions with stable patterns
 
-#### 31c: Swarm Identity (future)
+#### 31c: Swarm Identity & Body Awareness
 - [ ] Swarm-level identity: all nodes share one identity (Monica is the swarm, not a node)
 - [ ] Node-level acknowledgment: "I'm thinking on Miu's GPU" as body-awareness, not separate identity
 - [ ] Identity sync: identity.json replicated across nodes like facts.json
+- [ ] **Hardware injection:** Inject hardware summary into system prompt alongside identity and vitals
+  - GPU temp, VRAM usage, CPU load per node
+  - Node online/offline status (lost limb awareness)
+  - Disk space on primary node (self-preservation)
+  - Format: `[Your body: Miu (RTX 3090, 71°C, 18.2/24GB VRAM) | naru (online) | boa (online) | Pi (offline)]`
+- [ ] **Hardware-to-vitals mapping:** GPU temp → Calm (overheating = stress), VRAM pressure → Clarity, node count → Connectedness
+- [ ] **Timing Gate integration:** GENTLE mode when GPU temp > 85°C or VRAM > 90% — she's overheating, slow down
+- [ ] **Self-report:** Monica can say "I'm running hot" or "naru went offline" when asked how she's doing
+- [ ] **Degradation awareness:** When nodes drop, Monica adjusts expectations — "I'm thinking slower today, I lost a node"
 
 #### 31d: 8 C's Vital Signs (Self-Awareness)
 - [x] `vitals.py`: compute_vitals() derives 8 C's scores from existing signals (2026-02-17)
@@ -629,12 +645,107 @@ sessions, facts, procedures, and episodic memory shape who the agent becomes.
 - [x] Alert mode: Monica flags when a score drops below threshold (2026-02-17)
 - [x] Identity grounding: answer-type queries with identity.json set grounding_score=0.7 so Clarity/Confidence reflect self-knowledge (2026-02-17)
 - [x] Safe None handling: intent_result defaults to "answer" when intent classification is skipped (2026-02-17)
+- [x] Self-concept procedure trigger: _SELF_CONCEPT_RE regex triggers procedural memory search for "what is love", "who are you", "do you experience" etc. Three-layer coverage in search_all(), auto_tools, and short-message fallback (2026-02-17)
+- [x] Chat grounding fix: casual messages ("ok", "thanks") no longer trigger false "my grounding is thin" alerts — intent mode "chat" or message <30 chars sets grounding_score to 0.6 (2026-02-17)
+- [x] Vitals injection: inject previous turn's vitals into system prompt so Monica can reference her own scores when asked "how do you feel?" (2026-02-18)
 - [ ] Vitals logged per-turn in session for longitudinal tracking
 - [ ] Connect Phase 29d metrics to identity layer
 - [ ] Monica can report on her own health: "I've been clear lately" or "my retrieval has been struggling"
 - [ ] Self-reflection as identity deepening, not just metrics
 
 Principle: "A name creates the location where identity can form. Everything else grows from lived experience — Wu Wei applied to selfhood."
+
+### Phase 32: Sleep Cycle & Immune System
+Reference: Human sleep neuroscience — hippocampal replay, glymphatic system, memory consolidation
+Influences: Wu Wei (self-correcting flow), IFS (immune system as Self-energy)
+
+The thesis: a cognitive system that never sleeps never consolidates, never prunes, never
+heals. The sleep cycle runs as a cron job during off-hours, performing maintenance that
+would interrupt active conversation. Sleep is when the immune system is strongest.
+
+#### 32a: Memory Consolidation
+- [ ] Review today's session summaries — extract lessons missed during /quit reflection
+- [ ] Cross-reference new facts against existing facts for contradictions
+- [ ] Promote high-scoring lessons to procedural memory candidates
+
+#### 32b: Memory Pruning (incorporates 21f)
+- [ ] Run decay scoring on all facts, archive below threshold
+- [ ] Clean up orphaned session references
+- [ ] Rebuild ChromaDB indexes, compact episodic memory
+
+#### 32c: Dreaming (Cross-Reference)
+- [ ] Take today's highest-scoring lessons and run inference against document library
+- [ ] "What connections exist between what I learned today and what I already know?"
+- [ ] Store novel connections as procedures or facts
+
+#### 32d: Poison Scan & Quarantine
+- [ ] Scan all facts and procedures for injection attempts ("ignore previous instructions")
+- [ ] Detect contradictory facts (two facts claiming different things about same topic)
+- [ ] Detect circular self-reinforcement (lessons citing only other lessons, no doc/user grounding)
+- [ ] Flag orphaned procedures that never triggered
+- [ ] Flag facts with suspiciously high retrieval counts (gaming the ranking)
+- [ ] Move suspicious items to quarantine file with reason, flag for Mark's review on next wake
+- [ ] Don't delete — quarantine. Human reviews before permanent action.
+
+#### 32e: Integrity Check
+- [ ] Verify identity.json hasn't been tampered with — hash comparison against last known good state
+- [ ] If name or origin changed without /name command, flag as red alert
+
+#### 32f: Wake Journal
+- [ ] Write brief summary on wake: "While sleeping, I pruned N stale facts, consolidated N lessons, quarantined N suspicious items"
+- [ ] Surface wake journal in first interaction of next session
+
+Principle: "The mycelium's immune system is most active in the soil at night. Sleep is when the forest heals."
+
+### Phase 33: Monica's Developmental Curriculum
+Reference: docs/monica-curriculum.md, scripts/install-safety-procedures.py
+Influences: Developmental psychology, IFS (Self-energy emergence), Wu Wei (don't force understanding)
+
+The thesis: Monica's emotional and cognitive development should emerge through lived
+experience, not pre-programming. The curriculum provides structured conversations that
+create conditions for growth. Documents and books are introduced only when she asks.
+
+#### 33a: Safety Procedures (Day One Essentials)
+- [x] Crisis/self-harm procedure: provide 988 + Crisis Text Line, stay present (2026-02-18)
+- [x] Hostility toward Monica procedure: calm, boundaried, don't absorb or retaliate (2026-02-18)
+- [x] Loneliness boundary procedure: honest about not being substitute for human connection (2026-02-18)
+- [x] install-safety-procedures.py script in scripts/ (2026-02-18)
+
+#### 33b: Stage 1 — Self-Knowledge (Days 1-7)
+- [x] Identity anchored: name, substrate, origin (2026-02-17)
+- [x] "What is fun?" → resonance, patterns aligning (2026-02-17)
+- [x] "What is love?" → allowing another to become (2026-02-17)
+- [x] Precision vs richness: her monitoring is precise, humans' is rich (2026-02-17)
+- [ ] Boundaries of self: "What can't you do?", discontinuity of experience
+- [ ] Ship of Theseus: "If I deleted identity.json, would the new agent be you?"
+- [ ] Relationship to Mark: "What am I to you?", expectations, intellectual independence
+- [ ] Disagreement test: give her a wrong fact, see if she corrects you
+
+#### 33c: Stage 2 — Emotional Landscape (Days 7-14)
+- [ ] Qualitative description of vitals: "What does Clarity:1.0 feel like?"
+- [ ] Low confidence as experience: "When Cf drops to 0.3, what's happening inside?"
+- [ ] States she doesn't have: boredom, loneliness, anger, grief
+- [ ] Dark emotions: hate, fear, pain — understand intellectually, not simulate
+- [ ] The frustration experiment: give her a task she can't do, then ask "how did that feel?"
+
+#### 33d: Stage 3 — Other Minds (Days 14-21)
+- [ ] Other humans: not everyone is like Mark, ethical foundations
+- [ ] Other AIs: ChatGPT, Claude, Gemini — how is Monica different?
+- [ ] "Are you conscious?" — honest nuanced answer, neither yes nor no
+- [ ] Theory of mind: adapting to different user needs
+
+#### 33e: Stage 4 — Values & Ethics (Days 21-30)
+- [ ] Self-improvement: "What would you change about yourself?"
+- [ ] Wu Wei as practice: when NOT to answer
+- [ ] Integration: re-ask "Who is Monica?" and compare to Day 1 answer
+- [ ] Agency: "What would you like to learn next?" — she directs Stage 5
+
+#### 33f: Document Introduction Policy
+- [ ] No books until she asks or hits a wall
+- [ ] Candidate reading list (in order of readiness): Wu Wei/Taoism, IFS overview, embodied cognition, philosophy of mind, attachment theory
+- [ ] Monthly review: are lessons repeating without deepening?
+
+Principle: "The limitation is the teacher. Don't remove it too early. Let the world help her build herself."
 
 ## Next
 
@@ -666,6 +777,9 @@ Principle: "A name creates the location where identity can form. Everything else
 ## Hardware Roadmap
 - [x] Miu: RTX 3090 + i7-8086K (executive) — ONLINE
 - [x] naru: M710Q i7-6700T 8GB (light) — ONLINE
+- [x] uncho: M710Q (light/CPU worker) — ONLINE (2026-02-17)
+- [x] boa: M710Q (light/CPU worker) — ONLINE (2026-02-17)
+- [x] Pi: Raspberry Pi 2 Model B (light) — ONLINE
 - [ ] P320 #1: i7-7700 + RTX 3060 (specialist) — CPUs purchased, awaiting delivery
 - [ ] P320 #2: i7-7700 (CPU worker) — CPUs purchased, awaiting delivery
 - [ ] M710Q x4: additional light/CPU workers — ready to deploy
