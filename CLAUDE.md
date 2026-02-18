@@ -76,15 +76,17 @@ After completing work, update PLAN.md:
 
 ## Release Checklist
 Every version bump must include ALL of these steps:
-1. Bump version in pyproject.toml
+1. Bump version in BOTH pyproject.toml AND src/mycoswarm/__init__.py (must match!)
 2. Update CHANGELOG.md with new version entry
 3. Run full test suite (pytest + smoke tests)
-4. Build wheel: python -m build
-5. Show the user the upload command: `twine upload dist/mycoswarm-X.Y.Z*` (user runs this manually)
-6. Create GitHub release: gh release create vX.Y.Z --title "..." --notes "..."
-7. Update all swarm nodes (naru, boa, uncho, pi)
+4. Verify version: python -c "from mycoswarm import __version__; assert __version__ == 'X.Y.Z'"
+5. Build wheel: python -m build
+6. Show the user the upload command: `twine upload dist/mycoswarm-X.Y.Z*` (user runs this manually)
+7. Create GitHub release: gh release create vX.Y.Z --title "..." --notes "..."
+8. Update all swarm nodes (naru, boa, uncho, pi)
 
-Never skip step 5. Releases without GitHub tags are invisible.
+Never skip step 4. v0.2.9 shipped with __version__="0.1.8" because __init__.py wasn't synced.
+Never skip step 6. Releases without GitHub tags are invisible.
 
 ## Running the Project
 ```bash
