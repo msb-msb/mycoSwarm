@@ -57,6 +57,16 @@ Total: ~$1,035. Zero monthly fees.
 
 **Honest AI** — When it doesn't know something, it says so. No hallucinated weather forecasts or fabricated facts.
 
+**Identity** — Persistent self-model with first-run naming. Your AI remembers its own name across sessions.
+
+**Self-awareness (8 C's)** — Real-time vital signs after every response: Calm, Clarity, Curiosity, Compassion, Courage, Creativity, Connectedness, Confidence. Derived from pipeline signals, not simulated.
+
+**Wu Wei Timing Gate** — Contextual response calibration. Late night → shorter, warmer. Exploration mode → deeper, expansive. No LLM call, pure heuristics.
+
+**Procedural memory** — The swarm learns from experience. Wisdom procedures surface automatically when similar problems recur.
+
+**Intent classification** — Pre-inference routing decides tool, mode, and scope before the model runs.
+
 **Plugin system** — Drop a folder into `~/.config/mycoswarm/plugins/` and your node advertises a new capability. No core code changes.
 
 ---
@@ -180,6 +190,12 @@ Tasks go to the best available node. If that node fails, the orchestrator retrie
 | `/rag <question>` | Search documents and answer |
 | `/library` | Show indexed documents |
 | `/auto` | Toggle agentic tool routing on/off |
+| `/identity` | View name, origin, substrate |
+| `/name <n>` | Set or change AI name |
+| `/vitals` | Detailed 8 C's breakdown with bar charts |
+| `/timing` | Current timing gate state and reasons |
+| `/stale` | Show facts approaching decay threshold |
+| `/procedure` | View stored wisdom procedures |
 | `/model` | Switch model |
 | `/clear` | Reset conversation |
 | `/quit` | Save session and exit |
@@ -202,6 +218,9 @@ src/mycoswarm/
 ├── solo.py          # Single-node mode — direct Ollama, agentic classification
 ├── library.py       # Document library — chunking, embeddings, ChromaDB, RAG
 ├── memory.py        # Persistent memory — facts, session summaries, prompt injection
+├── identity.py      # Persistent self-model — name, origin, development stage
+├── timing.py        # Wu Wei Timing Gate — PROCEED/GENTLE/DEEP calibration
+├── vitals.py        # 8 C's vital signs — self-awareness from pipeline signals
 └── cli.py           # All CLI commands and interactive chat
 ```
 
@@ -294,11 +313,12 @@ No cloud dependencies. No API keys. No expensive hardware requirements. Every no
 
 ## What's Next
 
-- **Dashboard** — Web UI showing swarm topology, active tasks, node health
+- **Identity development** — Monica grows through interaction, not just configuration
+- **Swarm identity sync** — Consistent self-model across all nodes
+- **Agentic timing gate** — SUPPRESS/DEFER/PROCEED for proactive actions
 - **Agentic planner** — LLM generates multi-step plans and executes them across the swarm
 - **mTLS security** — Encrypted, authenticated inter-node communication
 - **Config files** — `~/.config/mycoswarm/config.toml` for persistent settings
-- **PyPI publishing** — `pip install mycoswarm` from anywhere
 - **Mesh networking** — Connect swarms across the internet via VPN
 
 ---
@@ -313,9 +333,9 @@ cd mycoSwarm
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
-python -m pytest tests/ -v  # 94 tests, all offline
+python -m pytest tests/ -v  # 398 tests, all offline
 ```
 
 ---
 
-**Built with experience, not hype.** [InsiderLLM](https://insiderllm.com)
+**v0.2.9 | 398 tests | 5 nodes** — Built with experience, not hype. [InsiderLLM](https://insiderllm.com)
