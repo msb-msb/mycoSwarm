@@ -648,7 +648,8 @@ sessions, facts, procedures, and episodic memory shape who the agent becomes.
 - [x] Self-concept procedure trigger: _SELF_CONCEPT_RE regex triggers procedural memory search for "what is love", "who are you", "do you experience" etc. Three-layer coverage in search_all(), auto_tools, and short-message fallback (2026-02-17)
 - [x] Chat grounding fix: casual messages ("ok", "thanks") no longer trigger false "my grounding is thin" alerts — intent mode "chat" or message <30 chars sets grounding_score to 0.6 (2026-02-17)
 - [ ] Vitals injection: inject previous turn's vitals into system prompt so Monica can reference her own scores when asked "how do you feel?"
-- [ ] Vitals logged per-turn in session for longitudinal tracking
+- [x] Vitals logged per-turn in session for longitudinal tracking (2026-02-18)
+- [x] `/history` slash command: vitals trend table for current session (2026-02-18)
 - [ ] Connect Phase 29d metrics to identity layer
 - [ ] Monica can report on her own health: "I've been clear lately" or "my retrieval has been struggling"
 - [ ] Self-reflection as identity deepening, not just metrics

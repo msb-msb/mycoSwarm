@@ -1390,6 +1390,31 @@ def cmd_chat(args):
                 print()
                 continue
 
+            elif cmd == "/history":
+                print("\n📊 Vitals History (this session)")
+                print(f"  {'Turn':<6} {'Ca':<6} {'Cl':<6} {'Cu':<6} {'Cp':<6} {'Co':<6} {'Cr':<6} {'Cn':<6} {'Cf':<6}")
+                print("  " + "─" * 54)
+                _hturn = 0
+                for _hm in messages:
+                    if _hm.get("role") == "assistant" and "vitals" in _hm:
+                        _hturn += 1
+                        _hv = _hm["vitals"]
+                        print(
+                            f"  {_hturn:<6} "
+                            f"{_hv.get('calm', '—'):<6} "
+                            f"{_hv.get('clarity', '—'):<6} "
+                            f"{_hv.get('curiosity', '—'):<6} "
+                            f"{_hv.get('compassion', '—'):<6} "
+                            f"{_hv.get('courage', '—'):<6} "
+                            f"{_hv.get('creativity', '—'):<6} "
+                            f"{_hv.get('connectedness', '—'):<6} "
+                            f"{_hv.get('confidence', '—'):<6}"
+                        )
+                if _hturn == 0:
+                    print("  No vitals recorded yet.")
+                print()
+                continue
+
             elif cmd == "/rag":
                 parts = user_input.split(maxsplit=1)
                 if len(parts) < 2:
@@ -1903,7 +1928,13 @@ def cmd_chat(args):
         _last_timing = _timing
 
         # --- Send message ---
-        messages.append({"role": "user", "content": user_input})
+        _user_msg = {"role": "user", "content": user_input}
+        if _instinct.action != InstinctAction.PASS:
+            _user_msg["instinct"] = {
+                "action": _instinct.action.value,
+                "triggered_by": _instinct.triggered_by,
+            }
+        messages.append(_user_msg)
 
         # Swap "no internet" boundary when web results are present
         _send_msgs = list(messages)
@@ -1966,7 +1997,8 @@ def cmd_chat(args):
                 messages.pop()
                 continue
 
-            messages.append({"role": "assistant", "content": full_text})
+            _asst_msg = {"role": "assistant", "content": full_text}
+            messages.append(_asst_msg)
 
             tps = metrics.get("tokens_per_second", 0)
             duration = metrics.get("duration_seconds", 0)
@@ -2025,6 +2057,7 @@ def cmd_chat(args):
                 print(f"  💭 {_a}")
             print(f"  {_vitals.status_bar()}")
             _last_vitals = _vitals
+            _asst_msg["vitals"] = _vitals.to_dict()
             if _last_vitals and _last_vitals.overall() < 0.3:
                 _consecutive_low_turns += 1
             else:
@@ -2082,7 +2115,8 @@ def cmd_chat(args):
             messages.pop()
             continue
 
-        messages.append({"role": "assistant", "content": full_text})
+        _asst_msg = {"role": "assistant", "content": full_text}
+        messages.append(_asst_msg)
 
         tps = metrics.get("tokens_per_second", 0)
         duration = metrics.get("duration_seconds", 0)
@@ -2143,6 +2177,7 @@ def cmd_chat(args):
             print(f"  💭 {_a}")
         print(f"  {_vitals.status_bar()}")
         _last_vitals = _vitals
+        _asst_msg["vitals"] = _vitals.to_dict()
         if _last_vitals and _last_vitals.overall() < 0.3:
             _consecutive_low_turns += 1
         else:
