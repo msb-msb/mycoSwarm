@@ -21,11 +21,12 @@ from typing import TYPE_CHECKING
 
 import httpx
 import psutil
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from mycoswarm import __version__
+from mycoswarm.auth import validate_request, get_auth_header, HEADER_NAME
 from mycoswarm.node import NodeIdentity, build_identity
 from mycoswarm.discovery import PeerRegistry
 
@@ -203,6 +204,28 @@ def _pick_best_model(models: list[str], embedding: bool = False) -> str | None:
     return max(chat_models, key=_parse_model_size)
 
 
+# --- Swarm Authentication ---
+
+_swarm_token: str | None = None
+
+
+def set_swarm_token(token: str):
+    """Set the swarm token for API authentication (called from daemon)."""
+    global _swarm_token
+    _swarm_token = token
+
+
+async def verify_token(request: Request):
+    """FastAPI dependency — validates swarm token on every request."""
+    if request.url.path == "/health":
+        return  # /health is exempt for basic connectivity checks
+    if _swarm_token is None:
+        return  # Auth not configured, allow (backward compat)
+    request_token = request.headers.get(HEADER_NAME)
+    if not validate_request(request_token, _swarm_token):
+        raise HTTPException(status_code=403, detail="Invalid or missing swarm token")
+
+
 # --- API Factory ---
 
 
@@ -220,6 +243,7 @@ def create_api(
         title=f"mycoSwarm Node: {identity.hostname}",
         description=f"Node {identity.node_id} [{identity.node_tier}]",
         version="0.1.0",
+        dependencies=[Depends(verify_token)],
     )
 
     @app.get("/health", response_model=HealthResponse)
@@ -287,11 +311,13 @@ def create_api(
                     task_data["payload"]["model"] = new_model
 
         orchestrator.record_dispatch(target.node_id)
+        _out_headers = get_auth_header(_swarm_token) if _swarm_token else {}
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.post(
                     f"http://{target.ip}:{target.port}/task",
                     json=task_data,
+                    headers=_out_headers,
                 )
                 resp.raise_for_status()
         except (httpx.ConnectError, httpx.TimeoutException) as e:
@@ -312,8 +338,9 @@ def create_api(
         async def _poll_remote_result():
             base_url = f"http://{target.ip}:{target.port}"
             deadline = time.time() + task.timeout_seconds
+            _poll_headers = get_auth_header(_swarm_token) if _swarm_token else {}
             try:
-                async with httpx.AsyncClient(timeout=10.0) as poll_client:
+                async with httpx.AsyncClient(timeout=10.0, headers=_poll_headers) as poll_client:
                     while time.time() < deadline:
                         await asyncio.sleep(1.0)
                         try:

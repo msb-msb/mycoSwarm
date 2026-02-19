@@ -39,6 +39,18 @@ from mycoswarm.capabilities import classify_node
 from mycoswarm.node import build_identity
 
 
+def _swarm_headers() -> dict:
+    """Load swarm auth headers for API requests (cached after first call)."""
+    if not hasattr(_swarm_headers, '_cache'):
+        try:
+            from mycoswarm.auth import load_token, get_auth_header
+            token = load_token()
+            _swarm_headers._cache = get_auth_header(token) if token else {}
+        except Exception:
+            _swarm_headers._cache = {}
+    return _swarm_headers._cache
+
+
 def cmd_detect(args):
     """Detect hardware and classify capabilities."""
     profile = detect_all()
@@ -155,7 +167,7 @@ def cmd_swarm(args):
     url = f"http://{ip}:{args.port}"
 
     try:
-        with httpx.Client(timeout=5) as client:
+        with httpx.Client(headers=_swarm_headers(), timeout=5) as client:
             status = client.get(f"{url}/status").json()
             peers_data = client.get(f"{url}/peers").json()
     except httpx.ConnectError:
@@ -221,7 +233,7 @@ def cmd_ping(args):
     url = f"http://{ip}:{args.port}"
 
     try:
-        with httpx.Client(timeout=5) as client:
+        with httpx.Client(headers=_swarm_headers(), timeout=5) as client:
             peers_data = client.get(f"{url}/peers").json()
     except httpx.ConnectError:
         print("❌ Daemon not running. Start it with: mycoswarm daemon")
@@ -235,7 +247,7 @@ def cmd_ping(args):
 
     import time
 
-    with httpx.Client(timeout=5) as client:
+    with httpx.Client(headers=_swarm_headers(), timeout=5) as client:
         for p in peers_data:
             peer_url = f"http://{p['ip']}:{p['port']}/health"
             try:
@@ -258,7 +270,7 @@ def _discover_model(url: str, prefer: str | None = None) -> str:
     if prefer:
         return prefer
     try:
-        with httpx.Client(timeout=5) as client:
+        with httpx.Client(headers=_swarm_headers(), timeout=5) as client:
             status = client.get(f"{url}/status").json()
             models = status.get("ollama_models", [])
 
@@ -305,7 +317,7 @@ def _stream_response(
     metrics: dict = {}
 
     try:
-        with httpx.Client(timeout=httpx.Timeout(5.0, read=timeout)) as client:
+        with httpx.Client(headers=_swarm_headers(), timeout=httpx.Timeout(5.0, read=timeout)) as client:
             with client.stream("GET", f"{url}/task/{task_id}/stream") as resp:
                 for line in resp.iter_lines():
                     if not line or not line.startswith("data: "):
@@ -352,7 +364,7 @@ def _submit_and_poll(url: str, task_payload: dict, timeout: int = 300) -> dict |
 
     task_id = task_payload["task_id"]
     try:
-        with httpx.Client(timeout=5) as client:
+        with httpx.Client(headers=_swarm_headers(), timeout=5) as client:
             resp = client.post(f"{url}/task", json=task_payload)
             resp.raise_for_status()
     except httpx.ConnectError:
@@ -360,7 +372,7 @@ def _submit_and_poll(url: str, task_payload: dict, timeout: int = 300) -> dict |
         sys.exit(1)
 
     start = time.time()
-    with httpx.Client(timeout=5) as client:
+    with httpx.Client(headers=_swarm_headers(), timeout=5) as client:
         while time.time() - start < timeout:
             time.sleep(0.5)
             try:
@@ -497,7 +509,7 @@ def cmd_search(args):
 def _resolve_node_name(url: str, node_id: str) -> str:
     """Map a node_id to a hostname via /status and /peers."""
     try:
-        with httpx.Client(timeout=3) as client:
+        with httpx.Client(headers=_swarm_headers(), timeout=3) as client:
             status = client.get(f"{url}/status").json()
             if status.get("node_id") == node_id:
                 return status.get("hostname", node_id)
@@ -523,7 +535,7 @@ def _do_search(url: str, query: str, task_id: str, max_results: int) -> dict:
     }
     start = _t.time()
     # Submit and capture routing info
-    with httpx.Client(timeout=5) as client:
+    with httpx.Client(headers=_swarm_headers(), timeout=5) as client:
         resp = client.post(f"{url}/task", json=payload)
         resp.raise_for_status()
         submit_data = resp.json()
@@ -531,7 +543,7 @@ def _do_search(url: str, query: str, task_id: str, max_results: int) -> dict:
 
     # Poll for result
     data = None
-    with httpx.Client(timeout=5) as client:
+    with httpx.Client(headers=_swarm_headers(), timeout=5) as client:
         while _t.time() - start < 60:
             _t.sleep(0.5)
             try:
@@ -720,7 +732,7 @@ def cmd_research(args):
     print(f"\n🧠 Synthesizing with {model}...")
 
     try:
-        with httpx.Client(timeout=10) as client:
+        with httpx.Client(headers=_swarm_headers(), timeout=10) as client:
             resp = client.post(f"{url}/task", json=infer_payload)
             resp.raise_for_status()
             infer_submit = resp.json()
@@ -773,7 +785,7 @@ def _list_swarm_models(url: str) -> list[str]:
     """Gather all unique models across the swarm."""
     models = set()
     try:
-        with httpx.Client(timeout=5) as client:
+        with httpx.Client(headers=_swarm_headers(), timeout=5) as client:
             status = client.get(f"{url}/status").json()
             models.update(status.get("ollama_models", []))
             peers = client.get(f"{url}/peers").json()
@@ -791,7 +803,7 @@ def cmd_models(args):
     url = f"http://{ip}:{args.port}"
 
     try:
-        with httpx.Client(timeout=5) as client:
+        with httpx.Client(headers=_swarm_headers(), timeout=5) as client:
             status = client.get(f"{url}/status").json()
             peers_data = client.get(f"{url}/peers").json()
     except httpx.ConnectError:
@@ -1223,7 +1235,7 @@ def cmd_chat(args):
                     print("   No peers (single-node mode). Start the daemon to join a swarm.")
                     continue
                 try:
-                    with httpx.Client(timeout=5) as client:
+                    with httpx.Client(headers=_swarm_headers(), timeout=5) as client:
                         peers = client.get(f"{url}/peers").json()
                         _local_status = client.get(f"{url}/status").json()
                     if peers:
@@ -1390,6 +1402,20 @@ def cmd_chat(args):
                 print()
                 continue
 
+            elif cmd == "/token":
+                from mycoswarm.auth import load_token, TOKEN_PATH
+                _tok = load_token()
+                if _tok:
+                    _masked = _tok[:4] + "..." + _tok[-4:]
+                    print(f"\n🔑 Swarm token: {_masked}")
+                    print(f"   Path: {TOKEN_PATH}")
+                    print(f"   To add a node: copy this file to the new node's")
+                    print(f"   ~/.config/mycoswarm/swarm-token")
+                else:
+                    print("\n🔑 No swarm token configured.")
+                print()
+                continue
+
             elif cmd == "/history":
                 # Mapping: abbreviated display name → full key from to_dict()
                 _VITALS_COLS = [
@@ -1488,7 +1514,7 @@ def cmd_chat(args):
                         "timeout_seconds": 300,
                     }
                     try:
-                        with httpx.Client(timeout=10) as client:
+                        with httpx.Client(headers=_swarm_headers(), timeout=10) as client:
                             _resp = client.post(f"{url}/task", json=_tp)
                             _resp.raise_for_status()
                             _sd = _resp.json()
@@ -1692,11 +1718,11 @@ def cmd_chat(args):
                 try:
                     import time as _t
                     _ic_start = _t.time()
-                    with httpx.Client(timeout=5) as _ic_client:
+                    with httpx.Client(headers=_swarm_headers(), timeout=5) as _ic_client:
                         _ic_client.post(f"{url}/task", json=_ic_payload).raise_for_status()
                     # Poll for result
                     intent_result = None
-                    with httpx.Client(timeout=5) as _ic_client:
+                    with httpx.Client(headers=_swarm_headers(), timeout=5) as _ic_client:
                         while _t.time() - _ic_start < 15:
                             _t.sleep(0.3)
                             try:
@@ -2087,7 +2113,7 @@ def cmd_chat(args):
         }
 
         try:
-            with httpx.Client(timeout=10) as client:
+            with httpx.Client(headers=_swarm_headers(), timeout=10) as client:
                 resp = client.post(f"{url}/task", json=task_payload)
                 resp.raise_for_status()
                 submit_data = resp.json()
@@ -2430,7 +2456,7 @@ def cmd_rag(args):
 
         print(f"🧠 Asking {model}...\n")
         try:
-            with httpx.Client(timeout=10) as client:
+            with httpx.Client(headers=_swarm_headers(), timeout=10) as client:
                 resp = client.post(f"{url}/task", json=task_payload)
                 resp.raise_for_status()
                 submit_data = resp.json()

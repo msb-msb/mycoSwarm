@@ -21,6 +21,7 @@ import httpx
 
 from mycoswarm.discovery import Peer, PeerRegistry
 from mycoswarm.api import TaskRequest, TaskResult, TaskStatus
+from mycoswarm.auth import get_auth_header
 from mycoswarm.node import NodeIdentity
 
 logger = logging.getLogger(__name__)
@@ -68,12 +69,13 @@ class TaskRecord:
 class Orchestrator:
     """Routes and dispatches tasks across the swarm."""
 
-    def __init__(self, identity: NodeIdentity, registry: PeerRegistry):
+    def __init__(self, identity: NodeIdentity, registry: PeerRegistry, swarm_token: str | None = None):
         self.identity = identity
         self.registry = registry
         self._records: dict[str, TaskRecord] = {}
         self._inflight: dict[str, int] = {}  # node_id → active task count
-        self._client = httpx.AsyncClient(timeout=PEER_TIMEOUT)
+        _headers = get_auth_header(swarm_token) if swarm_token else {}
+        self._client = httpx.AsyncClient(timeout=PEER_TIMEOUT, headers=_headers)
 
     def record_dispatch(self, node_id: str) -> None:
         """Increment inflight count for a peer (call when dispatching)."""

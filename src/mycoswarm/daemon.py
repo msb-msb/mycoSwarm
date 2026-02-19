@@ -27,6 +27,8 @@ from mycoswarm.api import create_api, TaskQueue
 from mycoswarm.worker import TaskWorker, HANDLERS
 from mycoswarm.orchestrator import Orchestrator
 from mycoswarm.plugins import discover_plugins, register_plugins
+from mycoswarm.auth import ensure_token
+from mycoswarm.api import set_swarm_token
 
 logger = logging.getLogger(__name__)
 
@@ -149,6 +151,11 @@ async def run_daemon(port: int = DEFAULT_PORT, verbose: bool = False):
         except Exception as e:
             logger.warning(f"📚 Auto-update failed: {e}")
 
+    # Swarm authentication
+    swarm_token = ensure_token()
+    set_swarm_token(swarm_token)
+    logger.info("🔑 Swarm authentication enabled")
+
     _print_banner(identity, port)
 
     # Set up components
@@ -157,7 +164,7 @@ async def run_daemon(port: int = DEFAULT_PORT, verbose: bool = False):
     task_queue = TaskQueue()
     discovery = Discovery(identity, registry, port=port)
     worker = TaskWorker(task_queue, identity.node_id)
-    orchestrator = Orchestrator(identity, registry)
+    orchestrator = Orchestrator(identity, registry, swarm_token=swarm_token)
 
     # Create FastAPI app
     app = create_api(identity, registry, task_queue, start_time, orchestrator, port=port)

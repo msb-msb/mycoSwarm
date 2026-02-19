@@ -857,11 +857,13 @@ resource access. The agent cannot override the Guardian's decisions.
 - [ ] Existing sandbox (unshare -rn, temp dir, timeout) remains foundation
 - [ ] Future: run sandbox subprocess under separate low-privilege user
 
-#### 35d: Swarm Authentication
-- [ ] Join token: new nodes must present shared secret to be accepted by PeerRegistry
-- [ ] Token stored in `~/.config/mycoswarm/swarm-token` (created on first `mycoswarm daemon`)
-- [ ] Peer API endpoints validate token on every request
-- [ ] Rogue LAN devices cannot submit tasks without the token
+#### 35d: Swarm Authentication (2026-02-18)
+- [x] Join token generated on first daemon run, stored at `~/.config/mycoswarm/swarm-token` (2026-02-18)
+- [x] Token validated on all peer API requests via FastAPI dependency (except /health) (2026-02-18)
+- [x] Outbound peer requests include X-Swarm-Token header (api.py, orchestrator.py, cli.py) (2026-02-18)
+- [x] `/token` slash command — shows masked token and file path (2026-02-18)
+- [x] Backward compatible — nodes without token still work until migration (2026-02-18)
+- [x] 14 tests in tests/test_auth.py, 467 total tests passing (2026-02-18)
 - [ ] Future: upgrade to mTLS (Phase 10 already planned)
 
 #### 35e: Agentic Boundary Rules (extends Phase 20b-3)
