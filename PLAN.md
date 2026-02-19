@@ -360,6 +360,7 @@ IFS insight: The poison cycle is an IFS *part* taking over — the "helpful part
 - [x] Released v0.2.8 (2026-02-17): Wu Wei Gate — Phase 20b Timing Gate with PROCEED/GENTLE/DEEP modes, 8 heuristic signals, /timing command, 398 tests
 - [x] Released v0.2.9 (2026-02-17): Self-Concept & Wisdom Retrieval — self-concept procedure trigger (_SELF_CONCEPT_RE), chat grounding fix, 398 tests
 - [x] Released v0.2.11 (2026-02-18): Instinct Layer & Vitals Logging — Phase 34a pre-input hard gates (identity protection, injection rejection, self-preservation, vitals crisis), vitals per-turn logging, /instinct and /history commands, 453 tests
+- [x] Released v0.2.12 (2026-02-19): Security Architecture — Phase 35d swarm auth (join token, X-Swarm-Token, /token), Phase 35c code hardening (42-pattern self-modification blocker), Phase 35f security wisdom procedure, Phase 35g threat model, 325 tests
 - [x] Smoke test suite: tests/smoke/ — RAG grounding (4), poison resistance (3), memory priority (6), intent classification (5), swarm distribution (4), book ingestion (7). Runner: run_all.sh
 
 ### Phase 22: RAG Architecture
