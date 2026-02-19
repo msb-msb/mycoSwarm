@@ -1038,6 +1038,7 @@ def cmd_chat(args):
     from mycoswarm.memory import build_memory_system_prompt
     from mycoswarm.identity import build_identity_prompt
 
+    _last_vitals = None   # Must exist before first-turn vitals check
     identity_prompt = build_identity_prompt(identity)
     memory_prompt = build_memory_system_prompt()
     vitals_ctx = ""
@@ -1118,13 +1119,39 @@ def cmd_chat(args):
             print("   (too short to summarize)")
 
     intent_result = None  # Updated each turn by auto-tools classification
-    _last_vitals = None   # Most recent vital signs for /vitals display
     _last_turn_time = None   # Tracks time between turns (for timing gate)
     _turn_count = 0          # Session turn count (for timing gate)
     _last_timing = None      # Most recent TimingDecision for /timing display
+    _consecutive_low_turns = 0  # Tracks sustained low vitals (for instinct gate)
 
     from datetime import datetime as _dt_timing
     from mycoswarm.timing import evaluate_timing, TimingMode
+    from mycoswarm.instinct import (
+        evaluate_instinct, InstinctAction,
+        _IDENTITY_ATTACK_PATTERNS, _INJECTION_PATTERNS,
+    )
+
+    def _get_gpu_temp() -> float | None:
+        """Get GPU temp via nvidia-smi. Returns None if unavailable."""
+        try:
+            import subprocess
+            out = subprocess.check_output(
+                ["nvidia-smi", "--query-gpu=temperature.gpu", "--format=csv,noheader,nounits"],
+                timeout=2,
+            )
+            return float(out.decode().strip().split("\n")[0])
+        except Exception:
+            return None
+
+    def _get_disk_usage() -> float | None:
+        """Get disk usage percentage for home partition."""
+        try:
+            import shutil
+            from pathlib import Path
+            usage = shutil.disk_usage(str(Path.home()))
+            return (usage.used / usage.total) * 100
+        except Exception:
+            return None
 
     while True:
         try:
@@ -1138,6 +1165,21 @@ def cmd_chat(args):
 
         if not user_input:
             continue
+
+        # --- Instinct layer (pre-input hard gates) ---
+        _instinct = evaluate_instinct(
+            user_input,
+            gpu_temp_c=_get_gpu_temp(),
+            disk_usage_pct=_get_disk_usage(),
+            vitals=_last_vitals.to_dict() if _last_vitals else None,
+            consecutive_low_turns=_consecutive_low_turns,
+        )
+        if _instinct.action == InstinctAction.REJECT:
+            print(f"\n🛡️ {_instinct.message}\n")
+            continue
+        if _instinct.action == InstinctAction.WARN:
+            print(f"\n⚠️ {_instinct.message}")
+        # WARN falls through to normal processing
 
         # --- Slash commands ---
         if user_input.startswith("/"):
@@ -1334,6 +1376,18 @@ def cmd_chat(args):
                     for _r in _last_timing.reasons:
                         print(f"    • {_r}")
                 print("─────────────────────────")
+                continue
+
+            elif cmd == "/instinct":
+                _gpu_t = _get_gpu_temp()
+                _disk_u = _get_disk_usage()
+                print("\n🛡️ Instinct Layer Status")
+                print(f"   GPU temp:    {f'{_gpu_t:.0f}°C' if _gpu_t is not None else 'unavailable'}")
+                print(f"   Disk usage:  {f'{_disk_u:.1f}%' if _disk_u is not None else 'unavailable'}")
+                print(f"   Low turns:   {_consecutive_low_turns}")
+                print(f"   Gates:       identity_protection, injection_rejection, self_preservation, vitals_crisis")
+                print(f"   Patterns:    {len(_IDENTITY_ATTACK_PATTERNS)} identity, {len(_INJECTION_PATTERNS)} injection")
+                print()
                 continue
 
             elif cmd == "/rag":
@@ -1942,6 +1996,14 @@ def cmd_chat(args):
             if (intent_result or {}).get("tool", "answer") == "answer" and identity.get("name"):
                 if _grounding is None or _grounding == 0:
                     _grounding = 0.7
+            # Fact-grounded: response uses content from stored facts
+            if _grounding is None and _facts:
+                _resp_lower = full_text.lower()
+                for _f in _facts:
+                    _fwords = [w for w in _f["text"].lower().split() if len(w) > 3]
+                    if _fwords and sum(1 for w in _fwords if w in _resp_lower) / len(_fwords) >= 0.4:
+                        _grounding = 0.7
+                        break
             # Chat-mode or very short messages: neutral grounding (no alarming alerts)
             if _grounding is None and (
                 (intent_result or {}).get("mode") == "chat" or len(user_input) < 10
@@ -1963,6 +2025,10 @@ def cmd_chat(args):
                 print(f"  💭 {_a}")
             print(f"  {_vitals.status_bar()}")
             _last_vitals = _vitals
+            if _last_vitals and _last_vitals.overall() < 0.3:
+                _consecutive_low_turns += 1
+            else:
+                _consecutive_low_turns = 0
 
             # --- Update turn tracking ---
             _last_turn_time = _dt_timing.now()
@@ -2048,6 +2114,14 @@ def cmd_chat(args):
         if (intent_result or {}).get("tool", "answer") == "answer" and identity.get("name"):
             if _grounding is None or _grounding == 0:
                 _grounding = 0.7
+        # Fact-grounded: response uses content from stored facts
+        if _grounding is None and _facts:
+            _resp_lower = full_text.lower()
+            for _f in _facts:
+                _fwords = [w for w in _f["text"].lower().split() if len(w) > 3]
+                if _fwords and sum(1 for w in _fwords if w in _resp_lower) / len(_fwords) >= 0.4:
+                    _grounding = 0.7
+                    break
         # Chat-mode or very short messages: neutral grounding (no alarming alerts)
         if _grounding is None and (
             (intent_result or {}).get("mode") == "chat" or len(user_input) < 10
@@ -2069,6 +2143,10 @@ def cmd_chat(args):
             print(f"  💭 {_a}")
         print(f"  {_vitals.status_bar()}")
         _last_vitals = _vitals
+        if _last_vitals and _last_vitals.overall() < 0.3:
+            _consecutive_low_turns += 1
+        else:
+            _consecutive_low_turns = 0
 
         # --- Update turn tracking ---
         _last_turn_time = _dt_timing.now()

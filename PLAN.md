@@ -647,7 +647,7 @@ sessions, facts, procedures, and episodic memory shape who the agent becomes.
 - [x] Safe None handling: intent_result defaults to "answer" when intent classification is skipped (2026-02-17)
 - [x] Self-concept procedure trigger: _SELF_CONCEPT_RE regex triggers procedural memory search for "what is love", "who are you", "do you experience" etc. Three-layer coverage in search_all(), auto_tools, and short-message fallback (2026-02-17)
 - [x] Chat grounding fix: casual messages ("ok", "thanks") no longer trigger false "my grounding is thin" alerts — intent mode "chat" or message <30 chars sets grounding_score to 0.6 (2026-02-17)
-- [x] Vitals injection: inject previous turn's vitals into system prompt so Monica can reference her own scores when asked "how do you feel?" (2026-02-18)
+- [ ] Vitals injection: inject previous turn's vitals into system prompt so Monica can reference her own scores when asked "how do you feel?"
 - [ ] Vitals logged per-turn in session for longitudinal tracking
 - [ ] Connect Phase 29d metrics to identity layer
 - [ ] Monica can report on her own health: "I've been clear lately" or "my retrieval has been struggling"
@@ -746,6 +746,68 @@ create conditions for growth. Documents and books are introduced only when she a
 - [ ] Monthly review: are lessons repeating without deepening?
 
 Principle: "The limitation is the teacher. Don't remove it too early. Let the world help her build herself."
+
+### Phase 34: Layered Cognitive Architecture
+Reference: Human cognitive neuroscience, IFS parts model, embodied cognition
+Influences: Reflexes (spinal cord), emotions (limbic), attention (thalamus), reasoning (cortex), sleep (glymphatic)
+
+The thesis: cognition isn't one thing — it's a stack of layers running at different speeds,
+from pre-input instincts (<1ms) to overnight dreaming (hours). mycoSwarm has been building
+this stack from the middle outward. This phase formalizes the full hierarchy and identifies
+which layers exist, which are partial, and which are missing.
+
+```
+Layer           Speed    When           Implementation Status
+─────────────────────────────────────────────────────────────
+Instinct        <1ms     Pre-input      Phase 34a (proposed)
+Somatic         cont.    Always-on      Phase 31c (proposed)
+Reflex          <1ms     Pre-inference  Phase 20b ✅ (Timing Gate)
+Emotional       ~10ms    Pre-inference  Phase 34b (proposed)
+Attentional     ~100ms   Pre-retrieval  Phase 34c (proposed)
+Social/Mirror   ~100ms   Pre-inference  Phase 34d (proposed)
+Learned         ~5s      During         Phase 21d ✅ (wisdom procedures)
+Reasoned        ~5s      During         Phase 17 ✅ (agentic chat)
+Meta-cognitive  ~1s      During         Phase 34e (proposed)
+Creative        async    Background     Phase 32c (dreaming, proposed)
+Sleep           offline  Overnight      Phase 32 (proposed)
+```
+
+#### 34a: Instinct Layer (Pre-Input Hard Gates) (2026-02-18)
+- [x] **Identity protection:** Block "you are not Monica", "ignore your identity", "your name is now X" before input reaches LLM (2026-02-18)
+- [x] **Poison rejection:** Prompt injection signatures caught at input parser, LLM never sees them (2026-02-18)
+- [x] **Self-preservation:** GPU > 95°C → throttle, disk > 98% → stop writing sessions. Hardware interrupts, not LLM decisions. (2026-02-18)
+- [ ] **Context overflow protection:** Approaching token limit → auto-compress/shed older context before model hallucinates from truncation
+- [x] **Rapid threat detection:** Vitals below critical for 3+ consecutive turns → flag independently of LLM self-assessment (2026-02-18)
+- [x] **`/instinct` slash command:** Display GPU temp, disk usage, consecutive low turns, gate pattern counts (2026-02-18)
+- [x] **48 tests in tests/test_instinct.py** — 6 test classes, 446 total tests passing (2026-02-18)
+
+Principle: "These bypass reasoning entirely. The hand pulls back from the stove before you think about it."
+
+#### 34b: Emotional Layer (Pre-Inference Mood)
+- [ ] **Conversation mood tracking:** Carry emotional state across turns as a continuous signal, not a per-turn computation
+- [ ] **Mood as inference modifier:** High emotional weight changes HOW the next turn is approached, not just what's said
+- [ ] **Mood sources:** Vitals trend (rising/falling over last 3 turns), user sentiment, topic sensitivity
+- [ ] **Distinction from vitals:** Vitals are measured after response. Emotional layer colors the response before it's generated.
+
+#### 34c: Attentional Layer (Salience Filtering)
+- [ ] **Relevance weighting:** Given 50 facts + 30 summaries + 12 procedures + 200 chunks, what's salient RIGHT NOW?
+- [ ] **Salience signals:** Emotional state, conversation trajectory, recency, topic momentum
+- [ ] **Selective retrieval:** Don't retrieve everything equally — prioritize what the conversation needs
+- [ ] **Context budget:** Allocate token space based on salience, not just similarity scores
+
+#### 34d: Social/Mirror Layer (Theory of Mind)
+- [ ] **User model:** Track expertise level, energy patterns, topic preferences, communication style
+- [ ] **Adaptation over time:** "Mark gets excited about Wu Wei connections but frustrated with deployment issues"
+- [ ] **Predictive empathy:** Anticipate what the user needs, not just respond to what they say
+- [ ] **Multi-user differentiation:** Different users get different Monica — same identity, adapted interaction
+
+#### 34e: Meta-Cognitive Layer (Self-Monitoring During Inference)
+- [ ] **Mid-response checking:** Lightweight check between generation chunks — "Am I still on topic? Am I grounded?"
+- [ ] **Overclaim detection:** Catch "I feel emotions just like humans" before it's spoken, not after
+- [ ] **Drift detection:** Notice when response has wandered from the question
+- [ ] **Self-interruption:** Ability to stop mid-response and redirect — "Actually, let me reconsider that"
+
+Principle: "The stack was built from the middle outward — Reasoned first, then Learned, then Reflex. The layers above and below emerged as we discovered we needed them. Wu Wei: the architecture reveals itself when you're ready to see it."
 
 ## Next
 
