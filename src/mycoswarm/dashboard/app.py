@@ -7,6 +7,7 @@ a live-updating dashboard with node cards.
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from pathlib import Path
 
@@ -21,6 +22,21 @@ HERE = Path(__file__).parent
 TEMPLATES_DIR = HERE / "templates"
 STATIC_DIR = HERE / "static"
 
+logger = logging.getLogger(__name__)
+
+
+def _load_swarm_headers() -> dict:
+    """Load swarm auth headers. Returns empty dict if no token found."""
+    try:
+        from mycoswarm.auth import load_token, get_auth_header
+        token = load_token()
+        if token:
+            return get_auth_header(token)
+        logger.warning("No swarm token found — dashboard requests will be unauthenticated")
+    except Exception as e:
+        logger.warning("Could not load swarm token: %s", e)
+    return {}
+
 
 def create_app(daemon_port: int = 7890) -> FastAPI:
     """Create the dashboard FastAPI application."""
@@ -31,6 +47,7 @@ def create_app(daemon_port: int = 7890) -> FastAPI:
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
     daemon_url = f"http://localhost:{daemon_port}"
+    _auth_headers = _load_swarm_headers()
 
     @app.get("/", response_class=HTMLResponse)
     async def index(request: Request):
@@ -39,7 +56,7 @@ def create_app(daemon_port: int = 7890) -> FastAPI:
     @app.get("/api/status")
     async def api_status():
         try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
+            async with httpx.AsyncClient(timeout=5.0, headers=_auth_headers) as client:
                 status_resp = await client.get(f"{daemon_url}/status")
                 status = status_resp.json()
 
@@ -71,7 +88,7 @@ def create_app(daemon_port: int = 7890) -> FastAPI:
 
         peer_statuses = []
         if peers_raw:
-            async with httpx.AsyncClient(timeout=3.0) as peer_client:
+            async with httpx.AsyncClient(timeout=3.0, headers=_auth_headers) as peer_client:
                 peer_statuses = await asyncio.gather(
                     *[
                         _fetch_peer_status(peer_client, p["ip"], p["port"])
