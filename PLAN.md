@@ -359,6 +359,7 @@ IFS insight: The poison cycle is an IFS *part* taking over — the "helpful part
 - [x] Released v0.2.7 (2026-02-17): Markdown Chunking & Identity Grounding — section-aware markdown chunker (PLAN.md 10→75 chunks), identity grounding fix, None intent_result fix, 383 tests
 - [x] Released v0.2.8 (2026-02-17): Wu Wei Gate — Phase 20b Timing Gate with PROCEED/GENTLE/DEEP modes, 8 heuristic signals, /timing command, 398 tests
 - [x] Released v0.2.9 (2026-02-17): Self-Concept & Wisdom Retrieval — self-concept procedure trigger (_SELF_CONCEPT_RE), chat grounding fix, 398 tests
+- [x] Released v0.2.11 (2026-02-18): Instinct Layer & Vitals Logging — Phase 34a pre-input hard gates (identity protection, injection rejection, self-preservation, vitals crisis), vitals per-turn logging, /instinct and /history commands, 453 tests
 - [x] Smoke test suite: tests/smoke/ — RAG grounding (4), poison resistance (3), memory priority (6), intent classification (5), swarm distribution (4), book ingestion (7). Runner: run_all.sh
 
 ### Phase 22: RAG Architecture
