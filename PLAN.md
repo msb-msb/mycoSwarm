@@ -891,14 +891,11 @@ resource access. The agent cannot override the Guardian's decisions.
   - "When uncertain about boundaries, I ask instead of assuming permission."
 - [ ] Tagged as safety-critical, always retrieved when intent.mode == "execute"
 
-#### 35g: Threat Model (living document)
-- [ ] Create `docs/THREAT-MODEL.md` with 10-row threat matrix:
-  - Rows: worm/botnet, self-replication, self-modification, unauthorized expansion,
-    data exfiltration, lateral movement, payload delivery, unauthorized persistence,
-    supply-chain (plugin tampering), autonomous internet-scale behavior
-  - Columns: what it requires, current status, mechanical blockers, responsible phase
-- [ ] Review quarterly or when new tool/handler types are added
-- [ ] Cross-reference each threat to the specific phase that blocks it
+#### 35g: Threat Model (living document) (2026-02-19)
+- [x] `docs/THREAT-MODEL.md` created with 10-row threat matrix (2026-02-19)
+- [x] Risk summary table with current and post-35h ratings (2026-02-19)
+- [x] Review triggers documented (2026-02-19)
+- [x] Cross-reference to all security phases (2026-02-19)
 
 #### 35h: Production Hardening (future — when architecture stabilizes)
 - [ ] Dedicated daemon user (mycoswarmd): no home, no login, no sudo
