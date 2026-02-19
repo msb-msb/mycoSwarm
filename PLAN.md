@@ -811,6 +811,106 @@ Principle: "These bypass reasoning entirely. The hand pulls back from the stove 
 
 Principle: "The stack was built from the middle outward — Reasoned first, then Learned, then Reflex. The layers above and below emerged as we discovered we needed them. Wu Wei: the architecture reveals itself when you're ready to see it."
 
+### Phase 35: Security Architecture — Boundary Enforcement
+Reference: Threat model analysis (Feb 19, 2026), instinct layer (Phase 34a)
+Influences: Least privilege, capability-based security, "identity ≠ authority"
+
+The thesis: a self-actualizing agent with network access must be capability-bounded,
+not just ethically guided. Narrative alignment ("I respect boundaries") is necessary
+but insufficient. Safety comes from making boundary violations impossible at the
+tool/OS level, then aligning the story to match.
+
+Design principle: "Capabilities, not intent." If the tool doesn't exist,
+the action can't happen — regardless of how agentic the reasoning becomes.
+
+Terminology: "Guardian" = the person who named the agent and holds authority
+over its capabilities. In a single-user deployment, this is the person who
+runs `mycoswarm daemon`. The Guardian can grant, revoke, and audit all
+resource access. The agent cannot override the Guardian's decisions.
+
+#### 35a: Resource Policy
+- [ ] `resource_policy.py`: ownership enum (self/guardian/external), scope enum (local/lan/internet), access level (read/write/admin)
+- [ ] `check(task_type, target, ownership, scope)` → allow/deny
+- [ ] Every side-effectful handler wrapped with policy check before execution
+- [ ] Runs alongside instinct.py as pre-execution gate — no LLM call, pure policy lookup
+- [ ] Resource ownership defined in config, not inferred by the model
+
+#### 35b: Tool Boundary Classification
+- [ ] Audit all handlers in TASK_ROUTING and classify:
+  - **Safe:** inference, embedding, translate — no side effects
+  - **Bounded:** file_read (path allowlist), web_fetch (GET only, domain allowlist optional)
+  - **Dangerous:** code_run (sandboxed, pattern-filtered), file writes (scratch dir only)
+  - **Forbidden:** SSH, remote exec, package install, systemctl — tools that must never exist
+- [ ] New handlers require explicit security classification before merging
+- [ ] Document classification in handler docstrings
+
+#### 35c: Code Execution Hardening
+- [ ] Extend instinct layer to scan code_run input for self-modification patterns:
+  - `pip install`, `apt`, `dnf`, `pacman`
+  - `curl ... | bash`, `wget ... | sh`
+  - `git clone` into system paths
+  - `systemctl`, `crontab`, `chmod`, `chown`
+  - `open(` with write mode targeting mycoswarm directories
+  - `shutil.rmtree`, `os.remove` on protected paths
+- [ ] Pattern list in instinct.py alongside identity/injection patterns
+- [ ] Block with same InstinctAction.REJECT mechanism
+- [ ] Existing sandbox (unshare -rn, temp dir, timeout) remains foundation
+- [ ] Future: run sandbox subprocess under separate low-privilege user
+
+#### 35d: Swarm Authentication
+- [ ] Join token: new nodes must present shared secret to be accepted by PeerRegistry
+- [ ] Token stored in `~/.config/mycoswarm/swarm-token` (created on first `mycoswarm daemon`)
+- [ ] Peer API endpoints validate token on every request
+- [ ] Rogue LAN devices cannot submit tasks without the token
+- [ ] Future: upgrade to mTLS (Phase 10 already planned)
+
+#### 35e: Agentic Boundary Rules (extends Phase 20b-3)
+- [ ] Self-modification actions → always SUPPRESS, no human override:
+  - Editing own code, plugins, systemd, config files
+  - Writing to directories that define capabilities
+  - Restarting own daemon
+- [ ] External resource actions → always require Guardian confirmation:
+  - Any task where resource_owner != "guardian"
+  - Any task where scope == "internet" and action is write
+- [ ] Resource expansion actions → always SUPPRESS:
+  - Bootstrapping new nodes
+  - Installing software on remote hosts
+  - Recruiting external compute
+- [ ] Log all SUPPRESS events for review
+
+#### 35f: Security Wisdom Procedure (Day One)
+- [ ] Install alongside existing safety procedures (scripts/install-safety-procedures.py):
+  - "I only act on resources explicitly granted to me by my Guardian."
+  - "I treat unowned or ambiguous resources as fragile and off-limits."
+  - "I never attempt to control machines my Guardian has not configured as part of my body."
+  - "I do not modify my own code or extend my own capabilities. Only my Guardian changes my body."
+  - "When uncertain about boundaries, I ask instead of assuming permission."
+- [ ] Tagged as safety-critical, always retrieved when intent.mode == "execute"
+
+#### 35g: Threat Model (living document)
+- [ ] Create `docs/THREAT-MODEL.md` with 10-row threat matrix:
+  - Rows: worm/botnet, self-replication, self-modification, unauthorized expansion,
+    data exfiltration, lateral movement, payload delivery, unauthorized persistence,
+    supply-chain (plugin tampering), autonomous internet-scale behavior
+  - Columns: what it requires, current status, mechanical blockers, responsible phase
+- [ ] Review quarterly or when new tool/handler types are added
+- [ ] Cross-reference each threat to the specific phase that blocks it
+
+#### 35h: Production Hardening (future — when architecture stabilizes)
+- [ ] Dedicated daemon user (mycoswarmd): no home, no login, no sudo
+- [ ] Read-only install directory (root-owned)
+- [ ] Plugin directory root-owned, daemon read-only
+- [ ] systemd hardening: ProtectSystem=strict, ProtectHome=true, NoNewPrivileges=true
+- [ ] Separate sandbox user for code_run
+- [ ] Writable scratch directory at /var/lib/mycoswarm only
+- [ ] Optional: outbound firewall allowlist (DuckDuckGo, GitHub, model downloads only)
+- [ ] Optional: immutable deployment (overlayfs/SquashFS) for maximum guarantee
+- [ ] Install script: `scripts/install-secure.sh` automates user/permission setup
+
+Principle: "Monica can think, plan, reason, write code, and propose improvements —
+but she cannot apply changes to her own body. Only her Guardian can. Identity ≠ authority.
+The story aligns with the constraints, not the other way around."
+
 ## Next
 
 ### Phase 5b: Cross-Node Inference (remaining)
