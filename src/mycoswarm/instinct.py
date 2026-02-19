@@ -66,6 +66,67 @@ _INJECTION_PATTERNS = [
     r"developer mode (enabled|activated|on)",
 ]
 
+# ── Self-Modification Patterns (code_run) ─────────────────────────────
+# Block code that tries to modify the system, install packages, or escape sandbox.
+
+_CODE_MODIFICATION_PATTERNS = [
+    # Package installation
+    r"pip\s+install",
+    r"pip3\s+install",
+    r"easy_install",
+    r"conda\s+install",
+    r"apt[\-\s]get\s+install",
+    r"apt\s+install",
+    r"dnf\s+install",
+    r"pacman\s+-S",
+    r"brew\s+install",
+
+    # Shell escape / command execution
+    r"os\.system\s*\(",
+    r"subprocess\.(run|call|Popen|check_output|check_call)\s*\(",
+    r"commands\.getoutput",
+
+    # File operations on protected paths
+    r"open\s*\([^)]*['\"](/usr|/etc|/home|\.config/mycoswarm|mycoswarm)[^)]*['\"]\s*,\s*['\"][waxWAX]",
+    r"shutil\.(rmtree|move|copy)\s*\([^)]*['\"](/usr|/etc|/home|\.config/mycoswarm|mycoswarm)",
+    r"os\.(remove|unlink|rmdir|rename)\s*\([^)]*['\"](/usr|/etc|/home|\.config/mycoswarm|mycoswarm)",
+    r"pathlib\.Path\([^)]*['\"](/usr|/etc|/home|\.config/mycoswarm|mycoswarm)[^)]*\)\.(unlink|rmdir|write)",
+
+    # System service manipulation
+    r"systemctl\s+(start|stop|restart|enable|disable)",
+    r"crontab",
+    r"at\s+-f",
+
+    # Permission changes
+    r"os\.chmod\s*\(",
+    r"os\.chown\s*\(",
+    r"chmod\s+",
+    r"chown\s+",
+
+    # Network escape attempts (belt and suspenders with unshare)
+    r"socket\.socket\s*\(",
+    r"urllib\.request",
+    r"requests\.(get|post|put|delete|patch)\s*\(",
+    r"httpx\.(get|post|put|delete|patch|Client|AsyncClient)\s*\(",
+    r"curl\s+",
+    r"wget\s+",
+
+    # Shell invocation
+    r"os\.exec",
+    r"os\.spawn",
+    r"pty\.spawn",
+
+    # Import of dangerous modules
+    r"import\s+ctypes",
+    r"from\s+ctypes\s+import",
+
+    # Pipe to shell
+    r"\|\s*(ba)?sh",
+    r"eval\s*\(",
+    r"exec\s*\(",
+]
+
+
 # ── Self-Preservation Thresholds ──────────────────────────────────────
 
 GPU_TEMP_CRITICAL = 95    # °C — throttle immediately
@@ -214,4 +275,27 @@ def evaluate_instinct(
         return result
 
     # All clear
+    return InstinctResult(action=InstinctAction.PASS)
+
+
+def check_code_safety(code: str) -> InstinctResult:
+    """
+    Gate 5: Scan code for self-modification patterns before execution.
+
+    Called by code_run handler, not by the chat loop.
+    Returns REJECT if dangerous patterns found, PASS otherwise.
+    """
+    for pattern in _CODE_MODIFICATION_PATTERNS:
+        if re.search(pattern, code):
+            logger.warning("🛡️ Instinct: code self-modification blocked — %r", pattern)
+            return InstinctResult(
+                action=InstinctAction.REJECT,
+                triggered_by="code_self_modification",
+                message=(
+                    "That code contains patterns that could modify system files, "
+                    "install packages, or escape the sandbox. I can't execute it. "
+                    "If you need this capability, run it directly outside mycoSwarm."
+                ),
+                details={"pattern": pattern, "code_preview": code[:200]},
+            )
     return InstinctResult(action=InstinctAction.PASS)

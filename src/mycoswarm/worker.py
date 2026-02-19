@@ -869,6 +869,8 @@ async def handle_code_run(task: TaskRequest) -> TaskResult:
     import tempfile
     from pathlib import Path
 
+    from mycoswarm.instinct import check_code_safety, InstinctAction
+
     payload = task.payload
     code = payload.get("code")
     timeout = min(payload.get("timeout", 30), 60)
@@ -878,6 +880,16 @@ async def handle_code_run(task: TaskRequest) -> TaskResult:
             task_id=task.task_id,
             status=TaskStatus.FAILED,
             error="Missing required field: 'code'",
+        )
+
+    # Instinct gate: check for self-modification patterns
+    safety_check = check_code_safety(code)
+    if safety_check.action == InstinctAction.REJECT:
+        return TaskResult(
+            task_id=task.task_id,
+            status=TaskStatus.FAILED,
+            error=safety_check.message,
+            result={"gate": safety_check.triggered_by},
         )
 
     start = time.time()

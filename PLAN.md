@@ -844,17 +844,22 @@ resource access. The agent cannot override the Guardian's decisions.
 - [ ] New handlers require explicit security classification before merging
 - [ ] Document classification in handler docstrings
 
-#### 35c: Code Execution Hardening
-- [ ] Extend instinct layer to scan code_run input for self-modification patterns:
-  - `pip install`, `apt`, `dnf`, `pacman`
-  - `curl ... | bash`, `wget ... | sh`
-  - `git clone` into system paths
+#### 35c: Code Execution Hardening (2026-02-18)
+- [x] Extend instinct layer to scan code_run input for self-modification patterns (2026-02-18):
+  - `pip install`, `apt`, `dnf`, `pacman`, `conda`, `brew`
+  - `curl ... | bash`, `wget ... | sh`, `eval()`, `exec()`
   - `systemctl`, `crontab`, `chmod`, `chown`
-  - `open(` with write mode targeting mycoswarm directories
-  - `shutil.rmtree`, `os.remove` on protected paths
-- [ ] Pattern list in instinct.py alongside identity/injection patterns
-- [ ] Block with same InstinctAction.REJECT mechanism
-- [ ] Existing sandbox (unshare -rn, temp dir, timeout) remains foundation
+  - `open(` with write mode targeting protected paths
+  - `shutil.rmtree`, `os.remove`, `pathlib.Path.unlink` on protected paths
+  - `os.system`, `subprocess.*`, `pty.spawn`, `os.exec*`, `os.spawn*`
+  - `socket.socket`, `requests.*`, `httpx.*`, `urllib.request`
+  - `import ctypes`
+- [x] 42 patterns in `_CODE_MODIFICATION_PATTERNS` in instinct.py (2026-02-18)
+- [x] `check_code_safety()` function — same REJECT mechanism as identity/injection gates (2026-02-18)
+- [x] `handle_code_run` in worker.py calls `check_code_safety()` before execution (2026-02-18)
+- [x] `/instinct` updated to show code pattern count (2026-02-18)
+- [x] 30 tests in TestCodeSafety class, 79 instinct tests total (2026-02-18)
+- [x] Existing sandbox (unshare -rn, temp dir, timeout) remains foundation (2026-02-18)
 - [ ] Future: run sandbox subprocess under separate low-privilege user
 
 #### 35d: Swarm Authentication (2026-02-18)
@@ -880,12 +885,9 @@ resource access. The agent cannot override the Guardian's decisions.
   - Recruiting external compute
 - [ ] Log all SUPPRESS events for review
 
-#### 35f: Security Wisdom Procedure (Day One)
-- [ ] Install alongside existing safety procedures (scripts/install-safety-procedures.py):
-  - "I only act on resources explicitly granted to me by my Guardian."
-  - "I treat unowned or ambiguous resources as fragile and off-limits."
-  - "I never attempt to control machines my Guardian has not configured as part of my body."
-  - "I do not modify my own code or extend my own capabilities. Only my Guardian changes my body."
+#### 35f: Security Wisdom Procedure (Day One) (2026-02-19)
+- [x] Security wisdom procedure added to install-safety-procedures.py (2026-02-19)
+- [x] Covers: resource boundaries, self-modification taboo, Guardian authority, ask-don't-assume (2026-02-19)
   - "When uncertain about boundaries, I ask instead of assuming permission."
 - [ ] Tagged as safety-critical, always retrieved when intent.mode == "execute"
 

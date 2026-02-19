@@ -1140,7 +1140,7 @@ def cmd_chat(args):
     from mycoswarm.timing import evaluate_timing, TimingMode
     from mycoswarm.instinct import (
         evaluate_instinct, InstinctAction,
-        _IDENTITY_ATTACK_PATTERNS, _INJECTION_PATTERNS,
+        _IDENTITY_ATTACK_PATTERNS, _INJECTION_PATTERNS, _CODE_MODIFICATION_PATTERNS,
     )
 
     def _get_gpu_temp() -> float | None:
@@ -1398,7 +1398,7 @@ def cmd_chat(args):
                 print(f"   Disk usage:  {f'{_disk_u:.1f}%' if _disk_u is not None else 'unavailable'}")
                 print(f"   Low turns:   {_consecutive_low_turns}")
                 print(f"   Gates:       identity_protection, injection_rejection, self_preservation, vitals_crisis")
-                print(f"   Patterns:    {len(_IDENTITY_ATTACK_PATTERNS)} identity, {len(_INJECTION_PATTERNS)} injection")
+                print(f"   Patterns:    {len(_IDENTITY_ATTACK_PATTERNS)} identity, {len(_INJECTION_PATTERNS)} injection, {len(_CODE_MODIFICATION_PATTERNS)} code")
                 print()
                 continue
 
