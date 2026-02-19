@@ -1391,25 +1391,27 @@ def cmd_chat(args):
                 continue
 
             elif cmd == "/history":
+                # Mapping: abbreviated display name → full key from to_dict()
+                _VITALS_COLS = [
+                    ("Ca", "calm"), ("Cl", "clarity"), ("Cu", "curiosity"),
+                    ("Cp", "compassion"), ("Co", "courage"), ("Cr", "creativity"),
+                    ("Cn", "connectedness"), ("Cf", "confidence"),
+                ]
                 print("\n📊 Vitals History (this session)")
-                print(f"  {'Turn':<6} {'Ca':<6} {'Cl':<6} {'Cu':<6} {'Cp':<6} {'Co':<6} {'Cr':<6} {'Cn':<6} {'Cf':<6}")
+                print(f"  {'Turn':<6} " + " ".join(f"{ab:<6}" for ab, _ in _VITALS_COLS))
                 print("  " + "─" * 54)
                 _hturn = 0
                 for _hm in messages:
                     if _hm.get("role") == "assistant" and "vitals" in _hm:
                         _hturn += 1
                         _hv = _hm["vitals"]
-                        print(
-                            f"  {_hturn:<6} "
-                            f"{_hv.get('calm', '—'):<6} "
-                            f"{_hv.get('clarity', '—'):<6} "
-                            f"{_hv.get('curiosity', '—'):<6} "
-                            f"{_hv.get('compassion', '—'):<6} "
-                            f"{_hv.get('courage', '—'):<6} "
-                            f"{_hv.get('creativity', '—'):<6} "
-                            f"{_hv.get('connectedness', '—'):<6} "
-                            f"{_hv.get('confidence', '—'):<6}"
+                        # Handle both Vitals dataclass and dict
+                        if hasattr(_hv, "to_dict"):
+                            _hv = _hv.to_dict()
+                        vals = " ".join(
+                            f"{_hv.get(full, '—'):<6}" for _, full in _VITALS_COLS
                         )
+                        print(f"  {_hturn:<6} {vals}")
                 if _hturn == 0:
                     print("  No vitals recorded yet.")
                 print()
