@@ -105,3 +105,10 @@ for r in "${RESULTS[@]}"; do
     echo "  $r"
 done
 echo ""
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━"
+echo "📦 Don't forget:"
+echo "  python -m build && twine upload dist/*"
+echo "  git tag v\$(python -c 'import mycoswarm; print(mycoswarm.__version__)')"
+echo "  git push --tags"
+echo "━━━━━━━━━━━━━━━━━━━━"
