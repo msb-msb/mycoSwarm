@@ -1228,7 +1228,9 @@ def cmd_chat(args):
         )
     _no_tags_rule = (
         "\n\nNever output internal tags like [P1], [P2], [D1], [S1] in your responses. "
-        "These are retrieval markers for your context — use the information silently."
+        "These are retrieval markers for your context — use the information silently. "
+        "Do not cite vitals scores (Ca, Cl, Cu, etc.) in conversation unless explicitly "
+        "asked for them. The Guardian can see vitals in the footer."
     )
     system_prompt = (identity_prompt + vitals_ctx + "\n\n" + memory_prompt + _no_tags_rule) if memory_prompt else (identity_prompt + _no_tags_rule)
     if not messages:
@@ -2258,7 +2260,7 @@ def cmd_chat(args):
                 import re as _ptag_re
                 proc_text = format_procedures_for_prompt(procedure_hits)
                 # Strip [P1], [P2] etc. — these leak into Monica's responses
-                proc_text = _ptag_re.sub(r'\[P\d+\]\s*', '', proc_text)
+                proc_text = _ptag_re.sub(r'\[[A-Z]\d+\]\s*', '', proc_text)
                 rag_context_parts.append(
                     "\nRelevant procedures (follow these silently, do NOT "
                     "reference procedure tags or numbers in your response):\n" + proc_text
@@ -2309,7 +2311,7 @@ def cmd_chat(args):
                     from mycoswarm.memory import format_procedures_for_prompt, reference_procedure
                     import re as _ptag_re2
                     proc_text = format_procedures_for_prompt(procedure_hits)
-                    proc_text = _ptag_re2.sub(r'\[P\d+\]\s*', '', proc_text)
+                    proc_text = _ptag_re2.sub(r'\[[A-Z]\d+\]\s*', '', proc_text)
                     rag_context_parts.append(
                         "\nRelevant procedures (follow these silently, do NOT "
                         "reference procedure tags or numbers in your response):\n" + proc_text
