@@ -1392,16 +1392,34 @@ def cmd_chat(args):
                 _article_state = ArticleState.DRAFTING
 
                 messages.append({"role": "system", "content": (
-                    "## Research Results\n\n"
-                    "Use ONLY these facts and numbers in your draft. Do NOT invent specs, "
-                    "prices, or benchmarks. If data is missing, say so — don't guess.\n\n"
-                    f"{_research_text}"
+                    "## MANDATORY RESEARCH DATA\n\n"
+                    "The following research results are your ONLY source of facts "
+                    "for this article.\n\n"
+                    "RULES:\n"
+                    "1. Every spec, benchmark, price, and model size in your article "
+                    "MUST come from this research data or from the hardware context "
+                    "provided earlier.\n"
+                    "2. If a fact is NOT in the research data or hardware context, "
+                    'write "[DATA NEEDED]" instead of guessing.\n'
+                    "3. NEVER invent model sizes, VRAM numbers, benchmark scores, "
+                    "or tok/s.\n"
+                    "4. When you use a fact from research, it should be specific — "
+                    "include the actual number, not a vague description.\n"
+                    "5. The VRAM requirements table and comparison tables MUST use "
+                    "real numbers from this research, not estimates.\n\n"
+                    f"RESEARCH RESULTS:\n{_research_text}\n\n"
+                    "If the research above doesn't cover something in the outline, "
+                    'note it as "[DATA NEEDED]" — the Guardian will fill gaps '
+                    "manually. Do NOT hallucinate."
                 )})
 
                 user_input = (
-                    "Write the full article draft now using the approved outline, "
-                    "research results, and hardware context. Output the complete "
-                    "markdown including Hugo frontmatter in a ```markdown block."
+                    "Write the full article draft now. Use the approved outline as "
+                    "structure. Pull ALL specs, benchmarks, and numbers from the "
+                    "MANDATORY RESEARCH DATA above. Include the hardware context "
+                    "(your actual Ollama models and tok/s). Format the complete "
+                    "article as a ```markdown block with Hugo frontmatter. "
+                    "Remember: no invented numbers. Use [DATA NEEDED] for gaps."
                 )
                 print(f"✍️  Article mode: DRAFT phase\n")
                 # Fall through to inference
@@ -1816,6 +1834,23 @@ def cmd_chat(args):
                 _article_state = ArticleState.OUTLINING
                 _article_topic = _write_topic
 
+                # Duplicate article check via library search
+                try:
+                    from mycoswarm.library import search as _lib_search
+                    _dup_results = _lib_search(_write_topic, n_results=5)
+                    for _dup_chunk in _dup_results:
+                        _dup_text = _dup_chunk.get("text", "")
+                        if "[x]" in _dup_text.lower() and _write_topic.lower().split()[0] in _dup_text.lower():
+                            print(
+                                f"\n⚠️  This topic may already be published!"
+                                f"\n   Found in library:"
+                                f"\n   {_dup_text.strip()[:200]}"
+                                f"\n   Check before proceeding. Type /write cancel to abort.\n"
+                            )
+                            break
+                except Exception:
+                    pass  # Library not available — skip check
+
                 # Article mode system prompt
                 _article_prompt = (
                     f"You are now in ARTICLE WRITING MODE for InsiderLLM.com.\n\n"
@@ -1854,6 +1889,11 @@ def cmd_chat(args):
                     '- Tone: "I figured this out so you don\'t have to"\n\n'
                     "TARGET AUDIENCE: Hobbyists and developers with modest hardware "
                     "who want to run AI locally. Budget-conscious, practical, not enterprise.\n\n"
+                    "DUPLICATE CHECK: Before presenting your outline, search your document "
+                    "library for this topic. If it appears as already published (marked with "
+                    "[x] in the content plan), tell the Guardian immediately and suggest a "
+                    "related unpublished topic from the plan instead. Do NOT outline an "
+                    "article that's already been written.\n\n"
                     "Do NOT publish anything. Save the draft for Guardian review."
                 )
                 messages.append({"role": "system", "content": _article_prompt})

@@ -603,6 +603,8 @@ Reference: docs/ARCHITECTURE-COGNITIVE.md — Section 6
 - [x] Web search integration — 3-5 DuckDuckGo queries between outline approval and drafting (2026-02-20)
 - [x] Article state machine (INACTIVE → OUTLINING → RESEARCHING → DRAFTING) with visual prompt indicators (2026-02-20)
 - [x] /write cancel to exit article mode at any time (2026-02-20)
+- [x] /write research injection strengthened — MANDATORY data rules, [DATA NEEDED] pattern (2026-02-20)
+- [x] /write duplicate article detection — library search + warning on activation (2026-02-20)
 
 #### 30b: White Paper
 - [ ] **"Cognitive Architecture for Distributed Local AI: Integrating Psychological Models with RAG"** — 15-20 pages, academic-adjacent
