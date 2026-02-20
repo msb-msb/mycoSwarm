@@ -962,14 +962,139 @@ def _latest_session_name() -> str | None:
     return sessions[0]["name"] if sessions else None
 
 
-def _check_draft_save(response_text: str) -> None:
-    """Detect a markdown fenced block in article mode and offer to save it."""
+from enum import Enum as _Enum
+
+
+class ArticleState(_Enum):
+    INACTIVE = "inactive"
+    OUTLINING = "outlining"
+    RESEARCHING = "researching"
+    DRAFTING = "drafting"
+
+_article_state = ArticleState.INACTIVE
+_article_topic = ""
+
+
+def _gather_hardware_context() -> str:
+    """Gather local hardware data for article context."""
+    import subprocess
+    context_parts = []
+
+    # 1. Ollama model list
+    try:
+        result = subprocess.run(
+            ["ollama", "list"],
+            capture_output=True, text=True, timeout=10,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            context_parts.append("## Installed Ollama Models (this node)\n")
+            context_parts.append(f"```\n{result.stdout.strip()}\n```\n")
+    except Exception:
+        pass
+
+    # 2. Node hardware from daemon /status
+    try:
+        import httpx
+        headers = _swarm_headers()
+        resp = httpx.get("http://localhost:7890/status", headers=headers, timeout=5)
+        if resp.status_code == 200:
+            status = resp.json()
+            context_parts.append("## This Node Hardware\n")
+            context_parts.append(f"- Hostname: {status.get('hostname', 'unknown')}")
+            context_parts.append(f"- GPU: {status.get('gpu', 'none')}")
+            context_parts.append(f"- VRAM: {status.get('vram_free_mb', '?')}/{status.get('vram_total_mb', '?')} MB free")
+            context_parts.append(f"- CPU: {status.get('cpu_model', 'unknown')} ({status.get('cpu_cores', '?')} cores)")
+            context_parts.append(f"- RAM: {status.get('ram_used_mb', '?')}/{status.get('ram_total_mb', '?')} MB")
+            context_parts.append(f"- Tier: {status.get('node_tier', 'unknown')}")
+            context_parts.append("")
+
+            # 3. Swarm peer overview
+            peer_count = status.get("peers", 0)
+            if peer_count > 0:
+                try:
+                    pr = httpx.get("http://localhost:7890/peers", headers=headers, timeout=5)
+                    if pr.status_code == 200:
+                        peers = pr.json()
+                        context_parts.append(f"## Swarm: {len(peers) + 1} nodes total\n")
+                        for p in peers:
+                            name = p.get("hostname", "unknown")
+                            tier = p.get("node_tier", "unknown")
+                            gpu = p.get("gpu_name") or "no GPU"
+                            context_parts.append(f"- {name}: [{tier}] {gpu}")
+                        context_parts.append("")
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+    if not context_parts:
+        return ""
+
+    header = (
+        "## Hardware Context (from this mycoSwarm node)\n"
+        "Use this real data when writing about hardware, models, or VRAM.\n"
+        "These are actual specs from the author's setup.\n\n"
+    )
+    return header + "\n".join(context_parts)
+
+
+def _generate_research_queries(topic: str) -> list[str]:
+    """Generate 3-5 search queries from the article topic."""
+    queries = [topic]
+    queries.append(f"{topic} specs benchmarks 2026")
+    queries.append(f"{topic} vs alternatives comparison")
+
+    hardware_keywords = [
+        "gpu", "vram", "model", "llm", "rtx", "deepseek",
+        "llama", "mistral", "qwen", "stable diffusion", "flux",
+    ]
+    if any(kw in topic.lower() for kw in hardware_keywords):
+        queries.append(f"{topic} VRAM requirements local")
+
+    buying_keywords = ["buying", "guide", "budget", "vs", "compare", "best"]
+    if any(kw in topic.lower() for kw in buying_keywords):
+        queries.append(f"{topic} price 2026")
+
+    return queries[:5]
+
+
+def _run_article_research(queries: list[str]) -> str:
+    """Run web searches and compile results into a research context block."""
+    from mycoswarm.solo import web_search_solo
+
+    all_results = []
+    for query in queries:
+        try:
+            hits = web_search_solo(query, max_results=3)
+            for r in hits:
+                all_results.append({
+                    "query": query,
+                    "title": r.get("title", ""),
+                    "snippet": r.get("snippet", ""),
+                    "url": r.get("url", ""),
+                })
+        except Exception:
+            pass
+
+    if not all_results:
+        return "No research results found. Draft based on existing knowledge and hardware context."
+
+    context = ""
+    for r in all_results:
+        context += f"**{r['title']}** ({r['url']})\n"
+        context += f"  {r['snippet']}\n\n"
+
+    return context
+
+
+def _check_draft_save(response_text: str) -> bool:
+    """Detect a markdown fenced block and offer to save it. Returns True if saved."""
     import os
     import re
 
     md_match = re.search(r'```(?:markdown|md)\n(.*?)```', response_text, re.DOTALL)
     if not md_match:
-        return
+        return False
 
     content = md_match.group(1)
     drafts_dir = os.path.expanduser("~/insiderllm-drafts")
@@ -993,10 +1118,12 @@ def _check_draft_save(response_text: str) -> None:
             with open(filepath, 'w') as f:
                 f.write(content)
             print(f"   ✅ Draft saved: {filepath}")
+            return True
         else:
             print("   Draft not saved.")
     except (EOFError, KeyboardInterrupt):
         print("\n   Draft not saved.")
+    return False
 
 
 def cmd_chat(args):
@@ -1205,7 +1332,15 @@ def cmd_chat(args):
     while True:
         try:
             sys.stdout.flush()
-            user_input = input("\n🍄> ").strip()
+            if _article_state != ArticleState.INACTIVE:
+                _state_icon = {
+                    ArticleState.OUTLINING: "📝 OUTLINE",
+                    ArticleState.RESEARCHING: "🔍 RESEARCH",
+                    ArticleState.DRAFTING: "✍️  DRAFT",
+                }.get(_article_state, "")
+                user_input = input(f"\n🍄 [{_state_icon}]> ").strip()
+            else:
+                user_input = input("\n🍄> ").strip()
         except (EOFError, KeyboardInterrupt):
             print()
             _save()
@@ -1229,6 +1364,44 @@ def cmd_chat(args):
         if _instinct.action == InstinctAction.WARN:
             print(f"\n⚠️ {_instinct.message}")
         # WARN falls through to normal processing
+
+        # --- Article mode state transitions ---
+        if _article_state == ArticleState.OUTLINING:
+            _approval_words = {
+                "go", "approved", "yes", "lgtm", "looks good",
+                "draft it", "write it", "go ahead",
+            }
+            if user_input.strip().lower() in _approval_words:
+                # Transition: OUTLINING → RESEARCHING → DRAFTING
+                _article_state = ArticleState.RESEARCHING
+                print(f"\n✍️  Article mode: RESEARCH phase")
+
+                _rq = _generate_research_queries(_article_topic)
+                print(f"🔍 Running {len(_rq)} searches...")
+                for _ri, _rqi in enumerate(_rq, 1):
+                    print(f"   [{_ri}/{len(_rq)}] {_rqi}")
+
+                _research_text = _run_article_research(_rq)
+                _research_count = _research_text.count("**")
+                print(f"   ✅ Research complete ({_research_count} results)\n")
+
+                _article_state = ArticleState.DRAFTING
+
+                messages.append({"role": "system", "content": (
+                    "## Research Results\n\n"
+                    "Use ONLY these facts and numbers in your draft. Do NOT invent specs, "
+                    "prices, or benchmarks. If data is missing, say so — don't guess.\n\n"
+                    f"{_research_text}"
+                )})
+
+                user_input = (
+                    "Write the full article draft now using the approved outline, "
+                    "research results, and hardware context. Output the complete "
+                    "markdown including Hugo frontmatter in a ```markdown block."
+                )
+                print(f"✍️  Article mode: DRAFT phase\n")
+                # Fall through to inference
+            # else: user is giving outline feedback — falls through to normal inference
 
         # --- Slash commands ---
         if user_input.startswith("/"):
@@ -1612,11 +1785,23 @@ def cmd_chat(args):
                 continue
 
             elif cmd == "/write":
-                # Extract topic from: /write "topic" or /write topic
+                # Handle cancel
+                _write_rest = user_input.strip()[6:].strip().lower()
+                if _write_rest in ("off", "cancel"):
+                    if _article_state != ArticleState.INACTIVE:
+                        _article_state = ArticleState.INACTIVE
+                        _article_topic = ""
+                        print("\n✍️  Article mode cancelled.\n")
+                    else:
+                        print("\n✍️  Not in article mode.\n")
+                    continue
+
+                # Extract topic
                 _write_topic = user_input.strip()[6:].strip().strip('"').strip("'")
                 if not _write_topic:
                     print("\n✍️  Usage: /write \"Article topic or title\"")
                     print("   Example: /write \"DeepSeek Models Guide\"")
+                    print("   Cancel:  /write cancel")
                     print()
                     continue
 
@@ -1624,48 +1809,72 @@ def cmd_chat(args):
                 _write_drafts_dir = _write_os.path.expanduser("~/insiderllm-drafts")
                 _write_os.makedirs(_write_drafts_dir, exist_ok=True)
 
+                _article_state = ArticleState.OUTLINING
+                _article_topic = _write_topic
+
+                # Article mode system prompt
                 _article_prompt = (
                     f"You are now in ARTICLE WRITING MODE for InsiderLLM.com.\n\n"
                     f"Topic: {_write_topic}\n\n"
-                    "Follow this workflow:\n"
-                    "1. First, present an OUTLINE with:\n"
-                    "   - Proposed title (clear, specific, includes primary keyword)\n"
-                    "   - Primary keyword and 3-5 secondary keywords\n"
-                    "   - Article type (buying guide / tutorial / comparison / review / explainer)\n"
-                    "   - H2/H3 structure\n"
-                    "   - Estimated word count\n\n"
-                    "2. Wait for approval before drafting.\n\n"
-                    "3. When approved, write the FULL ARTICLE in markdown with:\n"
-                    "   - Hugo frontmatter: title, date, description (150-160 chars), tags, social blurb\n"
-                    "   - Quick Answer box at top (for skimmers)\n"
-                    "   - Tables for any comparison of 3+ items\n"
-                    "   - Image placeholders: ![Image: description](placeholder.png)\n"
-                    "   - Internal link placeholders: [INTERNAL: related topic]\n"
-                    "   - 2-3 outbound links to authoritative sources\n"
-                    "   - Actionable conclusion, no fluff summary\n\n"
+                    "RIGHT NOW: Present an OUTLINE only. Do NOT draft the article yet.\n\n"
+                    "Your outline must include:\n"
+                    "- Proposed title (clear, specific, includes primary keyword)\n"
+                    "- Primary keyword and 3-5 secondary keywords\n"
+                    "- Article type (buying guide / tutorial / comparison / review / explainer)\n"
+                    "- H2/H3 structure\n"
+                    "- Estimated word count\n\n"
+                    "Wait for Guardian approval before drafting.\n\n"
+                    "When you eventually draft, include:\n"
+                    "- Hugo frontmatter: title, date, description (150-160 chars), tags, social blurb\n"
+                    "- Quick Answer box at top (for skimmers)\n"
+                    "- Tables for any comparison of 3+ items\n"
+                    "- Image placeholders: ![Image: description](placeholder.png)\n"
+                    "- Internal link placeholders: [INTERNAL: related topic]\n"
+                    "- 2-3 outbound links to authoritative sources\n"
+                    "- Actionable conclusion, no fluff summary\n"
+                    "- Wrap the full article in a ```markdown fenced block\n\n"
+                    "CRITICAL RULES FOR ARTICLE MODE:\n"
+                    "- You are in a structured pipeline: outline → research → draft\n"
+                    "- Do NOT present additional outlines after the draft\n"
+                    "- Do NOT invent specs, prices, benchmarks, or tok/s numbers\n"
+                    "- Use ONLY data from: research results, hardware context, or your session history\n"
+                    '- If you don\'t have a number, write "benchmark data needed" — never guess\n'
+                    "- Do NOT include procedure tags like [P1] or [P3] in article text\n"
+                    '- Do NOT start with "In this article, we will explore..."\n'
+                    "- Start with a concrete hook: a number, a problem, a direct answer\n\n"
                     "VOICE RULES:\n"
-                    '- Direct. No "In this article, we will explore..."\n'
-                    '- Opinionated. Take a stance. "The RTX 3090 is the sweet spot" not "it depends"\n'
-                    "- Practical. Every claim helps them make a decision or do something\n"
-                    "- Specific. Include numbers: benchmarks, prices, tok/s, VRAM\n"
-                    "- Honest. Mention real tradeoffs and limitations\n"
+                    "- Direct and opinionated. Take a stance.\n"
+                    "- Practical. Every claim helps the reader make a decision.\n"
+                    "- Specific. Include real numbers.\n"
+                    "- Honest. Mention real tradeoffs.\n"
                     '- Tone: "I figured this out so you don\'t have to"\n\n'
-                    "TARGET AUDIENCE: Hobbyists and developers with modest hardware who want "
-                    "to run AI locally. Budget-conscious, practical, not enterprise.\n\n"
-                    "When the full article is ready, wrap it in a ```markdown fenced block "
-                    "so it can be saved automatically.\n\n"
+                    "TARGET AUDIENCE: Hobbyists and developers with modest hardware "
+                    "who want to run AI locally. Budget-conscious, practical, not enterprise.\n\n"
                     "Do NOT publish anything. Save the draft for Guardian review."
                 )
-
                 messages.append({"role": "system", "content": _article_prompt})
-                print(f"\n✍️  Article mode activated: \"{_write_topic}\"")
-                print(f"   Drafts will be saved to: {_write_drafts_dir}/")
-                print(f"   Searching for style guide and content plan...\n")
 
-                # Replace user_input so inference runs with this as the query
+                # Inject hardware context
+                _hw_context = _gather_hardware_context()
+                if _hw_context:
+                    messages.append({"role": "system", "content": (
+                        "## Your Hardware (Real Data)\n\n"
+                        "You are writing from firsthand experience on this hardware. "
+                        "Use these real numbers instead of guessing. When you cite "
+                        "specs or tok/s, note they come from actual testing on your setup.\n\n"
+                        f"{_hw_context}"
+                    )})
+
+                print(f"\n✍️  Article mode: OUTLINE phase")
+                print(f"   Topic: \"{_write_topic}\"")
+                print(f"   Drafts will be saved to: {_write_drafts_dir}/")
+                if _hw_context:
+                    print("   📊 Hardware context loaded from swarm")
+                print("   Type feedback to revise, or 'go' to start research.\n")
+
+                # Set user_input to trigger outline generation
                 user_input = (
-                    f"Research this topic and present an outline for an InsiderLLM "
-                    f"article about: {_write_topic}"
+                    f"Present an outline for an InsiderLLM article about: {_write_topic}"
                 )
                 # Fall through to inference — do NOT continue
 
@@ -2205,7 +2414,11 @@ def cmd_chat(args):
                 _consecutive_low_turns = 0
 
             # --- Check for article draft to save ---
-            _check_draft_save(full_text)
+            if _check_draft_save(full_text):
+                if _article_state != ArticleState.INACTIVE:
+                    _article_state = ArticleState.INACTIVE
+                    _article_topic = ""
+                    print("✍️  Article mode complete.\n")
 
             # --- Update turn tracking ---
             _last_turn_time = _dt_timing.now()
@@ -2328,7 +2541,11 @@ def cmd_chat(args):
             _consecutive_low_turns = 0
 
         # --- Check for article draft to save ---
-        _check_draft_save(full_text)
+        if _check_draft_save(full_text):
+            if _article_state != ArticleState.INACTIVE:
+                _article_state = ArticleState.INACTIVE
+                _article_topic = ""
+                print("✍️  Article mode complete.\n")
 
         # --- Update turn tracking ---
         _last_turn_time = _dt_timing.now()

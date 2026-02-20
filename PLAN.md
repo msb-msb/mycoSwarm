@@ -598,6 +598,11 @@ Reference: docs/ARCHITECTURE-COGNITIVE.md — Section 6
 - [x] InsiderLLM writing procedure installed in wisdom layer (2026-02-19)
 - [x] InsiderLLM project + content plan ingested into document library (2026-02-20)
 - [x] Auto-save detection: markdown fenced blocks in responses trigger save prompt (2026-02-20)
+- [x] /write pipeline: outline → approve → web research → draft → save (2026-02-20)
+- [x] Hardware self-injection in article mode — Ollama models, GPU/VRAM/CPU, swarm peers (2026-02-20)
+- [x] Web search integration — 3-5 DuckDuckGo queries between outline approval and drafting (2026-02-20)
+- [x] Article state machine (INACTIVE → OUTLINING → RESEARCHING → DRAFTING) with visual prompt indicators (2026-02-20)
+- [x] /write cancel to exit article mode at any time (2026-02-20)
 
 #### 30b: White Paper
 - [ ] **"Cognitive Architecture for Distributed Local AI: Integrating Psychological Models with RAG"** — 15-20 pages, academic-adjacent
