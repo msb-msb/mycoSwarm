@@ -962,6 +962,43 @@ def _latest_session_name() -> str | None:
     return sessions[0]["name"] if sessions else None
 
 
+def _check_draft_save(response_text: str) -> None:
+    """Detect a markdown fenced block in article mode and offer to save it."""
+    import os
+    import re
+
+    md_match = re.search(r'```(?:markdown|md)\n(.*?)```', response_text, re.DOTALL)
+    if not md_match:
+        return
+
+    content = md_match.group(1)
+    drafts_dir = os.path.expanduser("~/insiderllm-drafts")
+    os.makedirs(drafts_dir, exist_ok=True)
+
+    # Try to extract title from Hugo frontmatter
+    title_match = re.search(r'^title:\s*["\']?(.+?)["\']?\s*$', content, re.MULTILINE)
+    if title_match:
+        slug = title_match.group(1).lower()
+    else:
+        # Fall back to first H1
+        h1_match = re.search(r'^#\s+(.+)$', content, re.MULTILINE)
+        slug = h1_match.group(1).lower() if h1_match else "untitled-draft"
+    slug = re.sub(r'[^a-z0-9]+', '-', slug).strip('-')
+
+    filepath = os.path.join(drafts_dir, f"{slug}.md")
+    print(f"\n💾 Save draft to {filepath}? (y/n)")
+    try:
+        save_input = input("🍄> ").strip().lower()
+        if save_input in ('y', 'yes'):
+            with open(filepath, 'w') as f:
+                f.write(content)
+            print(f"   ✅ Draft saved: {filepath}")
+        else:
+            print("   Draft not saved.")
+    except (EOFError, KeyboardInterrupt):
+        print("\n   Draft not saved.")
+
+
 def cmd_chat(args):
     """Interactive chat with the swarm."""
     from datetime import datetime
@@ -1079,9 +1116,9 @@ def cmd_chat(args):
     if messages:
         print(f"   Resumed: {len(messages)} messages")
     if daemon_up:
-        print("   /model /peers /rag /library /auto /remember /memories /stale /forget /identity /name /vitals /timing /clear /quit")
+        print("   /model /peers /rag /library /auto /write /drafts /remember /memories /stale /forget /identity /name /vitals /timing /clear /quit")
     else:
-        print("   /model /rag /library /auto /remember /memories /stale /forget /identity /name /vitals /timing /clear /quit")
+        print("   /model /rag /library /auto /write /drafts /remember /memories /stale /forget /identity /name /vitals /timing /clear /quit")
     print(f"{'─' * 50}")
 
     auto_tools = True  # agentic tool routing on by default
@@ -1555,6 +1592,82 @@ def cmd_chat(args):
                 state = "on" if auto_tools else "off"
                 print(f"   Auto tool use: {state}")
                 continue
+
+            elif cmd == "/drafts":
+                import os as _drafts_os
+                _drafts_dir = _drafts_os.path.expanduser("~/insiderllm-drafts")
+                if not _drafts_os.path.exists(_drafts_dir):
+                    print("\n✍️  No drafts directory yet. Use /write to create your first article.")
+                else:
+                    _draft_files = sorted(_drafts_os.listdir(_drafts_dir))
+                    if not _draft_files:
+                        print("\n✍️  No drafts yet. Use /write to create your first article.")
+                    else:
+                        print(f"\n✍️  Drafts ({len(_draft_files)}):")
+                        for _df in _draft_files:
+                            _dfp = _drafts_os.path.join(_drafts_dir, _df)
+                            _dfs = _drafts_os.path.getsize(_dfp)
+                            print(f"   {_df} ({_dfs:,} bytes)")
+                print()
+                continue
+
+            elif cmd == "/write":
+                # Extract topic from: /write "topic" or /write topic
+                _write_topic = user_input.strip()[6:].strip().strip('"').strip("'")
+                if not _write_topic:
+                    print("\n✍️  Usage: /write \"Article topic or title\"")
+                    print("   Example: /write \"DeepSeek Models Guide\"")
+                    print()
+                    continue
+
+                import os as _write_os
+                _write_drafts_dir = _write_os.path.expanduser("~/insiderllm-drafts")
+                _write_os.makedirs(_write_drafts_dir, exist_ok=True)
+
+                _article_prompt = (
+                    f"You are now in ARTICLE WRITING MODE for InsiderLLM.com.\n\n"
+                    f"Topic: {_write_topic}\n\n"
+                    "Follow this workflow:\n"
+                    "1. First, present an OUTLINE with:\n"
+                    "   - Proposed title (clear, specific, includes primary keyword)\n"
+                    "   - Primary keyword and 3-5 secondary keywords\n"
+                    "   - Article type (buying guide / tutorial / comparison / review / explainer)\n"
+                    "   - H2/H3 structure\n"
+                    "   - Estimated word count\n\n"
+                    "2. Wait for approval before drafting.\n\n"
+                    "3. When approved, write the FULL ARTICLE in markdown with:\n"
+                    "   - Hugo frontmatter: title, date, description (150-160 chars), tags, social blurb\n"
+                    "   - Quick Answer box at top (for skimmers)\n"
+                    "   - Tables for any comparison of 3+ items\n"
+                    "   - Image placeholders: ![Image: description](placeholder.png)\n"
+                    "   - Internal link placeholders: [INTERNAL: related topic]\n"
+                    "   - 2-3 outbound links to authoritative sources\n"
+                    "   - Actionable conclusion, no fluff summary\n\n"
+                    "VOICE RULES:\n"
+                    '- Direct. No "In this article, we will explore..."\n'
+                    '- Opinionated. Take a stance. "The RTX 3090 is the sweet spot" not "it depends"\n'
+                    "- Practical. Every claim helps them make a decision or do something\n"
+                    "- Specific. Include numbers: benchmarks, prices, tok/s, VRAM\n"
+                    "- Honest. Mention real tradeoffs and limitations\n"
+                    '- Tone: "I figured this out so you don\'t have to"\n\n'
+                    "TARGET AUDIENCE: Hobbyists and developers with modest hardware who want "
+                    "to run AI locally. Budget-conscious, practical, not enterprise.\n\n"
+                    "When the full article is ready, wrap it in a ```markdown fenced block "
+                    "so it can be saved automatically.\n\n"
+                    "Do NOT publish anything. Save the draft for Guardian review."
+                )
+
+                messages.append({"role": "system", "content": _article_prompt})
+                print(f"\n✍️  Article mode activated: \"{_write_topic}\"")
+                print(f"   Drafts will be saved to: {_write_drafts_dir}/")
+                print(f"   Searching for style guide and content plan...\n")
+
+                # Replace user_input so inference runs with this as the query
+                user_input = (
+                    f"Research this topic and present an outline for an InsiderLLM "
+                    f"article about: {_write_topic}"
+                )
+                # Fall through to inference — do NOT continue
 
             elif user_input.startswith("/procedure"):
                 parts = user_input.split(maxsplit=1)
@@ -2091,6 +2204,9 @@ def cmd_chat(args):
             else:
                 _consecutive_low_turns = 0
 
+            # --- Check for article draft to save ---
+            _check_draft_save(full_text)
+
             # --- Update turn tracking ---
             _last_turn_time = _dt_timing.now()
             _turn_count += 1
@@ -2210,6 +2326,9 @@ def cmd_chat(args):
             _consecutive_low_turns += 1
         else:
             _consecutive_low_turns = 0
+
+        # --- Check for article draft to save ---
+        _check_draft_save(full_text)
 
         # --- Update turn tracking ---
         _last_turn_time = _dt_timing.now()

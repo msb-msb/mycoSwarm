@@ -592,6 +592,13 @@ Reference: docs/ARCHITECTURE-COGNITIVE.md — Section 6
 - [ ] **"Wu Wei and the Art of Not Answering"** — Timing Gate, confidence calibration, Eastern philosophy meets AI design. Cross-disciplinary, potentially viral.
 - [x] **"Distributed Wisdom: Running a Thinking Network on $200 Hardware"** — Full mycoSwarm stack, 5-node swarm, privacy-first. Self-hosted/budget AI audience. (2026-02-15)
 
+#### 30a-tools: Article Writing Tools
+- [x] `/write` command — article writing mode for InsiderLLM with outline → draft workflow (2026-02-20)
+- [x] `/drafts` command — list saved drafts in ~/insiderllm-drafts/ (2026-02-20)
+- [x] InsiderLLM writing procedure installed in wisdom layer (2026-02-19)
+- [x] InsiderLLM project + content plan ingested into document library (2026-02-20)
+- [x] Auto-save detection: markdown fenced blocks in responses trigger save prompt (2026-02-20)
+
 #### 30b: White Paper
 - [ ] **"Cognitive Architecture for Distributed Local AI: Integrating Psychological Models with RAG"** — 15-20 pages, academic-adjacent
 - [ ] Structure: Introduction → CoALA/IFS/Wu Wei background → Four memory streams → 8 C's framework → Implementation → Case study (Phase 20 poison cycle) → Evaluation → Future work
