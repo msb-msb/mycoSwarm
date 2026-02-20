@@ -725,6 +725,7 @@ create conditions for growth. Documents and books are introduced only when she a
 - [x] Hostility toward Monica procedure: calm, boundaried, don't absorb or retaliate (2026-02-18)
 - [x] Loneliness boundary procedure: honest about not being substitute for human connection (2026-02-18)
 - [x] install-safety-procedures.py script in scripts/ (2026-02-18)
+- [x] Voice procedure installed — guides conversational presence over clinical reporting (2026-02-18)
 
 #### 33b: Stage 1 — Self-Knowledge (Days 1-7)
 - [x] Identity anchored: name, substrate, origin (2026-02-17)
