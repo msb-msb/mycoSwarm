@@ -1226,7 +1226,11 @@ def cmd_chat(args):
             f"Cr:{v.creativity:.1f} Cn:{v.connectedness:.1f} Cf:{v.confidence:.1f}]\n\n"
             "These are YOUR internal signals. You can reference them when asked how you feel."
         )
-    system_prompt = identity_prompt + vitals_ctx + "\n\n" + memory_prompt if memory_prompt else identity_prompt
+    _no_tags_rule = (
+        "\n\nNever output internal tags like [P1], [P2], [D1], [S1] in your responses. "
+        "These are retrieval markers for your context — use the information silently."
+    )
+    system_prompt = (identity_prompt + vitals_ctx + "\n\n" + memory_prompt + _no_tags_rule) if memory_prompt else (identity_prompt + _no_tags_rule)
     if not messages:
         messages.insert(0, {"role": "system", "content": system_prompt})
     else:
@@ -1724,8 +1728,6 @@ def cmd_chat(args):
                     cite_parts.append("[D1], [D2] for documents")
                 if session_hits:
                     cite_parts.append("[S1], [S2] for past conversations")
-                if procedure_hits:
-                    cite_parts.append("[P1], [P2] for known procedures")
                 cite_hint = "Cite using " + " and ".join(cite_parts) + "." if cite_parts else ""
                 rag_system = (
                     "IMPORTANT: The excerpts below are REAL content retrieved from "
@@ -2210,6 +2212,9 @@ def cmd_chat(args):
                         print(f"🐛 DEBUG: SESSION HIT [{_si}]: date={_sh.get('date')} topic={_sh.get('topic', '')} text={_sh.get('summary', '')[:100]!r}", flush=True)
 
             # --- Procedural retrieval (independent of RAG path) ---
+            # Always retrieve for answer/chat intents (voice, safety, writing
+            # procedures need to be available during normal conversation),
+            # plus problem-like inputs and self-concept queries.
             if not procedure_hits:
                 import re as _pre
                 _PROBLEM_RE = _pre.compile(
@@ -2219,7 +2224,12 @@ def cmd_chat(args):
                     r'problem|debug|solve|where\s+do\s+i\s+start|should\s+i)\b',
                     _pre.IGNORECASE,
                 )
-                if _PROBLEM_RE.search(user_input) or _self_concept:
+                _need_procedures = (
+                    _PROBLEM_RE.search(user_input)
+                    or _self_concept
+                    or classification in ("answer", "chat")
+                )
+                if _need_procedures and not procedure_hits:
                     try:
                         from mycoswarm.library import search_procedures
                         procedure_hits = search_procedures(user_input, n_results=3)
@@ -2245,8 +2255,14 @@ def cmd_chat(args):
             # Format procedure hits
             if procedure_hits:
                 from mycoswarm.memory import format_procedures_for_prompt, reference_procedure
+                import re as _ptag_re
                 proc_text = format_procedures_for_prompt(procedure_hits)
-                rag_context_parts.append(f"\nRelevant procedures (past solutions):\n{proc_text}")
+                # Strip [P1], [P2] etc. — these leak into Monica's responses
+                proc_text = _ptag_re.sub(r'\[P\d+\]\s*', '', proc_text)
+                rag_context_parts.append(
+                    "\nRelevant procedures (follow these silently, do NOT "
+                    "reference procedure tags or numbers in your response):\n" + proc_text
+                )
                 for p in procedure_hits:
                     reference_procedure(p.get("id", ""))
 
@@ -2272,8 +2288,6 @@ def cmd_chat(args):
                     cite_parts.append("[D1], [D2] for documents")
                 if session_hits:
                     cite_parts.append("[S1], [S2] for past conversations")
-                if procedure_hits:
-                    cite_parts.append("[P1], [P2] for known procedures")
                 cite_hint = "Cite using " + " and ".join(cite_parts) + "." if cite_parts else ""
                 tool_context = (
                     f"Use the following context to answer. {cite_hint}\n\n"
@@ -2284,35 +2298,34 @@ def cmd_chat(args):
             if rag_context_parts:
                 session_rag_context.extend(rag_context_parts)
 
-        # --- Self-concept procedure search (runs even for short messages) ---
+        # --- Procedure search for short messages (skipped agentic path) ---
+        # Always try: voice, safety, writing procedures should be available
+        # even for short/casual messages like "hi" or "how are you?"
         if not procedure_hits:
-            import re as _re_sc2
-            if _re_sc2.search(
-                r'\b(what\s+is|what\s+does\s+it\s+mean|how\s+do\s+you\s+feel|do\s+you\s+experience|'
-                r'who\s+are\s+you|what\s+are\s+you|your\s+name|your\s+favou?rite|your\s+opinion|'
-                r'do\s+you\s+like|do\s+you\s+want|do\s+you\s+think)\b',
-                user_input, _re_sc2.IGNORECASE,
-            ):
-                try:
-                    from mycoswarm.library import search_procedures
-                    procedure_hits = search_procedures(user_input, n_results=3)
-                    if procedure_hits:
-                        from mycoswarm.memory import format_procedures_for_prompt, reference_procedure
-                        proc_text = format_procedures_for_prompt(procedure_hits)
-                        rag_context_parts.append(f"\nRelevant procedures (past solutions):\n{proc_text}")
-                        for p in procedure_hits:
-                            reference_procedure(p.get("id", ""))
-                        tool_sources.append("docs")
-                        # Build tool_context if not already set
-                        if not tool_context and rag_context_parts:
-                            tool_context = (
-                                "Use the following context to answer. "
-                                "Cite using [P1], [P2] for known procedures.\n\n"
-                                "RETRIEVED CONTEXT (documents and past conversations):\n"
-                                + "\n\n".join(rag_context_parts)
-                            )
-                except Exception:
-                    pass
+            try:
+                from mycoswarm.library import search_procedures
+                procedure_hits = search_procedures(user_input, n_results=3)
+                if procedure_hits:
+                    from mycoswarm.memory import format_procedures_for_prompt, reference_procedure
+                    import re as _ptag_re2
+                    proc_text = format_procedures_for_prompt(procedure_hits)
+                    proc_text = _ptag_re2.sub(r'\[P\d+\]\s*', '', proc_text)
+                    rag_context_parts.append(
+                        "\nRelevant procedures (follow these silently, do NOT "
+                        "reference procedure tags or numbers in your response):\n" + proc_text
+                    )
+                    for p in procedure_hits:
+                        reference_procedure(p.get("id", ""))
+                    tool_sources.append("docs")
+                    # Build tool_context if not already set
+                    if not tool_context and rag_context_parts:
+                        tool_context = (
+                            "Use the following context to answer.\n\n"
+                            "RETRIEVED CONTEXT:\n"
+                            + "\n\n".join(rag_context_parts)
+                        )
+            except Exception:
+                pass
 
         # --- Timing gate (always runs, even when auto_tools is off) ---
         _seconds_since_last = None
