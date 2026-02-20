@@ -2616,6 +2616,7 @@ def cmd_chat(args):
         # --- Update turn tracking ---
         _last_turn_time = _dt_timing.now()
         _turn_count += 1
+        continue  # Wait for next user input (daemon path)
 
 
 def cmd_library(args):
