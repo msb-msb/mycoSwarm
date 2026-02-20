@@ -1294,6 +1294,10 @@ def cmd_chat(args):
         else:
             print("   (too short to summarize)")
 
+    global _article_state, _article_topic
+    _article_state = ArticleState.INACTIVE
+    _article_topic = ""
+
     intent_result = None  # Updated each turn by auto-tools classification
     _last_turn_time = None   # Tracks time between turns (for timing gate)
     _turn_count = 0          # Session turn count (for timing gate)
