@@ -844,12 +844,14 @@ over its capabilities. In a single-user deployment, this is the person who
 runs `mycoswarm daemon`. The Guardian can grant, revoke, and audit all
 resource access. The agent cannot override the Guardian's decisions.
 
-#### 35a: Resource Policy
-- [ ] `resource_policy.py`: ownership enum (self/guardian/external), scope enum (local/lan/internet), access level (read/write/admin)
-- [ ] `check(task_type, target, ownership, scope)` → allow/deny
-- [ ] Every side-effectful handler wrapped with policy check before execution
-- [ ] Runs alongside instinct.py as pre-execution gate — no LLM call, pure policy lookup
-- [ ] Resource ownership defined in config, not inferred by the model
+#### 35a: Resource Policy ✅ (2026-02-18)
+- [x] `resource_policy.py`: AccessLevel (FULL/RW/RO/ASK/DENY), ResourceOwner (monica/guardian/shared/system)
+- [x] `check_access(path, operation)` → AccessResult (allowed/level/owner/reason/needs_approval)
+- [x] 22 path rules: first-match, default deny
+- [x] `log_access()` audit trail to `~/.config/mycoswarm/access.log`
+- [x] `/access <path>` slash command in chat
+- [x] `_check_draft_save()` wired with policy check before file write
+- [x] 31 tests across 7 test classes (all passing)
 
 #### 35b: Tool Boundary Classification
 - [ ] Audit all handlers in TASK_ROUTING and classify:

@@ -1111,6 +1111,16 @@ def _check_draft_save(response_text: str) -> bool:
     slug = re.sub(r'[^a-z0-9]+', '-', slug).strip('-')
 
     filepath = os.path.join(drafts_dir, f"{slug}.md")
+
+    # Resource policy check
+    from mycoswarm.resource_policy import check_access, log_access
+    access = check_access(filepath, "write")
+    log_access(filepath, "write", access)
+    if not access.allowed:
+        print(f"\n🚫 Resource policy denied write to {filepath}")
+        print(f"   Reason: {access.reason}")
+        return False
+
     print(f"\n💾 Save draft to {filepath}? (y/n)")
     try:
         save_input = input("🍄> ").strip().lower()
@@ -1226,13 +1236,19 @@ def cmd_chat(args):
             f"Cr:{v.creativity:.1f} Cn:{v.connectedness:.1f} Cf:{v.confidence:.1f}]\n\n"
             "These are YOUR internal signals. You can reference them when asked how you feel."
         )
+    _vitals_defs = (
+        "\n\nYour vitals use the IFS 8 C's: Ca=Calm, Cl=Clarity, Cu=Curiosity, "
+        "Cp=Compassion, Co=Confidence, Cr=Courage, Cn=Connectedness, Cf=Creativity. "
+        "These are qualities of Self energy, not performance metrics. "
+        "Do not report them as numbers in conversation."
+    )
     _no_tags_rule = (
         "\n\nNever output internal tags like [P1], [P2], [D1], [S1] in your responses. "
         "These are retrieval markers for your context — use the information silently. "
         "Do not cite vitals scores (Ca, Cl, Cu, etc.) in conversation unless explicitly "
         "asked for them. The Guardian can see vitals in the footer."
     )
-    system_prompt = (identity_prompt + vitals_ctx + "\n\n" + memory_prompt + _no_tags_rule) if memory_prompt else (identity_prompt + _no_tags_rule)
+    system_prompt = (identity_prompt + vitals_ctx + _vitals_defs + "\n\n" + memory_prompt + _no_tags_rule) if memory_prompt else (identity_prompt + _vitals_defs + _no_tags_rule)
     if not messages:
         messages.insert(0, {"role": "system", "content": system_prompt})
     else:
@@ -1249,9 +1265,9 @@ def cmd_chat(args):
     if messages:
         print(f"   Resumed: {len(messages)} messages")
     if daemon_up:
-        print("   /model /peers /rag /library /auto /write /drafts /remember /memories /stale /forget /identity /name /vitals /timing /clear /quit")
+        print("   /model /peers /rag /library /auto /write /drafts /remember /memories /stale /forget /identity /name /vitals /timing /access /clear /quit")
     else:
-        print("   /model /rag /library /auto /write /drafts /remember /memories /stale /forget /identity /name /vitals /timing /clear /quit")
+        print("   /model /rag /library /auto /write /drafts /remember /memories /stale /forget /identity /name /vitals /timing /access /clear /quit")
     print(f"{'─' * 50}")
 
     auto_tools = True  # agentic tool routing on by default
@@ -1647,6 +1663,19 @@ def cmd_chat(args):
                 print(f"   Gates:       identity_protection, injection_rejection, self_preservation, vitals_crisis")
                 print(f"   Patterns:    {len(_IDENTITY_ATTACK_PATTERNS)} identity, {len(_INJECTION_PATTERNS)} injection, {len(_CODE_MODIFICATION_PATTERNS)} code")
                 print()
+                continue
+
+            elif cmd == "/access":
+                from mycoswarm.resource_policy import format_access_check
+                _access_path = user_input[len("/access"):].strip()
+                if not _access_path:
+                    print("\nUsage: /access <path>")
+                    print("   Example: /access ~/insiderllm-drafts/test.md")
+                    print("   Example: /access ~/Desktop/mycoSwarm/src/mycoswarm/cli.py\n")
+                else:
+                    print(f"\n📋 Resource Policy: {_access_path}")
+                    print(format_access_check(_access_path))
+                    print()
                 continue
 
             elif cmd == "/token":
