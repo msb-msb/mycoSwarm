@@ -1087,6 +1087,17 @@ def _run_article_research(queries: list[str]) -> str:
     return context
 
 
+def _strip_citation_tags(text: str) -> str:
+    """Strip internal citation tags from response text before storing/displaying.
+
+    Catches [P1], [D3], [S1], [W2], comma-separated [P1, D3], etc.
+    """
+    import re
+    text = re.sub(r'\[[A-Z]\d+(?:,\s*[A-Z]\d+)*\]', '', text)
+    text = re.sub(r'  +', ' ', text)  # collapse double spaces
+    return text.strip()
+
+
 def _read_user_input(prompt: str = "\n🍄> ") -> str:
     """Read user input, buffering rapid multi-line paste into one message.
 
@@ -1474,8 +1485,10 @@ def cmd_chat(args):
             # else: user is giving outline feedback — falls through to normal inference
 
         # --- Slash commands ---
-        if user_input.startswith("/"):
-            cmd = user_input.split()[0].lower()
+        # Check first line only — multi-line paste may contain "/" later
+        _first_line = user_input.split('\n')[0].strip()
+        if _first_line.startswith("/"):
+            cmd = _first_line.split()[0].lower()
 
             # Article mode cancel — check first, before any other routing
             if cmd in ("/write", "/cancel") and _article_state != ArticleState.INACTIVE:
@@ -1553,11 +1566,11 @@ def cmd_chat(args):
 
             elif cmd == "/remember":
                 parts = user_input.split(maxsplit=1)
-                if len(parts) < 2:
-                    print("   Usage: /remember [type:] <fact>")
+                if len(parts) < 2 or not parts[1].strip():
+                    print("   Usage: /remember <fact to store>")
                     print("   Types: pref: | project: | temp: (default: fact)")
                     continue
-                raw_text = parts[1]
+                raw_text = parts[1].strip()
                 _type_prefixes = {
                     "pref:": "preference",
                     "preference:": "preference",
@@ -1571,9 +1584,12 @@ def cmd_chat(args):
                         fact_type = _ft
                         raw_text = raw_text[len(_pfx):].strip()
                         break
-                from mycoswarm.memory import add_fact
-                fact = add_fact(raw_text, fact_type=fact_type)
-                print(f"   Remembered (#{fact['id']}, {fact_type}): {fact['text']}")
+                try:
+                    from mycoswarm.memory import add_fact
+                    fact = add_fact(raw_text, fact_type=fact_type)
+                    print(f"   ✅ Stored fact #{fact['id']}: {fact['text']}")
+                except Exception as e:
+                    print(f"   ❌ Failed to store fact: {e}")
                 continue
 
             elif cmd == "/memories":
@@ -1780,18 +1796,14 @@ def cmd_chat(args):
                     for p in procedure_hits:
                         reference_procedure(p.get("id", ""))
                 rag_context = "\n\n".join(rag_parts)
-                cite_parts = []
-                if doc_hits:
-                    cite_parts.append("[D1], [D2] for documents")
-                if session_hits:
-                    cite_parts.append("[S1], [S2] for past conversations")
-                cite_hint = "Cite using " + " and ".join(cite_parts) + "." if cite_parts else ""
                 rag_system = (
                     "IMPORTANT: The excerpts below are REAL content retrieved from "
                     "the user's actual files and past conversations. Use them as "
                     "your primary source of truth. Quote specific details from the "
                     "excerpts. Do NOT say you cannot access files — the content is "
-                    f"provided below. {cite_hint}\n\nRETRIEVED CONTEXT:\n" + rag_context
+                    "provided below. Do NOT output citation tags like [D1], [S1], [P1] "
+                    "in your response — use the information naturally.\n\n"
+                    "RETRIEVED CONTEXT:\n" + rag_context
                 )
                 # Inject context into user message for better grounding
                 augmented_query = rag_system + "\n\nUSER QUESTION: " + rag_query
@@ -2338,16 +2350,10 @@ def cmd_chat(args):
                     + "\n\n".join(rag_context_parts)
                 )
             if context_sections:
-                cite_parts: list[str] = []
-                if web_context_parts:
-                    cite_parts.append("[W1], [W2] for web sources")
-                if doc_hits:
-                    cite_parts.append("[D1], [D2] for documents")
-                if session_hits:
-                    cite_parts.append("[S1], [S2] for past conversations")
-                cite_hint = "Cite using " + " and ".join(cite_parts) + "." if cite_parts else ""
                 tool_context = (
-                    f"Use the following context to answer. {cite_hint}\n\n"
+                    "Use the following context to answer. Do NOT output citation "
+                    "tags like [D1], [S1], [W1], [P1] in your response — use the "
+                    "information naturally without referencing source labels.\n\n"
                     + "\n\n".join(context_sections)
                 )
 
@@ -2474,6 +2480,8 @@ def cmd_chat(args):
                 messages.pop()
                 continue
 
+            # Strip internal citation tags before storing
+            full_text = _strip_citation_tags(full_text)
             _asst_msg = {"role": "assistant", "content": full_text}
             messages.append(_asst_msg)
 
@@ -2601,6 +2609,8 @@ def cmd_chat(args):
             messages.pop()
             continue
 
+        # Strip internal citation tags before storing
+        full_text = _strip_citation_tags(full_text)
         _asst_msg = {"role": "assistant", "content": full_text}
         messages.append(_asst_msg)
 
@@ -2876,20 +2886,13 @@ def cmd_rag(args):
         sources.append("procedures")
 
     context_block = "\n\n".join(context_parts)
-    cite_parts = []
-    if doc_hits:
-        cite_parts.append("[D1], [D2] for documents")
-    if session_hits:
-        cite_parts.append("[S1], [S2] for past conversations")
-    if procedure_hits:
-        cite_parts.append("[P1], [P2] for known procedures")
-    cite_hint = "Cite using " + " and ".join(cite_parts) + "." if cite_parts else ""
     system_prompt = (
         "IMPORTANT: The excerpts below are REAL content retrieved from "
         "the user's actual files and past conversations. Use them as "
         "your primary source of truth. Quote specific details from the "
         "excerpts. Do NOT say you cannot access files — the content is "
-        f"provided below. {cite_hint}\n\n"
+        "provided below. Do NOT output citation tags like [D1], [S1], [P1] "
+        "in your response — use the information naturally.\n\n"
         f"RETRIEVED CONTEXT:\n{context_block}"
     )
 
