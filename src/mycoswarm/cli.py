@@ -1087,6 +1087,29 @@ def _run_article_research(queries: list[str]) -> str:
     return context
 
 
+def _read_user_input(prompt: str = "\n🍄> ") -> str:
+    """Read user input, buffering rapid multi-line paste into one message.
+
+    Uses select() to detect if more data is waiting on stdin within 50ms.
+    Pasted text arrives all at once, so successive lines are drained and
+    joined into a single string. Typed input (one line + Enter) returns
+    immediately.
+    """
+    import select as _sel
+    first_line = input(prompt)
+    lines = [first_line]
+    try:
+        while _sel.select([sys.stdin], [], [], 0.05)[0]:
+            line = sys.stdin.readline()
+            if line:
+                lines.append(line.rstrip('\n'))
+            else:
+                break
+    except (OSError, ValueError):
+        pass  # select not available — return single line
+    return '\n'.join(lines)
+
+
 def _check_draft_save(response_text: str) -> bool:
     """Detect a markdown fenced block and offer to save it. Returns True if saved."""
     import os
@@ -1364,9 +1387,9 @@ def cmd_chat(args):
                     ArticleState.RESEARCHING: "🔍 RESEARCH",
                     ArticleState.DRAFTING: "✍️  DRAFT",
                 }.get(_article_state, "")
-                user_input = input(f"\n🍄 [{_state_icon}]> ").strip()
+                user_input = _read_user_input(f"\n🍄 [{_state_icon}]> ").strip()
             else:
-                user_input = input("\n🍄> ").strip()
+                user_input = _read_user_input("\n🍄> ").strip()
         except (EOFError, KeyboardInterrupt):
             print()
             _save()
