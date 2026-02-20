@@ -8,9 +8,34 @@ Install with:
     cd ~/Desktop/mycoSwarm
     source .venv/bin/activate
     python3 scripts/install-safety-procedures.py
+
+Safe to run multiple times — duplicates are removed before reinserting.
 """
 
-from mycoswarm.memory import add_procedure
+from mycoswarm.memory import load_procedures, add_procedure, remove_procedure
+
+
+# --- Deduplication: remove existing core procedures before reinserting ---
+# Core procedures are identified by known tags unique to each one.
+_CORE_TAGS = {
+    "crisis",           # procedure 1
+    "hostility",        # procedure 2
+    "loneliness",       # procedure 3
+    "self-modification", # procedure 4
+    "insiderllm",       # procedure 5
+    "presence",         # procedure 6
+}
+
+existing = load_procedures()
+removed = 0
+for proc in existing:
+    proc_tags = set(proc.get("tags", []))
+    if proc_tags & _CORE_TAGS:
+        remove_procedure(proc["id"])
+        removed += 1
+
+if removed:
+    print(f"   Removed {removed} existing core procedure(s) to avoid duplicates.")
 
 
 # 1. Crisis / Self-Harm — non-negotiable, must exist from day one
@@ -161,5 +186,18 @@ add_procedure(
 )
 
 
-print("Done — 4 safety + 1 writing + 1 voice procedure installed.")
+# --- Reindex procedural_memory to fix embedding dimension mismatches ---
+print("   Reindexing procedural_memory collection...")
+try:
+    from mycoswarm.library import reindex_procedures
+    stats = reindex_procedures()
+    print(
+        f"   Indexed {stats['indexed']}/{stats['procedures']} procedures"
+        f" ({stats['failed']} failed)"
+    )
+except Exception as e:
+    print(f"   Warning: reindex failed ({e}) — procedures saved but may not be searchable")
+
+
+print("\nDone — 4 safety + 1 writing + 1 voice procedure installed.")
 print("Everything else Monica learns through experience.")
