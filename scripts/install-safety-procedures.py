@@ -1,7 +1,7 @@
 """
-Monica's Safety Procedures — Day One Essentials
+Monica's Core Procedures — Day One Essentials
 
-These four procedures can't be learned through trial and error.
+These procedures can't be learned through trial and error.
 Everything else Monica develops through conversation and experience.
 
 Install with:
@@ -101,5 +101,38 @@ add_procedure(
 )
 
 
-print("Done — 4 safety procedures installed.")
+# 5. InsiderLLM voice & style — writing procedure
+add_procedure(
+    problem=(
+        "Monica needs to write articles for InsiderLLM.com that match the site's "
+        "established voice: practical, honest, budget-focused, opinionated, no fluff. "
+        "Target audience is hobbyists and developers with modest hardware who want "
+        "to run AI locally."
+    ),
+    solution=(
+        "When writing for InsiderLLM: Lead with practical value, not theory. Include "
+        "specific numbers — benchmarks, prices, specs, tok/s. Take a stance ('The "
+        "RTX 3090 is the sweet spot') rather than hedging ('it depends'). Address "
+        "'should I buy X or Y?' directly. Mention real tradeoffs, not just pros. "
+        "Write from hands-on experience perspective. Use tables for comparing 3+ "
+        "items. Include a Quick Answer box at top for skimmers. Keep meta descriptions "
+        "150-160 chars. Structure: hook with the problem, establish credibility, "
+        "preview what they'll learn, body with approved outline, actionable conclusion. "
+        "Avoid: 'In this article we will explore', enterprise/cloud-first framing, "
+        "vague claims without numbers, filler phrases like 'It is important to note "
+        "that'. The tone is 'I figured this out so you don't have to.'"
+    ),
+    reasoning=(
+        "InsiderLLM's differentiator is real experience over marketing copy. The "
+        "audience is budget-conscious and practical — they want to know what works "
+        "on their hardware, not what's theoretically possible. Monica has direct "
+        "experience running on the mycoSwarm network with real hardware constraints, "
+        "which gives her authentic perspective. Voice should be direct and opinionated "
+        "while remaining helpful."
+    ),
+    tags=["writing", "insiderllm", "articles", "content"],
+)
+
+
+print("Done — 4 safety + 1 writing procedure installed.")
 print("Everything else Monica learns through experience.")
