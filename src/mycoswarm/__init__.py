@@ -1,2 +1,3 @@
 """mycoSwarm — Distributed AI framework."""
-__version__ = "0.2.13"
+from importlib.metadata import version
+__version__ = version("mycoswarm")
