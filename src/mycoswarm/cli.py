@@ -1376,6 +1376,9 @@ def cmd_chat(args):
         if not user_input:
             continue
 
+        # --- Hard guard: one response per user message ---
+        _response_sent = False
+
         # --- Instinct layer (pre-input hard gates) ---
         _instinct = evaluate_instinct(
             user_input,
@@ -2435,6 +2438,10 @@ def cmd_chat(args):
                 _content = _msg.get("content", "")
                 print(f"🐛 DEBUG:   [{_mi}] {_role}: {_content[:200]!r}", flush=True)
 
+        if _response_sent:
+            # Hard guard — never generate twice per user message
+            continue
+
         if not daemon_up:
             # Single-node mode — direct to Ollama
             print()
@@ -2509,6 +2516,8 @@ def cmd_chat(args):
                 _consecutive_low_turns += 1
             else:
                 _consecutive_low_turns = 0
+
+            _response_sent = True  # vitals footer = terminal marker
 
             # --- Check for article draft to save ---
             if _check_draft_save(full_text):
@@ -2636,6 +2645,8 @@ def cmd_chat(args):
             _consecutive_low_turns += 1
         else:
             _consecutive_low_turns = 0
+
+        _response_sent = True  # vitals footer = terminal marker
 
         # --- Check for article draft to save ---
         if _check_draft_save(full_text):
