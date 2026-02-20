@@ -1369,6 +1369,15 @@ def cmd_chat(args):
             print(f"\n⚠️ {_instinct.message}")
         # WARN falls through to normal processing
 
+        # --- Article mode: cancel check (before state transitions) ---
+        if _article_state != ArticleState.INACTIVE:
+            _cancel_check = user_input.strip().lower()
+            if _cancel_check in ("/write off", "/write cancel", "/cancel"):
+                _article_state = ArticleState.INACTIVE
+                _article_topic = ""
+                print("\n✍️  Article mode cancelled.\n")
+                continue
+
         # --- Article mode state transitions ---
         if _article_state == ArticleState.OUTLINING:
             _approval_words = {
