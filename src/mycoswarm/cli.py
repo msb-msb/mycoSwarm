@@ -31,7 +31,7 @@ Usage:
 
 import argparse
 import sys
-
+import os
 import httpx
 
 from mycoswarm.hardware import detect_all
