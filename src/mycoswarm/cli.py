@@ -1098,43 +1098,156 @@ def _strip_citation_tags(text: str) -> str:
     return text.strip()
 
 
-def _flush_stdin():
-    """Discard any residual data in stdin (keystrokes during streaming, leftover paste)."""
+def _read_user_input(prompt: str = "\n🍄> ") -> str:
+    """Read user input in cbreak mode — char-by-char with paste detection.
+
+    Uses tty.setcbreak() to take full control of stdin. Manual echo of
+    printable characters. Detects multi-line paste via 500ms inter-newline
+    timeout: if more data arrives within 500ms of Enter, it's a paste and
+    we keep collecting. If no data arrives within 500ms, the Enter is
+    treated as submit.
+    """
     import select as _sel
+    import termios
+    import tty
+
+    # Print prompt
+    sys.stdout.write(prompt)
+    sys.stdout.flush()
+
+    fd = sys.stdin.fileno()
+
+    # Flush any residual stdin before entering cbreak
     try:
         while _sel.select([sys.stdin], [], [], 0.01)[0]:
-            sys.stdin.readline()  # discard
+            os.read(fd, 4096)
     except (OSError, ValueError):
         pass
 
-
-def _read_user_input(prompt: str = "\n🍄> ") -> str:
-    """Read user input, buffering rapid multi-line paste into one message.
-
-    Quick-checks for paste (100ms), then if detected waits 300ms for all
-    lines to arrive and drains with a 500ms rolling window. Single-line
-    typed input only gets the 100ms check — imperceptible.
-    """
-    import select as _sel
-    import time as _time
-    first_line = input(prompt)
-    lines = [first_line]
+    old_attrs = termios.tcgetattr(fd)
     try:
-        if _sel.select([sys.stdin], [], [], 0.1)[0]:
-            # Paste detected — wait for all lines to arrive
-            _time.sleep(0.3)
-            # Drain everything with generous rolling window
-            while _sel.select([sys.stdin], [], [], 0.5)[0]:
-                line = sys.stdin.readline()
-                if line:
-                    lines.append(line.rstrip('\n'))
-                else:
+        tty.setcbreak(fd)
+
+        line_buf = []     # current line being built
+        lines = []        # completed lines
+        _PASTE_TIMEOUT = 0.5  # seconds to wait for more paste data after Enter
+
+        while True:
+            # Read one byte
+            ch = os.read(fd, 1)
+            if not ch:
+                # EOF
+                raise EOFError
+
+            b = ch[0]
+
+            # --- Ctrl+C ---
+            if b == 3:
+                sys.stdout.write("^C\n")
+                sys.stdout.flush()
+                raise KeyboardInterrupt
+
+            # --- Ctrl+D ---
+            if b == 4:
+                if not line_buf and not lines:
+                    sys.stdout.write("\n")
+                    sys.stdout.flush()
+                    raise EOFError
+                # If there's text, Ctrl+D is ignored (matches readline behavior)
+                continue
+
+            # --- Backspace (127 = DEL, 8 = BS) ---
+            if b in (127, 8):
+                if line_buf:
+                    line_buf.pop()
+                    # Move cursor back, overwrite with space, move back again
+                    sys.stdout.write("\b \b")
+                    sys.stdout.flush()
+                continue
+
+            # --- Escape sequences (arrows, function keys, etc.) ---
+            if b == 27:
+                # Consume the rest of the escape sequence
+                try:
+                    if _sel.select([sys.stdin], [], [], 0.05)[0]:
+                        seq = os.read(fd, 1)
+                        if seq and seq[0] == 91:  # '[' — CSI sequence
+                            # Read until alpha character terminates the sequence
+                            while True:
+                                if _sel.select([sys.stdin], [], [], 0.05)[0]:
+                                    end = os.read(fd, 1)
+                                    if end and (65 <= end[0] <= 126):
+                                        break  # sequence complete
+                                else:
+                                    break
+                except (OSError, ValueError):
+                    pass
+                continue
+
+            # --- Enter / newline ---
+            if b in (10, 13):
+                sys.stdout.write("\n")
+                sys.stdout.flush()
+                completed_line = "".join(line_buf)
+                lines.append(completed_line)
+                line_buf = []
+
+                # Paste detection: is more data arriving quickly?
+                try:
+                    if _sel.select([sys.stdin], [], [], _PASTE_TIMEOUT)[0]:
+                        # More data within 500ms — this is a paste, keep collecting
+                        continue
+                    else:
+                        # No more data — user pressed Enter, submit
+                        break
+                except (OSError, ValueError):
                     break
-            # Let terminal echo finish
-            _time.sleep(0.3)
-    except (OSError, ValueError):
-        pass  # select not available — return single line
-    return '\n'.join(lines)
+
+            # --- UTF-8 multi-byte handling ---
+            if b >= 0x80:
+                # Determine how many continuation bytes to expect
+                if b & 0xE0 == 0xC0:
+                    n_more = 1
+                elif b & 0xF0 == 0xE0:
+                    n_more = 2
+                elif b & 0xF8 == 0xF0:
+                    n_more = 3
+                else:
+                    continue  # invalid leading byte, skip
+                mb = ch
+                for _ in range(n_more):
+                    try:
+                        cb = os.read(fd, 1)
+                        if cb:
+                            mb += cb
+                    except (OSError, ValueError):
+                        break
+                try:
+                    char = mb.decode("utf-8")
+                    line_buf.append(char)
+                    sys.stdout.write(char)
+                    sys.stdout.flush()
+                except UnicodeDecodeError:
+                    pass
+                continue
+
+            # --- Printable ASCII ---
+            if 32 <= b < 127:
+                char = chr(b)
+                line_buf.append(char)
+                sys.stdout.write(char)
+                sys.stdout.flush()
+                continue
+
+            # Ignore other control characters
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old_attrs)
+
+    # If there's a partial line in the buffer (shouldn't happen normally, but safety)
+    if line_buf:
+        lines.append("".join(line_buf))
+
+    return "\n".join(lines)
 
 
 def _check_draft_save(response_text: str) -> bool:
@@ -1408,7 +1521,6 @@ def cmd_chat(args):
     while True:
         try:
             sys.stdout.flush()
-            _flush_stdin()  # discard residual keystrokes/paste from previous cycle
             if _article_state != ArticleState.INACTIVE:
                 _state_icon = {
                     ArticleState.OUTLINING: "📝 OUTLINE",
