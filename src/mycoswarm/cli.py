@@ -1101,10 +1101,10 @@ def _strip_citation_tags(text: str) -> str:
 def _read_user_input(prompt: str = "\n🍄> ") -> str:
     """Read user input, buffering rapid multi-line paste into one message.
 
-    After input() returns the first line, sleeps 150ms to let the terminal
-    buffer all paste lines, then drains with a 300ms rolling window.
-    On multi-line paste, waits for terminal echo to finish before returning
-    so code output doesn't interleave with echoed paste text.
+    After input() returns the first line, checks for more data. If paste
+    is detected, suppresses terminal echo via termios while draining
+    remaining lines, then prints them cleanly ourselves. This prevents
+    echoed paste text from interleaving with code output.
     """
     import select as _sel
     import time as _time
@@ -1112,19 +1112,28 @@ def _read_user_input(prompt: str = "\n🍄> ") -> str:
     lines = [first_line]
     try:
         _time.sleep(0.15)  # let terminal finish buffering paste
-        while _sel.select([sys.stdin], [], [], 0.3)[0]:
-            line = sys.stdin.readline()
-            if line:
-                lines.append(line.rstrip('\n'))
-            else:
-                break
-        # Multi-line paste: wait for terminal echo to finish, then clean up
-        if len(lines) > 1:
-            _time.sleep(0.5)
-            sys.stdout.write('\r')
-            sys.stdout.flush()
+        if _sel.select([sys.stdin], [], [], 0.01)[0]:
+            # More data waiting — this is a paste. Suppress echo while draining.
+            import termios
+            fd = sys.stdin.fileno()
+            old_settings = termios.tcgetattr(fd)
+            try:
+                new_settings = termios.tcgetattr(fd)
+                new_settings[3] = new_settings[3] & ~termios.ECHO
+                termios.tcsetattr(fd, termios.TCSADRAIN, new_settings)
+                while _sel.select([sys.stdin], [], [], 0.3)[0]:
+                    line = sys.stdin.readline()
+                    if line:
+                        lines.append(line.rstrip('\n'))
+                    else:
+                        break
+            finally:
+                termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+            # Print collected lines cleanly (since we suppressed echo)
+            for line in lines[1:]:
+                print(line)
     except (OSError, ValueError):
-        pass  # select not available — return single line
+        pass  # select/termios not available — return single line
     return '\n'.join(lines)
 
 
