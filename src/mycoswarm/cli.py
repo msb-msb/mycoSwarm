@@ -1491,6 +1491,7 @@ def cmd_chat(args):
         # --- Slash commands ---
         # Check first line only — multi-line paste may contain "/" later
         _first_line = user_input.split('\n')[0].strip()
+        print(f"   [DEBUG] first_line={_first_line!r} starts_with_slash={_first_line.startswith('/')}")
         if _first_line.startswith("/"):
             cmd = _first_line.split()[0].lower()
 
