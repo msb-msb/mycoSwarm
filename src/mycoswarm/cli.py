@@ -1101,16 +1101,16 @@ def _strip_citation_tags(text: str) -> str:
 def _read_user_input(prompt: str = "\n🍄> ") -> str:
     """Read user input, buffering rapid multi-line paste into one message.
 
-    Uses select() to detect if more data is waiting on stdin within 50ms.
-    Pasted text arrives all at once, so successive lines are drained and
-    joined into a single string. Typed input (one line + Enter) returns
-    immediately.
+    After input() returns the first line, keeps reading while new lines
+    arrive within 150ms windows. Each new line resets the window. Typed
+    input (single line + Enter) adds only 150ms delay — imperceptible.
+    Multi-line paste is fully collected before returning.
     """
     import select as _sel
     first_line = input(prompt)
     lines = [first_line]
     try:
-        while _sel.select([sys.stdin], [], [], 0.05)[0]:
+        while _sel.select([sys.stdin], [], [], 0.15)[0]:
             line = sys.stdin.readline()
             if line:
                 lines.append(line.rstrip('\n'))
