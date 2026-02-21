@@ -1102,8 +1102,9 @@ def _read_user_input(prompt: str = "\n🍄> ") -> str:
     """Read user input, buffering rapid multi-line paste into one message.
 
     After input() returns the first line, sleeps 150ms to let the terminal
-    finish delivering all paste lines, then drains with a 300ms rolling
-    window. Total delay for typed single-line input: ~450ms (imperceptible).
+    buffer all paste lines, then drains with a 300ms rolling window.
+    On multi-line paste, waits for terminal echo to finish before returning
+    so code output doesn't interleave with echoed paste text.
     """
     import select as _sel
     import time as _time
@@ -1117,6 +1118,11 @@ def _read_user_input(prompt: str = "\n🍄> ") -> str:
                 lines.append(line.rstrip('\n'))
             else:
                 break
+        # Multi-line paste: wait for terminal echo to finish, then clean up
+        if len(lines) > 1:
+            _time.sleep(0.5)
+            sys.stdout.write('\r')
+            sys.stdout.flush()
     except (OSError, ValueError):
         pass  # select not available — return single line
     return '\n'.join(lines)
