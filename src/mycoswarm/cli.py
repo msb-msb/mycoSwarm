@@ -1101,10 +1101,10 @@ def _strip_citation_tags(text: str) -> str:
 def _read_user_input(prompt: str = "\n🍄> ") -> str:
     """Read user input, buffering rapid multi-line paste into one message.
 
-    After input() returns the first line, checks for more data. If paste
-    is detected, suppresses terminal echo via termios while draining
-    remaining lines, then prints them cleanly ourselves. This prevents
-    echoed paste text from interleaving with code output.
+    After input() returns the first line, sleeps 150ms to let the terminal
+    buffer paste, then drains remaining lines. On multi-line paste, waits
+    300ms for terminal echo to finish. No termios, no reprint — let the
+    terminal handle echo naturally.
     """
     import select as _sel
     import time as _time
@@ -1112,28 +1112,16 @@ def _read_user_input(prompt: str = "\n🍄> ") -> str:
     lines = [first_line]
     try:
         _time.sleep(0.15)  # let terminal finish buffering paste
-        if _sel.select([sys.stdin], [], [], 0.01)[0]:
-            # More data waiting — this is a paste. Suppress echo while draining.
-            import termios
-            fd = sys.stdin.fileno()
-            old_settings = termios.tcgetattr(fd)
-            try:
-                new_settings = termios.tcgetattr(fd)
-                new_settings[3] = new_settings[3] & ~termios.ECHO
-                termios.tcsetattr(fd, termios.TCSADRAIN, new_settings)
-                while _sel.select([sys.stdin], [], [], 0.3)[0]:
-                    line = sys.stdin.readline()
-                    if line:
-                        lines.append(line.rstrip('\n'))
-                    else:
-                        break
-            finally:
-                termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
-            # Print collected lines cleanly (since we suppressed echo)
-            for line in lines[1:]:
-                print(line)
+        while _sel.select([sys.stdin], [], [], 0.3)[0]:
+            line = sys.stdin.readline()
+            if line:
+                lines.append(line.rstrip('\n'))
+            else:
+                break
+        if len(lines) > 1:
+            _time.sleep(0.3)  # let terminal finish echoing
     except (OSError, ValueError):
-        pass  # select/termios not available — return single line
+        pass  # select not available — return single line
     return '\n'.join(lines)
 
 
