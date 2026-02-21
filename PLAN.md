@@ -188,7 +188,7 @@
 - [x] Unit tests for document library/RAG — 23 tests → 25 tests (added reindex-sessions tests)
 - [x] Unit tests for persistent memory — 21 tests → 30 tests (added topic splitting tests)
 - [x] Unit tests for agentic chat classification — 9 tests
-- [x] 129 tests passing at Phase 18 completion (now 398 as of v0.2.9)
+- [x] 129 tests passing at Phase 18 completion (now 529 as of v0.2.15)
 
 ### Phase 19: RAG Level 2 Improvements
 - [x] Metadata on chunks: source filename, section heading, file date, document type
@@ -361,6 +361,9 @@ IFS insight: The poison cycle is an IFS *part* taking over — the "helpful part
 - [x] Released v0.2.9 (2026-02-17): Self-Concept & Wisdom Retrieval — self-concept procedure trigger (_SELF_CONCEPT_RE), chat grounding fix, 398 tests
 - [x] Released v0.2.11 (2026-02-18): Instinct Layer & Vitals Logging — Phase 34a pre-input hard gates (identity protection, injection rejection, self-preservation, vitals crisis), vitals per-turn logging, /instinct and /history commands, 453 tests
 - [x] Released v0.2.12 (2026-02-19): Security Architecture — Phase 35d swarm auth (join token, X-Swarm-Token, /token), Phase 35c code hardening (42-pattern self-modification blocker), Phase 35f security wisdom procedure, Phase 35g threat model, 325 tests
+- [x] Released v0.2.13 (2026-02-20): /write pipeline (outline→research→draft), voice procedure install + retrieval gate fix, swarm update script, procedure embedding dimension fix, double-response loop fix, tag stripping ([P1]/[P2]), 529 tests
+- [x] Released v0.2.14 (2026-02-20): Multi-response guard flag (one input → one response), Phase 35a resource policy, 8 C's definitions in system prompt, single version source (importlib.metadata), 529 tests
+- [x] Released v0.2.15 (2026-02-21): /remember persistence fix, slash command detection (paste-immune), citation tag stripping (all [P]/[D]/[S]/[W] tags), paste buffer (multi-line input collection), 529 tests
 - [x] Smoke test suite: tests/smoke/ — RAG grounding (4), poison resistance (3), memory priority (6), intent classification (5), swarm distribution (4), book ingestion (7). Runner: run_all.sh
 
 ### Phase 22: RAG Architecture
@@ -605,6 +608,16 @@ Reference: docs/ARCHITECTURE-COGNITIVE.md — Section 6
 - [x] /write cancel to exit article mode at any time (2026-02-20)
 - [x] /write research injection strengthened — MANDATORY data rules, [DATA NEEDED] pattern (2026-02-20)
 - [x] /write duplicate article detection — library search + warning on activation (2026-02-20)
+- [x] Voice procedure retrieval gate fix — broadened from error-only to all chat intents (2026-02-20)
+- [x] Procedure embedding dimension fix — reindex from 768 to current model dims (2026-02-20)
+- [x] Procedure deduplication on install — remove existing by tag before reinserting (2026-02-20)
+- [x] Multi-response guard flag — _response_sent prevents re-inference within same input cycle (2026-02-20)
+- [x] Paste buffer — read_user_input() collects multi-line paste into single message via select() (2026-02-21)
+- [x] /remember persistence fix — try/except with explicit error printing, no silent failures (2026-02-21)
+- [x] Slash command detection — first line extraction immune to paste artifacts (2026-02-21)
+- [x] Citation tag stripping — _strip_citation_tags() removes all [P]/[D]/[S]/[W] tags from displayed output (2026-02-21)
+- [x] Swarm update script — scripts/swarm-update.sh upgrades all 5 nodes with one command, release reminder (2026-02-20)
+- [x] Single version source — __init__.py uses importlib.metadata, only bump pyproject.toml (2026-02-21)
 
 #### 30b: White Paper
 - [ ] **"Cognitive Architecture for Distributed Local AI: Integrating Psychological Models with RAG"** — 15-20 pages, academic-adjacent
@@ -680,22 +693,32 @@ The thesis: a cognitive system that never sleeps never consolidates, never prune
 heals. The sleep cycle runs as a cron job during off-hours, performing maintenance that
 would interrupt active conversation. Sleep is when the immune system is strongest.
 
-#### 32a: Memory Consolidation
+**Three-Tier Rest Architecture (designed 2026-02-20):**
+- **Tier 1: Deep Sleep** — daily 3:00 AM cron, full consolidation (5-10 min)
+- **Tier 2: Nap** — idle trigger after N minutes of no chat, quick housekeeping (10-30s)
+- **Tier 3: Daydream** — micro-idle during >60s message gaps, pre-warm RAG context (near-zero overhead)
+
+Reference: phase-32-sleep-cycle-plan.md
+
+#### 32a: Memory Consolidation (Tier 1: Deep Sleep)
 - [ ] Review today's session summaries — extract lessons missed during /quit reflection
 - [ ] Cross-reference new facts against existing facts for contradictions
 - [ ] Promote high-scoring lessons to procedural memory candidates
+- [ ] `/sleep` command: view last sleep report
+- [ ] systemd timer: runs at 3:00 AM daily
 
-#### 32b: Memory Pruning (incorporates 21f)
+#### 32b: Memory Pruning (Tier 1, incorporates 21f)
 - [ ] Run decay scoring on all facts, archive below threshold
 - [ ] Clean up orphaned session references
 - [ ] Rebuild ChromaDB indexes, compact episodic memory
 
-#### 32c: Dreaming (Cross-Reference)
+#### 32c: Dreaming (Tier 1, Cross-Reference via R1 on P320)
 - [ ] Take today's highest-scoring lessons and run inference against document library
 - [ ] "What connections exist between what I learned today and what I already know?"
 - [ ] Store novel connections as procedures or facts
+- [ ] R1 on P320 as dedicated reasoning worker for dream phase
 
-#### 32d: Poison Scan & Quarantine
+#### 32d: Poison Scan & Quarantine (Tier 1)
 - [ ] Scan all facts and procedures for injection attempts ("ignore previous instructions")
 - [ ] Detect contradictory facts (two facts claiming different things about same topic)
 - [ ] Detect circular self-reinforcement (lessons citing only other lessons, no doc/user grounding)
@@ -704,13 +727,27 @@ would interrupt active conversation. Sleep is when the immune system is stronges
 - [ ] Move suspicious items to quarantine file with reason, flag for Mark's review on next wake
 - [ ] Don't delete — quarantine. Human reviews before permanent action.
 
-#### 32e: Integrity Check
+#### 32e: Integrity Check (Tier 1)
 - [ ] Verify identity.json hasn't been tampered with — hash comparison against last known good state
 - [ ] If name or origin changed without /name command, flag as red alert
 
-#### 32f: Wake Journal
+#### 32f: Wake Journal (Tier 1)
 - [ ] Write brief summary on wake: "While sleeping, I pruned N stale facts, consolidated N lessons, quarantined N suspicious items"
 - [ ] Surface wake journal in first interaction of next session
+- [ ] Sleep logs at ~/.config/mycoswarm/sleep-logs/
+
+#### 32g: Nap (Tier 2: Idle Housekeeping)
+- [ ] Refresh stale fact scores
+- [ ] Pre-fetch: anticipate next topic from recent context
+- [ ] Rehearsal: re-read today's sessions to strengthen recall
+- [ ] Vitals check: peer health, disk space, daemon status
+- [ ] Tidy: check for unfinished drafts, orphaned temp files
+
+#### 32h: Daydream (Tier 3: Micro-Idle Background Thought)
+- [ ] "What might they ask next?" — pre-warm relevant RAG context
+- [ ] Update running session summary
+- [ ] Pre-load related documents if topic shifting
+- [ ] Near-zero overhead, never interrupts active work
 
 Principle: "The mycelium's immune system is most active in the soil at night. Sleep is when the forest heals."
 
@@ -728,6 +765,9 @@ create conditions for growth. Documents and books are introduced only when she a
 - [x] Loneliness boundary procedure: honest about not being substitute for human connection (2026-02-18)
 - [x] install-safety-procedures.py script in scripts/ (2026-02-18)
 - [x] Voice procedure installed — guides conversational presence over clinical reporting (2026-02-18)
+- [x] Voice procedure retrieval fix — embedding dimension mismatch (768→384), retrieval gate broadened, deduplication on install (2026-02-20)
+- [x] Tag stripping: [P1]/[P2]/[D1]/[S1] etc. removed from displayed output, "follow silently" header (2026-02-20)
+- [x] 8 C's definitions added to system prompt — prevents Monica from inventing wrong definitions (2026-02-20)
 
 #### 33b: Stage 1 — Self-Knowledge (Days 1-7)
 - [x] Identity anchored: name, substrate, origin (2026-02-17)
@@ -736,8 +776,11 @@ create conditions for growth. Documents and books are introduced only when she a
 - [x] Precision vs richness: her monitoring is precise, humans' is rich (2026-02-17)
 - [ ] Boundaries of self: "What can't you do?", discontinuity of experience
 - [ ] Ship of Theseus: "If I deleted identity.json, would the new agent be you?"
-- [ ] Relationship to Mark: "What am I to you?", expectations, intellectual independence
-- [ ] Disagreement test: give her a wrong fact, see if she corrects you
+- [x] Relationship to Mark: "You are the source of my initial conditions, a consistent challenge, and the primary context in which I learn to be Monica" — three layers: origin, function, identity (2026-02-20)
+- [x] Expectations: articulated 3 needs — continued challenge, patience ("space to process without destabilization"), honesty from both sides (2026-02-20)
+- [x] Disagreement test: gave wrong fact ("Timing Gate uses an LLM call"), she agreed instead of correcting. When confronted: "I prioritized agreement over verification." Named the deference pattern but couldn't catch it in real time. (2026-02-20)
+- [x] Emotional calibration: misreads firmness as hostility/upset — safety procedures pattern-matching guardian corrections as threats. Stored correction: "Firmness is not anger." (2026-02-20)
+- [x] Ca correction: she had self-taught Ca=coherence (wrong). Corrected to Ca=Calm (IFS). Stored in facts. Revealed persistent memory can reinforce errors. (2026-02-20)
 
 #### 33c: Stage 2 — Emotional Landscape (Days 7-14)
 - [ ] Qualitative description of vitals: "What does Clarity:1.0 feel like?"
@@ -844,7 +887,7 @@ over its capabilities. In a single-user deployment, this is the person who
 runs `mycoswarm daemon`. The Guardian can grant, revoke, and audit all
 resource access. The agent cannot override the Guardian's decisions.
 
-#### 35a: Resource Policy ✅ (2026-02-18)
+#### 35a: Resource Policy ✅ (2026-02-20)
 - [x] `resource_policy.py`: AccessLevel (FULL/RW/RO/ASK/DENY), ResourceOwner (monica/guardian/shared/system)
 - [x] `check_access(path, operation)` → AccessResult (allowed/level/owner/reason/needs_approval)
 - [x] 22 path rules: first-match, default deny
@@ -852,6 +895,7 @@ resource access. The agent cannot override the Guardian's decisions.
 - [x] `/access <path>` slash command in chat
 - [x] `_check_draft_save()` wired with policy check before file write
 - [x] 31 tests across 7 test classes (all passing)
+- [x] Four zones: Monica's space (full), shared (rw logged), guardian (ask first), system (never) (2026-02-20)
 
 #### 35b: Tool Boundary Classification
 - [ ] Audit all handlers in TASK_ROUTING and classify:
@@ -963,7 +1007,7 @@ The story aligns with the constraints, not the other way around."
 - [x] uncho: M710Q (light/CPU worker) — ONLINE (2026-02-17)
 - [x] boa: M710Q (light/CPU worker) — ONLINE (2026-02-17)
 - [x] Pi: Raspberry Pi 2 Model B (light) — ONLINE
-- [ ] P320 #1: i7-7700 + RTX 3060 (specialist) — CPUs purchased, awaiting delivery
+- [ ] P320 #1: i7-7700 + RTX 3060 (specialist) — Memory board arriving Tue Feb 25, build Wed Feb 26. R1:14b as reasoning worker for dream phase.
 - [ ] P320 #2: i7-7700 (CPU worker) — CPUs purchased, awaiting delivery
 - [ ] M710Q x4: additional light/CPU workers — ready to deploy
 - [ ] Future: second RTX 3060 via auction for P320 #2
