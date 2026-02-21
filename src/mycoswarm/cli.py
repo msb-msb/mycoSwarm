@@ -1098,28 +1098,40 @@ def _strip_citation_tags(text: str) -> str:
     return text.strip()
 
 
+def _flush_stdin():
+    """Discard any residual data in stdin (keystrokes during streaming, leftover paste)."""
+    import select as _sel
+    try:
+        while _sel.select([sys.stdin], [], [], 0.01)[0]:
+            sys.stdin.readline()  # discard
+    except (OSError, ValueError):
+        pass
+
+
 def _read_user_input(prompt: str = "\n🍄> ") -> str:
     """Read user input, buffering rapid multi-line paste into one message.
 
-    After input() returns the first line, sleeps 150ms to let the terminal
-    buffer paste, then drains remaining lines. On multi-line paste, waits
-    300ms for terminal echo to finish. No termios, no reprint — let the
-    terminal handle echo naturally.
+    Quick-checks for paste (100ms), then if detected waits 300ms for all
+    lines to arrive and drains with a 500ms rolling window. Single-line
+    typed input only gets the 100ms check — imperceptible.
     """
     import select as _sel
     import time as _time
     first_line = input(prompt)
     lines = [first_line]
     try:
-        _time.sleep(0.15)  # let terminal finish buffering paste
-        while _sel.select([sys.stdin], [], [], 0.3)[0]:
-            line = sys.stdin.readline()
-            if line:
-                lines.append(line.rstrip('\n'))
-            else:
-                break
-        if len(lines) > 1:
-            _time.sleep(0.3)  # let terminal finish echoing
+        if _sel.select([sys.stdin], [], [], 0.1)[0]:
+            # Paste detected — wait for all lines to arrive
+            _time.sleep(0.3)
+            # Drain everything with generous rolling window
+            while _sel.select([sys.stdin], [], [], 0.5)[0]:
+                line = sys.stdin.readline()
+                if line:
+                    lines.append(line.rstrip('\n'))
+                else:
+                    break
+            # Let terminal echo finish
+            _time.sleep(0.3)
     except (OSError, ValueError):
         pass  # select not available — return single line
     return '\n'.join(lines)
@@ -1396,6 +1408,7 @@ def cmd_chat(args):
     while True:
         try:
             sys.stdout.flush()
+            _flush_stdin()  # discard residual keystrokes/paste from previous cycle
             if _article_state != ArticleState.INACTIVE:
                 _state_icon = {
                     ArticleState.OUTLINING: "📝 OUTLINE",
@@ -1491,7 +1504,6 @@ def cmd_chat(args):
         # --- Slash commands ---
         # Check first line only — multi-line paste may contain "/" later
         _first_line = user_input.split('\n')[0].strip()
-        print(f"   [DEBUG] first_line={_first_line!r} starts_with_slash={_first_line.startswith('/')}")
         if _first_line.startswith("/"):
             cmd = _first_line.split()[0].lower()
 
