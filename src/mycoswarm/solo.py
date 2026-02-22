@@ -125,6 +125,14 @@ _PAST_REFERENCE_RE = re.compile(
     r")\b"
 )
 
+_DATETIME_QUERY_RE = re.compile(
+    r"(?i)\b(?:"
+    r"what time|what date|what day|tell me the (?:date|time|day)"
+    r"|current (?:date|time|day)|today.s date|right now"
+    r"|what.s the (?:date|time|day)"
+    r")\b"
+)
+
 
 def detect_past_reference(query: str) -> bool:
     """Return True if the query references past conversations."""
@@ -171,8 +179,8 @@ _INTENT_SYSTEM_PROMPT = (
     "with ONLY a JSON object, no other text.\n\n"
     '{"tool": "", "mode": "", "scope": ""}\n\n'
     "tool — what tools are needed:\n"
-    "  answer: general knowledge, math, coding, creative, conversation\n"
-    "  web_search: current/real-time info (news, prices, weather)\n"
+    "  answer: general knowledge, math, coding, creative, conversation, date/time questions (datetime is always available)\n"
+    "  web_search: current/real-time info (news, prices, weather, sports) — NOT date/time\n"
     "  rag: user's documents, notes, library, or past conversations\n"
     "  web_and_rag: needs both web and user's documents\n\n"
     "mode — what kind of thinking:\n"
@@ -185,7 +193,7 @@ _INTENT_SYSTEM_PROMPT = (
     "  docs: user's document library, files, notes, stored documents. Use docs when the user references a specific file by name (e.g. PLAN.md, README.md)\n"
     "  facts: stored user preferences and facts\n"
     "  all: search everything\n\n"
-    'Examples:\n{"tool": "rag", "mode": "recall", "scope": "session"} — "what did we discuss about bees?"\n{"tool": "rag", "mode": "recall", "scope": "docs"} — "what does PLAN.md say about Phase 20?"'
+    'Examples:\n{"tool": "answer", "mode": "chat", "scope": "session"} — "what time is it?", "what\'s the date?"\n{"tool": "rag", "mode": "recall", "scope": "session"} — "what did we discuss about bees?"\n{"tool": "rag", "mode": "recall", "scope": "docs"} — "what does PLAN.md say about Phase 20?"'
 )
 
 _INTENT_DEFAULT = {"tool": "answer", "mode": "chat", "scope": "all"}
@@ -208,6 +216,10 @@ def intent_classify(query: str, model: str | None = None) -> dict:
         model = _pick_gate_model()
     if model is None:
         return dict(_INTENT_DEFAULT)
+
+    # Fast path: date/time queries — datetime is already in system prompt
+    if _DATETIME_QUERY_RE.search(query):
+        return {"tool": "answer", "mode": "chat", "scope": "facts"}
 
     try:
         with httpx.Client(timeout=httpx.Timeout(5.0, read=15.0)) as client:

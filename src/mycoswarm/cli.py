@@ -2279,7 +2279,11 @@ def cmd_chat(args):
         if auto_tools and len(user_input.split()) >= 5:
             print("   🤔 Classifying...", end="\r", flush=True)
 
-            if daemon_up:
+            # Fast path: date/time queries — datetime already in system prompt, skip all retrieval
+            from mycoswarm.solo import _DATETIME_QUERY_RE
+            if _DATETIME_QUERY_RE.search(user_input):
+                intent_result = {"tool": "answer", "mode": "chat", "scope": "facts"}
+            elif daemon_up:
                 # Daemon mode: submit intent_classify as distributed task
                 import uuid as _uuid
                 _ic_id = f"intent-{_uuid.uuid4().hex[:8]}"
