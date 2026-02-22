@@ -197,7 +197,10 @@ _INTENT_SYSTEM_PROMPT = (
     "  docs: user's document library, files, notes, stored documents. Use docs when the user references a specific file by name (e.g. PLAN.md, README.md)\n"
     "  facts: stored user preferences and facts\n"
     "  all: search everything\n\n"
-    'Examples:\n{"tool": "answer", "mode": "chat", "scope": "session"} — "what time is it?", "what\'s the date?"\n{"tool": "rag", "mode": "recall", "scope": "session"} — "what did we discuss about bees?"\n{"tool": "rag", "mode": "recall", "scope": "docs"} — "what does PLAN.md say about Phase 20?"'
+    "IMPORTANT RULES:\n"
+    "- Date/time/day questions are ALWAYS answer/chat/facts. The current date and time are already in the system prompt. NEVER use web_search for date or time.\n"
+    "- Greetings and small talk are ALWAYS answer/chat/all.\n\n"
+    'Examples:\n{"tool": "answer", "mode": "chat", "scope": "facts"} — "what time is it?", "what\'s the date?", "tell me the date and time", "what day is it?"\n{"tool": "rag", "mode": "recall", "scope": "session"} — "what did we discuss about bees?"\n{"tool": "rag", "mode": "recall", "scope": "docs"} — "what does PLAN.md say about Phase 20?"'
 )
 
 _INTENT_DEFAULT = {"tool": "answer", "mode": "chat", "scope": "all"}
