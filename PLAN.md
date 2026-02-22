@@ -994,6 +994,70 @@ The story aligns with the constraints, not the other way around."
 - `_select_nodes()` sorted by inference score only for "inference" and "embedding" — now uses `INFERENCE_TASKS` constant (also covers "translate" and "file_summarize"). Fixed.
 - `can_handle_locally()` checked Ollama only for "inference" and "embedding" — now uses `INFERENCE_TASKS`. Fixed.
 
+### Phase 37: Parallel Swarm Pipeline — GPU Specialization & Fan-Out
+
+**Principle:** Miu's 24GB VRAM is dedicated to gemma3:27b. Every other model
+runs on rushuna or light nodes. No model swapping on Miu, ever.
+
+**Goal:** Transform serial chat pipeline into parallel DAG execution across
+the swarm, cutting response time by 50%+ and using all nodes productively.
+
+#### 37a: GPU Role Specialization
+- [ ] **rushuna as inference support:** gemma3:1b (intent gate) + nomic-embed (RAG embeddings) always resident on rushuna's 12GB VRAM
+- [ ] **Model pinning:** orchestrator routes intent_classify and embedding tasks to rushuna by default, Miu only as fallback
+- [ ] **Miu protection:** orchestrator never routes non-27b models to Miu when rushuna is available — prevents VRAM swapping
+- [ ] **Optional upgrade:** gemma3:4b on rushuna as better gate model (~3GB, fits alongside embeddings)
+- [ ] **Monitoring:** track model swap events on Miu — goal is zero swaps during normal chat
+
+#### 37b: Light Node Fan-Out (Web Search / Fetch)
+- [ ] **Parallel web fetch:** when Monica needs N web results, distribute across boa/naru/uncho simultaneously (3 nodes × 3 fetches = 9 results in time-of-1)
+- [ ] **Fan-out task type:** new `web_fetch_batch` task that orchestrator splits across available light nodes
+- [ ] **Result aggregation:** orchestrator collects results from all nodes, merges, returns to caller
+- [ ] **Fault tolerance:** if one light node fails, results from others still returned
+- [ ] **Rate limiting:** per-node concurrent fetch limit to avoid overwhelming target sites
+
+#### 37c: Pipeline Parallelism
+- [ ] **Query DAG:** define chat query as a directed acyclic graph of tasks:
+  ```
+  Query arrives
+      ├──→ rushuna: intent classify (gemma3:1b)     ──┐
+      ├──→ rushuna: embed query (nomic-embed)         ──┤ parallel group 1
+      ├──→ boa/naru/uncho: web searches (fan-out)    ──┘
+      │         (results converge)
+      └──→ Miu: final inference gemma3:27b (group 2)
+  ```
+- [ ] **asyncio.gather() in cli.py:** submit intent + embedding + web tasks concurrently, await all before final inference
+- [ ] **Streaming handoff:** Miu begins streaming as soon as context is assembled — no waiting for full batch
+- [ ] **Timeout handling:** if any parallel task exceeds deadline, proceed with partial results
+
+#### 37d: Speculative Execution (stretch goal)
+- [ ] **Branch prediction:** rushuna starts building RAG context for most likely intent BEFORE classification finishes
+- [ ] **Discard on miss:** if predicted intent was wrong, discard speculative results, use real classification
+- [ ] **Hit rate tracking:** measure how often speculation is correct — if >80%, keep; if <50%, disable
+
+#### Benchmarks
+- [ ] Baseline: measure current serial chat pipeline end-to-end (intent → inference)
+- [ ] After 37a: measure with rushuna handling intent + embeddings (expect: no model swaps on Miu)
+- [ ] After 37b: measure 9-site web search serial vs fan-out (expect: ~3x speedup)
+- [ ] After 37c: measure full parallel pipeline (expect: 50%+ reduction vs baseline)
+- [ ] After 37d: measure speculative hit rate and latency savings
+
+#### VRAM Budget
+```
+Miu (24GB RTX 3090):
+  └── gemma3:27b (~16-18GB) — ONLY model, always resident
+
+rushuna (12GB RTX 3060):
+  ├── gemma3:1b  (~1GB)   — intent gate, always resident
+  ├── nomic-embed (~300MB) — embeddings, always resident
+  └── ~10GB free — gemma3:4b upgrade, small chat fallback, or future use
+
+boa/naru/uncho (CPU, 8GB RAM each):
+  └── web fetch, file processing, code execution — no GPU needed
+```
+
+
+
 ## Next
 
 ### Phase 5b: Cross-Node Inference (remaining)
@@ -1031,3 +1095,7 @@ The story aligns with the constraints, not the other way around."
 - [ ] P320 #2: i7-7700 (CPU worker) — CPUs purchased, awaiting delivery
 - [ ] M710Q x4: additional light/CPU workers — ready to deploy
 - [ ] Future: second RTX 3060 via auction for P320 #2
+
+
+
+
