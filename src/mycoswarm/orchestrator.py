@@ -292,6 +292,24 @@ class Orchestrator:
         Ollama error on the remote side) are returned immediately.
         """
         candidates = await self._select_nodes(task.task_type)
+
+        # For inference tasks, filter candidates to those that have the model
+        if task.task_type in ("inference", "embedding"):
+            requested_model = (task.payload or {}).get("model", "")
+            if requested_model:
+                model_candidates = [
+                    p for p in candidates
+                    if requested_model in getattr(p, "available_models", [])
+                ]
+                if model_candidates:
+                    candidates = model_candidates
+                else:
+                    logger.warning(
+                        f"⚠️ No peer has model '{requested_model}' — "
+                        f"falling back to local"
+                    )
+                    return None  # Triggers local fallback
+
         if not candidates:
             logger.warning(
                 f"❌ No peer available for {task.task_type} "

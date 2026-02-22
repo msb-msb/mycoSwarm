@@ -733,7 +733,7 @@ def cmd_research(args):
     print(f"\n🧠 Synthesizing with {model}...")
 
     try:
-        with httpx.Client(headers=_swarm_headers(), timeout=10) as client:
+        with httpx.Client(headers=_swarm_headers(), timeout=30) as client:
             resp = client.post(f"{url}/task", json=infer_payload)
             resp.raise_for_status()
             infer_submit = resp.json()
@@ -985,7 +985,7 @@ def _gather_hardware_context() -> str:
     try:
         result = subprocess.run(
             ["ollama", "list"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True, text=True, timeout=30,
         )
         if result.returncode == 0 and result.stdout.strip():
             context_parts.append("## Installed Ollama Models (this node)\n")
@@ -1956,7 +1956,7 @@ def cmd_chat(args):
                         "timeout_seconds": 300,
                     }
                     try:
-                        with httpx.Client(headers=_swarm_headers(), timeout=10) as client:
+                        with httpx.Client(headers=_swarm_headers(), timeout=30) as client:
                             _resp = client.post(f"{url}/task", json=_tp)
                             _resp.raise_for_status()
                             _sd = _resp.json()
@@ -2713,7 +2713,7 @@ def cmd_chat(args):
         }
 
         try:
-            with httpx.Client(headers=_swarm_headers(), timeout=10) as client:
+            with httpx.Client(headers=_swarm_headers(), timeout=30) as client:
                 resp = client.post(f"{url}/task", json=task_payload)
                 resp.raise_for_status()
                 submit_data = resp.json()
@@ -3061,7 +3061,7 @@ def cmd_rag(args):
 
         print(f"🧠 Asking {model}...\n")
         try:
-            with httpx.Client(headers=_swarm_headers(), timeout=10) as client:
+            with httpx.Client(headers=_swarm_headers(), timeout=30) as client:
                 resp = client.post(f"{url}/task", json=task_payload)
                 resp.raise_for_status()
                 submit_data = resp.json()

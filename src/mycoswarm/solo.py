@@ -127,9 +127,13 @@ _PAST_REFERENCE_RE = re.compile(
 
 _DATETIME_QUERY_RE = re.compile(
     r"(?i)\b(?:"
-    r"what time|what date|what day|tell me the (?:date|time|day)"
-    r"|current (?:date|time|day)|today.s date|right now"
+    r"what time|what date|what day"
+    r"|what is the (?:date|time|day)"
     r"|what.s the (?:date|time|day)"
+    r"|tell me the (?:date|time|day)"
+    r"|current (?:date|time|day)"
+    r"|today.s date|right now"
+    r"|date and time|time and date"
     r")\b"
 )
 

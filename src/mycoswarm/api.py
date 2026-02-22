@@ -442,9 +442,12 @@ def create_api(
         ):
             candidates = await orchestrator._select_nodes(task.task_type)
             # Route to a GPU peer if one scores higher than local
+            # AND has the requested model
+            requested_model = (task.payload or {}).get("model", "")
             gpu_candidates = [
                 p for p in candidates
                 if "gpu_inference" in p.capabilities
+                and (not requested_model or requested_model in getattr(p, "available_models", []))
             ]
             if gpu_candidates:
                 logger.info(
