@@ -978,6 +978,22 @@ Principle: "Monica can think, plan, reason, write code, and propose improvements
 but she cannot apply changes to her own body. Only her Guardian can. Identity ≠ authority.
 The story aligns with the constraints, not the other way around."
 
+### Phase 36: Routing Consolidation (2026-02-22)
+- [x] **Single routing authority:** `orchestrator.route_task()` returns `RoutingDecision` — the only place routing decisions are made
+- [x] **RoutingDecision dataclass:** target (Peer|None), reason (str), can_execute (bool)
+- [x] **Local inference scoring:** `_local_inference_score()` — local GPU node competes with peers using same formula as `_score_peer_for_inference()`
+- [x] **Constants consolidated:** `DISTRIBUTABLE_TASKS` and `INFERENCE_TASKS` defined in orchestrator.py as routing policy
+- [x] **api.py simplified:** `submit_task()` reduced from ~90 lines with 3 `_select_nodes()` calls to ~40 lines with single `route_task()` call
+- [x] **dispatch_task():** extracted from old `route_task()` — handles peer dispatch with retry (used by `submit()` for programmatic API)
+- [x] **_route_to_peer model-swap:** kept as safety net in api.py
+- [x] **Tests:** 15 orchestrator tests (10 new), 530 total passing
+- [x] Duplicated patterns flagged (see below)
+
+**Duplicated logic patterns found during audit:**
+- `_parse_model_size()` and `_pick_best_model()` in api.py — model selection logic that could be useful in orchestrator for smarter model routing
+- `_select_nodes()` sorted by inference score only for "inference" and "embedding" — now uses `INFERENCE_TASKS` constant (also covers "translate" and "file_summarize"). Fixed.
+- `can_handle_locally()` checked Ollama only for "inference" and "embedding" — now uses `INFERENCE_TASKS`. Fixed.
+
 ## Next
 
 ### Phase 5b: Cross-Node Inference (remaining)

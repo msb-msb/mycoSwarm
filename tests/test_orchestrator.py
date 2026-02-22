@@ -7,7 +7,7 @@ import pytest
 
 from mycoswarm.api import TaskRequest, TaskResult, TaskStatus
 from mycoswarm.discovery import Peer, PeerRegistry
-from mycoswarm.orchestrator import Orchestrator
+from mycoswarm.orchestrator import Orchestrator, RoutingDecision
 
 
 @pytest.mark.asyncio
@@ -60,7 +60,7 @@ async def test_inflight_penalty_reduces_score(make_peer, make_identity):
 
 @pytest.mark.asyncio
 async def test_retry_selects_next_candidate(make_task, make_peer, make_identity):
-    """Mock _dispatch_to_peer to fail first, succeed second, verify two calls."""
+    """dispatch_task retries on dispatch error, succeeds on second peer."""
     registry = PeerRegistry()
     identity = make_identity()
     orch = Orchestrator(identity, registry)
@@ -97,7 +97,7 @@ async def test_retry_selects_next_candidate(make_task, make_peer, make_identity)
             ), False
 
     with patch.object(orch, "_dispatch_to_peer", side_effect=mock_dispatch):
-        result = await orch.route_task(task)
+        result = await orch.dispatch_task(task)
 
     assert call_count == 2
     assert result.status == TaskStatus.COMPLETED
@@ -146,5 +146,272 @@ async def test_score_peer_for_inference_prefers_gpu(make_peer, make_identity):
     cpu_score = orch._score_peer_for_inference(cpu_peer)
 
     assert gpu_score > cpu_score
+
+    await orch.close()
+
+
+# --- RoutingDecision tests ---
+
+
+@pytest.mark.asyncio
+async def test_route_task_distributable_to_peer(make_task, make_peer, make_identity):
+    """Distributable task routes to peer when peer scores higher than local."""
+    registry = PeerRegistry()
+    identity = make_identity(
+        node_tier="executive",
+        capabilities=["gpu_inference", "cpu_worker"],
+    )
+    orch = Orchestrator(identity, registry)
+
+    light_peer = make_peer(
+        node_id="light-1", hostname="light-node",
+        node_tier="light", capabilities=["cpu_worker"],
+    )
+    await registry.add_or_update(light_peer)
+
+    task = make_task("web_search", {"query": "test"})
+    decision = await orch.route_task(task)
+
+    assert isinstance(decision, RoutingDecision)
+    assert decision.target is not None
+    assert decision.target.node_id == "light-1"
+    assert decision.can_execute is True
+
+    await orch.close()
+
+
+@pytest.mark.asyncio
+async def test_route_task_distributable_local_wins(make_task, make_peer, make_identity):
+    """Distributable task stays local when local scores higher."""
+    registry = PeerRegistry()
+    identity = make_identity(
+        node_tier="light",
+        capabilities=["cpu_worker"],
+    )
+    orch = Orchestrator(identity, registry)
+
+    # Executive peer penalized for cpu_work (-500)
+    exec_peer = make_peer(
+        node_id="exec-1", hostname="exec-node",
+        node_tier="executive",
+        capabilities=["gpu_inference", "cpu_worker"],
+        vram_total_mb=24576,
+    )
+    await registry.add_or_update(exec_peer)
+
+    task = make_task("web_search", {"query": "test"})
+    decision = await orch.route_task(task)
+
+    assert decision.target is None
+    assert decision.can_execute is True
+    assert "Local" in decision.reason
+
+    await orch.close()
+
+
+@pytest.mark.asyncio
+async def test_route_task_inference_to_gpu_peer(make_task, make_peer, make_identity):
+    """Inference task routes to GPU peer that has the requested model."""
+    registry = PeerRegistry()
+    identity = make_identity(
+        node_tier="light",
+        capabilities=["cpu_worker", "cpu_inference"],
+        ollama_running=True,
+        available_models=["gemma3:1b"],
+    )
+    orch = Orchestrator(identity, registry)
+
+    gpu_peer = make_peer(
+        node_id="gpu-1", hostname="gpu-node",
+        node_tier="executive",
+        capabilities=["gpu_inference", "cpu_worker"],
+        vram_total_mb=24576,
+        available_models=["gemma3:27b", "gemma3:1b"],
+    )
+    await registry.add_or_update(gpu_peer)
+
+    task = make_task("inference", {"model": "gemma3:27b", "prompt": "hello"})
+    decision = await orch.route_task(task)
+
+    assert decision.target is not None
+    assert decision.target.node_id == "gpu-1"
+    assert "gemma3:27b" in decision.reason
+
+    await orch.close()
+
+
+@pytest.mark.asyncio
+async def test_route_task_inference_local_gpu_wins(make_task, make_peer, make_identity):
+    """Local GPU node scores higher than remote GPU — stays local."""
+    registry = PeerRegistry()
+    identity = make_identity(
+        node_tier="executive",
+        capabilities=["gpu_inference", "cpu_worker"],
+        vram_total_mb=24576,
+        ollama_running=True,
+        available_models=["gemma3:27b"],
+    )
+    orch = Orchestrator(identity, registry)
+
+    # Smaller GPU peer
+    smaller_peer = make_peer(
+        node_id="gpu-2", hostname="small-gpu",
+        node_tier="specialist",
+        capabilities=["gpu_inference", "cpu_worker"],
+        vram_total_mb=12288,
+        available_models=["gemma3:27b"],
+    )
+    await registry.add_or_update(smaller_peer)
+
+    task = make_task("inference", {"model": "gemma3:27b", "prompt": "hello"})
+    decision = await orch.route_task(task)
+
+    # Local RTX 3090 (exec, 24GB) should score higher than remote 3060 (spec, 12GB)
+    assert decision.target is None
+    assert decision.can_execute is True
+
+    await orch.close()
+
+
+@pytest.mark.asyncio
+async def test_route_task_no_peer_has_model_local_fallback(
+    make_task, make_peer, make_identity
+):
+    """When no peer has the requested model, fall back to local."""
+    registry = PeerRegistry()
+    identity = make_identity(
+        node_tier="executive",
+        capabilities=["gpu_inference", "cpu_worker"],
+        ollama_running=True,
+        available_models=["gemma3:27b"],
+        vram_total_mb=24576,
+    )
+    orch = Orchestrator(identity, registry)
+
+    peer = make_peer(
+        node_id="peer-1", hostname="peer-node",
+        node_tier="specialist",
+        capabilities=["gpu_inference", "cpu_worker"],
+        vram_total_mb=12288,
+        available_models=["llama3:8b"],  # Different model
+    )
+    await registry.add_or_update(peer)
+
+    task = make_task("inference", {"model": "gemma3:27b", "prompt": "hello"})
+    decision = await orch.route_task(task)
+
+    assert decision.target is None
+    assert decision.can_execute is True
+    assert "No peer has model" in decision.reason
+
+    await orch.close()
+
+
+@pytest.mark.asyncio
+async def test_route_task_no_node_can_handle(make_task, make_identity):
+    """When no peer and can't handle locally → can_execute=False."""
+    registry = PeerRegistry()
+    identity = make_identity(
+        capabilities=["cpu_worker"],
+        ollama_running=False,  # Can't do inference
+    )
+    orch = Orchestrator(identity, registry)
+
+    task = make_task("inference", {"model": "gemma3:27b", "prompt": "hello"})
+    decision = await orch.route_task(task)
+
+    assert decision.target is None
+    assert decision.can_execute is False
+
+    await orch.close()
+
+
+@pytest.mark.asyncio
+async def test_route_task_cant_handle_locally_routes_to_peer(
+    make_task, make_peer, make_identity
+):
+    """When local can't handle but peer can → routes to peer."""
+    registry = PeerRegistry()
+    identity = make_identity(
+        capabilities=["cpu_worker"],
+        ollama_running=False,
+    )
+    orch = Orchestrator(identity, registry)
+
+    gpu_peer = make_peer(
+        node_id="gpu-1", hostname="gpu-node",
+        node_tier="executive",
+        capabilities=["gpu_inference", "cpu_worker"],
+        vram_total_mb=24576,
+        available_models=["gemma3:27b"],
+    )
+    await registry.add_or_update(gpu_peer)
+
+    task = make_task("inference", {"model": "gemma3:27b", "prompt": "hello"})
+    decision = await orch.route_task(task)
+
+    assert decision.target is not None
+    assert decision.target.node_id == "gpu-1"
+    assert decision.can_execute is True
+
+    await orch.close()
+
+
+@pytest.mark.asyncio
+async def test_local_inference_score_gpu_node(make_identity):
+    """Local GPU node gets high inference score."""
+    registry = PeerRegistry()
+    identity = make_identity(
+        node_tier="executive",
+        capabilities=["gpu_inference", "cpu_worker"],
+        vram_total_mb=24576,
+        ollama_running=True,
+    )
+    orch = Orchestrator(identity, registry)
+
+    score = orch._local_inference_score()
+    # 1000 (gpu) + 245.76 (vram) + 500 (executive) = ~1745
+    assert score > 1500
+
+    await orch.close()
+
+
+@pytest.mark.asyncio
+async def test_local_inference_score_no_ollama(make_identity):
+    """Local node without Ollama gets very low inference score."""
+    registry = PeerRegistry()
+    identity = make_identity(
+        node_tier="executive",
+        capabilities=["gpu_inference", "cpu_worker"],
+        vram_total_mb=24576,
+        ollama_running=False,
+    )
+    orch = Orchestrator(identity, registry)
+
+    score = orch._local_inference_score()
+    assert score < 0  # -5000 penalty
+
+    await orch.close()
+
+
+@pytest.mark.asyncio
+async def test_local_inference_score_inflight_penalty(make_identity):
+    """Inflight tasks reduce local inference score."""
+    registry = PeerRegistry()
+    identity = make_identity(
+        node_id="myco-local",
+        node_tier="executive",
+        capabilities=["gpu_inference", "cpu_worker"],
+        vram_total_mb=24576,
+        ollama_running=True,
+    )
+    orch = Orchestrator(identity, registry)
+
+    score_idle = orch._local_inference_score()
+    orch.record_dispatch("myco-local")
+    orch.record_dispatch("myco-local")
+    score_busy = orch._local_inference_score()
+
+    assert score_busy == score_idle - 200  # 2 inflight × 100
 
     await orch.close()

@@ -496,9 +496,7 @@ class TestIntentRouting:
         assert callable(HANDLERS["intent_classify"])
 
     def test_distributable_tasks_includes_intent_classify(self):
-        """DISTRIBUTABLE_TASKS is defined inside create_api — verify via source."""
-        import inspect
-        from mycoswarm.api import create_api
+        """intent_classify is in DISTRIBUTABLE_TASKS (now in orchestrator.py)."""
+        from mycoswarm.orchestrator import DISTRIBUTABLE_TASKS
 
-        source = inspect.getsource(create_api)
-        assert "intent_classify" in source
+        assert "intent_classify" in DISTRIBUTABLE_TASKS

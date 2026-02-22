@@ -26,6 +26,13 @@ from mycoswarm.node import NodeIdentity
 
 logger = logging.getLogger(__name__)
 
+# Task types that should be load-balanced across the swarm
+# even when the local node could handle them.
+DISTRIBUTABLE_TASKS = {"web_search", "web_fetch", "file_read", "code_run", "intent_classify"}
+
+# Task types that prefer GPU inference nodes
+INFERENCE_TASKS = {"inference", "embedding", "translate", "file_summarize"}
+
 # Task types and which capabilities they need
 TASK_ROUTING = {
     "inference": ["gpu_inference", "cpu_inference"],
@@ -42,6 +49,18 @@ TASK_ROUTING = {
 
 PEER_TIMEOUT = 10.0
 MAX_DISPATCH_ATTEMPTS = 3  # first try + 2 retries
+
+
+@dataclass
+class RoutingDecision:
+    """Where a task should be executed.
+
+    Returned by Orchestrator.route_task() — the single routing authority.
+    """
+
+    target: Peer | None  # None = execute locally
+    reason: str
+    can_execute: bool = True  # False = no node in swarm can handle this
 
 
 @dataclass
@@ -129,6 +148,25 @@ class Orchestrator:
         score -= self._inflight.get(self.identity.node_id, 0) * 100
         return score
 
+    def _local_inference_score(self) -> float:
+        """Score the local node as an inference candidate.
+
+        Uses the same formula as _score_peer_for_inference so local
+        and peer scores are directly comparable.
+        """
+        score = 0.0
+        if "gpu_inference" in self.identity.capabilities:
+            score += 1000
+        score += self.identity.vram_total_mb / 100
+        if self.identity.node_tier == "executive":
+            score += 500
+        elif self.identity.node_tier == "specialist":
+            score += 200
+        if not self.identity.ollama_running:
+            score -= 5000  # Can't do inference without Ollama
+        score -= self._inflight.get(self.identity.node_id, 0) * 100
+        return score
+
     def pick_for_distribution(self, candidates: list[Peer]) -> Peer | None:
         """Pick the best node for a distributable task, including local.
 
@@ -173,7 +211,7 @@ class Orchestrator:
                 f"{task_type} (need: {required_caps})"
             )
 
-        if task_type in ("inference", "embedding"):
+        if task_type in INFERENCE_TASKS:
             eligible.sort(key=self._score_peer_for_inference, reverse=True)
         else:
             eligible.sort(key=self._score_peer_for_cpu_work, reverse=True)
@@ -280,21 +318,153 @@ class Orchestrator:
         has_caps = any(cap in self.identity.capabilities for cap in required_caps)
         if not has_caps:
             return False
-        if task_type in ("inference", "embedding") and not self.identity.ollama_running:
+        if task_type in INFERENCE_TASKS and not self.identity.ollama_running:
             return False
         return True
 
-    async def route_task(self, task: TaskRequest) -> TaskResult | None:
-        """Route a task to the best peer, retrying on dispatch failures.
+    async def route_task(self, task: TaskRequest) -> RoutingDecision:
+        """Single authority for all routing decisions.
 
-        Tries up to MAX_DISPATCH_ATTEMPTS peers in score order. Only retries
-        on dispatch errors (peer unreachable); task-level failures (e.g.
-        Ollama error on the remote side) are returned immediately.
+        Returns a RoutingDecision indicating whether to execute locally
+        (target=None) or on a specific peer (target=Peer).  Does NOT
+        dispatch — the caller is responsible for execution.
+        """
+        can_local = self.can_handle_locally(task.task_type)
+        candidates = await self._select_nodes(task.task_type)
+
+        # --- Distributable tasks: load-balance across peers + local ---
+        if task.task_type in DISTRIBUTABLE_TASKS:
+            target = self.pick_for_distribution(candidates)
+            if target is not None:
+                return RoutingDecision(
+                    target=target,
+                    reason=f"Distributed to {target.hostname}",
+                )
+            if can_local:
+                return RoutingDecision(
+                    target=None,
+                    reason="Local wins distribution scoring",
+                )
+            # Can't handle locally and no good peer — fall through
+
+        # --- Inference tasks: prefer GPU nodes with the requested model ---
+        elif task.task_type in INFERENCE_TASKS:
+            requested_model = (task.payload or {}).get("model", "")
+
+            if requested_model:
+                model_peers = [
+                    p for p in candidates
+                    if requested_model in getattr(p, "available_models", [])
+                ]
+                gpu_model_peers = [
+                    p for p in model_peers
+                    if "gpu_inference" in p.capabilities
+                ]
+                best_peers = gpu_model_peers or model_peers
+
+                if best_peers:
+                    best_peer = best_peers[0]  # Already sorted by score
+                    best_score = self._score_peer_for_inference(best_peer)
+
+                    # Compare against local if local also has this model
+                    local_has_model = (
+                        can_local
+                        and requested_model in self.identity.available_models
+                    )
+                    if local_has_model:
+                        local_score = self._local_inference_score()
+                        if local_score >= best_score:
+                            logger.info(
+                                f"📍 Local inference wins "
+                                f"({local_score:.0f} vs "
+                                f"{best_score:.0f} on {best_peer.hostname})"
+                            )
+                            return RoutingDecision(
+                                target=None,
+                                reason="Local scores higher for inference",
+                            )
+
+                    logger.info(
+                        f"🎯 Routing {task.task_type} → "
+                        f"{best_peer.hostname} "
+                        f"(has model {requested_model})"
+                    )
+                    return RoutingDecision(
+                        target=best_peer,
+                        reason=f"Peer {best_peer.hostname} has model "
+                               f"{requested_model}",
+                    )
+
+                # No peer has the model — local fallback
+                if can_local:
+                    logger.warning(
+                        f"⚠️ No peer has model '{requested_model}' "
+                        f"— handling locally"
+                    )
+                    return RoutingDecision(
+                        target=None,
+                        reason=f"No peer has model '{requested_model}'",
+                    )
+            else:
+                # No model specified — prefer GPU peers
+                gpu_peers = [
+                    p for p in candidates
+                    if "gpu_inference" in p.capabilities
+                ]
+                if gpu_peers:
+                    best_peer = gpu_peers[0]
+                    best_score = self._score_peer_for_inference(best_peer)
+                    if can_local:
+                        local_score = self._local_inference_score()
+                        if local_score >= best_score:
+                            return RoutingDecision(
+                                target=None,
+                                reason="Local GPU wins",
+                            )
+                    return RoutingDecision(
+                        target=best_peer,
+                        reason=f"GPU peer {best_peer.hostname}",
+                    )
+                if can_local:
+                    return RoutingDecision(
+                        target=None,
+                        reason="Local inference (no GPU peers)",
+                    )
+
+        # --- Generic fallback ---
+        if can_local:
+            return RoutingDecision(target=None, reason="Handle locally")
+
+        if candidates:
+            return RoutingDecision(
+                target=candidates[0],
+                reason=f"Can't handle locally, routing to "
+                       f"{candidates[0].hostname}",
+            )
+
+        logger.warning(
+            f"❌ No node available for {task.task_type} "
+            f"(task {task.task_id})"
+        )
+        return RoutingDecision(
+            target=None,
+            reason=f"No node can handle: {task.task_type}",
+            can_execute=False,
+        )
+
+    async def dispatch_task(self, task: TaskRequest) -> TaskResult | None:
+        """Dispatch a task to peers with retry logic.
+
+        Selects candidates, tries up to MAX_DISPATCH_ATTEMPTS peers in
+        score order.  Only retries on dispatch errors (peer unreachable);
+        task-level failures are returned immediately.
+
+        Returns None if no peer is available (caller should try local).
         """
         candidates = await self._select_nodes(task.task_type)
 
         # For inference tasks, filter candidates to those that have the model
-        if task.task_type in ("inference", "embedding"):
+        if task.task_type in INFERENCE_TASKS:
             requested_model = (task.payload or {}).get("model", "")
             if requested_model:
                 model_candidates = [
@@ -304,17 +474,9 @@ class Orchestrator:
                 if model_candidates:
                     candidates = model_candidates
                 else:
-                    logger.warning(
-                        f"⚠️ No peer has model '{requested_model}' — "
-                        f"falling back to local"
-                    )
-                    return None  # Triggers local fallback
+                    return None  # No peer has the model
 
         if not candidates:
-            logger.warning(
-                f"❌ No peer available for {task.task_type} "
-                f"(task {task.task_id})"
-            )
             return None
 
         last_result = None
@@ -339,7 +501,9 @@ class Orchestrator:
             )
             self._records[task.task_id] = record
 
-            result, is_dispatch_error = await self._dispatch_to_peer(target, task)
+            result, is_dispatch_error = await self._dispatch_to_peer(
+                target, task
+            )
             record.status = result.status
             record.result = result.result
             record.error = result.error
@@ -347,7 +511,7 @@ class Orchestrator:
             last_result = result
 
             if not is_dispatch_error:
-                return result  # Task reached the peer — done (success or fail)
+                return result  # Task reached the peer — done
 
             # Dispatch error — try next candidate
 
@@ -374,13 +538,25 @@ class Orchestrator:
         )
 
         if prefer_remote:
-            result = await self.route_task(task)
-            if result:
-                return result
+            decision = await self.route_task(task)
 
-        # No peer — handle locally
+            if decision.target is not None:
+                # Dispatch to peer with retry
+                result = await self.dispatch_task(task)
+                if result:
+                    return result
+                # All dispatch attempts failed — fall through to local
+
+            elif not decision.can_execute:
+                return TaskResult(
+                    task_id=task_id,
+                    status=TaskStatus.FAILED,
+                    error=decision.reason,
+                )
+
+        # Handle locally
         if self.can_handle_locally(task_type):
-            logger.info(f"📍 No peers for {task_type} — handling locally")
+            logger.info(f"📍 Handling {task_type} locally")
             return TaskResult(
                 task_id=task_id,
                 status=TaskStatus.PENDING,

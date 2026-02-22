@@ -238,6 +238,8 @@ def create_api(
     port: int = 7890,
 ) -> FastAPI:
     """Create the FastAPI application for this node."""
+    # Lazy import to avoid circular dependency (orchestrator imports api models)
+    from mycoswarm.orchestrator import DISTRIBUTABLE_TASKS
 
     app = FastAPI(
         title=f"mycoSwarm Node: {identity.hostname}",
@@ -281,10 +283,6 @@ def create_api(
             )
             for p in peers
         ]
-
-    # Task types that should be distributed across the swarm
-    # even when the local node could handle them.
-    DISTRIBUTABLE_TASKS = {"web_search", "web_fetch", "file_read", "code_run", "intent_classify"}
 
     async def _route_to_peer(task: TaskRequest, target):
         """Forward task to a peer and poll for result in background."""
@@ -399,22 +397,23 @@ def create_api(
             f"from {task.source_node}"
         )
 
-        can_local = (
-            orchestrator is None
-            or orchestrator.can_handle_locally(task.task_type)
-        )
+        # --- Routing via orchestrator (single authority) ---
+        if orchestrator is not None:
+            decision = await orchestrator.route_task(task)
 
-        # Distributable tasks: pick least-loaded node (peers + local)
-        if (
-            orchestrator is not None
-            and task.task_type in DISTRIBUTABLE_TASKS
-        ):
-            candidates = await orchestrator._select_nodes(task.task_type)
-            target = orchestrator.pick_for_distribution(candidates)
-            if target is not None:
-                return await _route_to_peer(task, target)
-            # Local wins — track inflight and handle here
-            if can_local:
+            # Route to peer
+            if decision.target is not None:
+                return await _route_to_peer(task, decision.target)
+
+            # No node can handle this task
+            if not decision.can_execute:
+                raise HTTPException(
+                    status_code=503,
+                    detail=decision.reason,
+                )
+
+            # Local handling — track inflight for distributable tasks
+            if task.task_type in DISTRIBUTABLE_TASKS:
                 orchestrator.record_dispatch(identity.node_id)
 
                 async def _track_local_completion(tid: str):
@@ -431,56 +430,11 @@ def create_api(
                 asyncio.create_task(
                     _track_local_completion(task.task_id)
                 )
-                return await task_queue.submit(task)
 
-        # Inference/embedding: prefer GPU peers over local CPU inference
-        INFERENCE_TASKS = {"inference", "embedding", "translate", "file_summarize"}
-        if (
-            orchestrator is not None
-            and task.task_type in INFERENCE_TASKS
-            and can_local
-        ):
-            candidates = await orchestrator._select_nodes(task.task_type)
-            # Route to a GPU peer if one scores higher than local
-            # AND has the requested model
-            requested_model = (task.payload or {}).get("model", "")
-            gpu_candidates = [
-                p for p in candidates
-                if "gpu_inference" in p.capabilities
-                and (not requested_model or requested_model in getattr(p, "available_models", []))
-            ]
-            if gpu_candidates:
-                logger.info(
-                    f"🎯 GPU peer available — routing {task.task_type} "
-                    f"to {gpu_candidates[0].hostname} instead of local CPU"
-                )
-                return await _route_to_peer(task, gpu_candidates[0])
-            # No GPU peer — fall through to local
-
-        if can_local:
-            if task.task_type == "inference":
-                task_queue.create_stream(task.task_id)
-            return await task_queue.submit(task)
-
-        # Can't handle locally — route to best peer
-        logger.info(
-            f"🔀 Can't handle {task.task_type} locally, routing to peer..."
-        )
-
-        if orchestrator is None:
-            raise HTTPException(
-                status_code=503,
-                detail=f"No orchestrator and can't handle: {task.task_type}",
-            )
-
-        candidates = await orchestrator._select_nodes(task.task_type)
-        if not candidates:
-            raise HTTPException(
-                status_code=503,
-                detail=f"No peer in swarm can handle: {task.task_type}",
-            )
-
-        return await _route_to_peer(task, candidates[0])
+        # --- Local execution ---
+        if task.task_type == "inference":
+            task_queue.create_stream(task.task_id)
+        return await task_queue.submit(task)
 
     @app.get("/task/{task_id}")
     async def get_task_result(task_id: str):
