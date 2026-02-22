@@ -32,6 +32,7 @@ Usage:
 import argparse
 import sys
 import os
+from datetime import datetime as _ts
 import httpx
 
 from mycoswarm.hardware import detect_all
@@ -433,7 +434,7 @@ def cmd_ask(args):
         print(result.get("response", ""))
         print(f"\n{'─' * 50}")
         print(
-            f"  ⏱  {data.get('duration_seconds', 0):.1f}s | "
+            f"  ⏱  {_ts.now().strftime('%Y-%m-%d %H:%M:%S')} | {data.get('duration_seconds', 0):.1f}s | "
             f"{result.get('tokens_per_second', 0):.1f} tok/s | "
             f"model: {model}"
         )
@@ -503,7 +504,7 @@ def cmd_search(args):
     print(f"{'─' * 50}")
     node_id = data.get("node_id", "")
     duration = data.get("duration_seconds", 0)
-    print(f"  ⏱  {duration:.1f}s | {len(results)} results | node: {node_id}")
+    print(f"  ⏱  {_ts.now().strftime('%Y-%m-%d %H:%M:%S')} | {duration:.1f}s | {len(results)} results | node: {node_id}")
 
 
 def _resolve_node_name(url: str, node_id: str) -> str:
@@ -1977,7 +1978,7 @@ def cmd_chat(args):
                     print(
                         f"\n\n{'─' * 50}\n"
                         f"  📚 {', '.join(source_labels)} | "
-                        f"⏱  {duration:.1f}s | {tps:.1f} tok/s | {model}"
+                        f"⏱  {_ts.now().strftime('%Y-%m-%d %H:%M:%S')} | {duration:.1f}s | {tps:.1f} tok/s | {model}"
                     )
                 continue
 
@@ -2620,7 +2621,7 @@ def cmd_chat(args):
             tools_label = f" | tools: {'+'.join(tool_sources)}" if tool_sources else ""
             print(
                 f"\n\n{'─' * 50}\n"
-                f"  ⏱  {duration:.1f}s | {tps:.1f} tok/s | {model}{tools_label}"
+                f"  ⏱  {_ts.now().strftime('%Y-%m-%d %H:%M:%S')} | {duration:.1f}s | {tps:.1f} tok/s | {model}{tools_label}"
             )
 
             # --- Timing indicator ---
@@ -2750,7 +2751,7 @@ def cmd_chat(args):
         tools_label = f" | tools: {'+'.join(tool_sources)}" if tool_sources else ""
         print(
             f"\n\n{'─' * 50}\n"
-            f"  ⏱  {duration:.1f}s | {tps:.1f} tok/s | "
+            f"  ⏱  {_ts.now().strftime('%Y-%m-%d %H:%M:%S')} | {duration:.1f}s | {tps:.1f} tok/s | "
             f"{model} | node: {node_id}{tools_label}"
         )
 
@@ -3087,7 +3088,7 @@ def cmd_rag(args):
     duration = metrics.get("duration_seconds", 0)
     print(f"\n\n{'─' * 50}")
     print(f"📚 Sources: {', '.join(sources)}")
-    print(f"  ⏱  {duration:.1f}s | {tps:.1f} tok/s | {model}")
+    print(f"  ⏱  {_ts.now().strftime('%Y-%m-%d %H:%M:%S')} | {duration:.1f}s | {tps:.1f} tok/s | {model}")
 
 
 def cmd_memory(args):
