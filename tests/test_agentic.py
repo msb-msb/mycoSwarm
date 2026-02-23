@@ -75,7 +75,7 @@ class TestClassifyQuery:
         mock_resp.raise_for_status = MagicMock()
         mock_client.post.return_value = mock_resp
 
-        result = classify_query("What is bitcoin price right now?", "gemma3:27b")
+        result = classify_query("What is the latest bitcoin price?", "gemma3:27b")
         assert result == "web_search"
 
     @patch("mycoswarm.solo.httpx.Client")
