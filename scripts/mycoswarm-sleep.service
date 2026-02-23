@@ -1,0 +1,40 @@
+# mycoSwarm Deep Sleep Cycle — systemd oneshot service
+#
+# Runs the overnight maintenance cycle: memory consolidation,
+# pruning, poison scan, identity integrity check, and wake journal.
+#
+# Install:
+#   sudo cp scripts/mycoswarm-sleep.service /etc/systemd/system/
+#   sudo cp scripts/mycoswarm-sleep.timer /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable mycoswarm-sleep.timer
+#   sudo systemctl start mycoswarm-sleep.timer
+#
+# Manual run:
+#   sudo systemctl start mycoswarm-sleep.service
+#
+# Check logs:
+#   journalctl -u mycoswarm-sleep -e
+
+[Unit]
+Description=mycoSwarm Deep Sleep Cycle
+Documentation=https://github.com/msb-msb/mycoSwarm
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=minotaur
+WorkingDirectory=/home/minotaur/Desktop/mycoSwarm
+ExecStart=/home/minotaur/Desktop/mycoSwarm/.venv/bin/mycoswarm sleep
+TimeoutStartSec=600
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mycoswarm-sleep
+
+# Environment
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

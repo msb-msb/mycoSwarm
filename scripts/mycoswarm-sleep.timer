@@ -1,0 +1,23 @@
+# mycoSwarm Deep Sleep Timer — runs at 3:00 AM daily
+#
+# Install alongside mycoswarm-sleep.service:
+#   sudo cp scripts/mycoswarm-sleep.service /etc/systemd/system/
+#   sudo cp scripts/mycoswarm-sleep.timer /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable mycoswarm-sleep.timer
+#   sudo systemctl start mycoswarm-sleep.timer
+#
+# Check timer status:
+#   systemctl list-timers mycoswarm-sleep.timer
+
+[Unit]
+Description=mycoSwarm Deep Sleep Timer (3 AM daily)
+Documentation=https://github.com/msb-msb/mycoSwarm
+
+[Timer]
+OnCalendar=*-*-* 03:00:00
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

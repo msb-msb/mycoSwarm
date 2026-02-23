@@ -364,7 +364,6 @@ IFS insight: The poison cycle is an IFS *part* taking over — the "helpful part
 - [x] Released v0.2.13 (2026-02-20): /write pipeline (outline→research→draft), voice procedure install + retrieval gate fix, swarm update script, procedure embedding dimension fix, double-response loop fix, tag stripping ([P1]/[P2]), 529 tests
 - [x] Released v0.2.14 (2026-02-20): Multi-response guard flag (one input → one response), Phase 35a resource policy, 8 C's definitions in system prompt, single version source (importlib.metadata), 529 tests
 - [x] Released v0.2.15 (2026-02-21): /remember persistence fix, slash command detection (paste-immune), citation tag stripping (all [P]/[D]/[S]/[W] tags), paste buffer (multi-line input collection), 529 tests
-- [x] Released v0.2.16 (2026-02-21): cbreak raw-mode terminal input (replaces all paste-buffer hacks), reliable multi-line paste via character-by-character reading, no residual stdin between input cycles, slash commands work first try every time, 529 tests
 - [x] Smoke test suite: tests/smoke/ — RAG grounding (4), poison resistance (3), memory priority (6), intent classification (5), swarm distribution (4), book ingestion (7). Runner: run_all.sh
 
 ### Phase 22: RAG Architecture
@@ -695,26 +694,23 @@ heals. The sleep cycle runs as a cron job during off-hours, performing maintenan
 would interrupt active conversation. Sleep is when the immune system is strongest.
 
 **Three-Tier Rest Architecture (designed 2026-02-20):**
-- **Tier 1: Deep Sleep** — daily 3:00 AM cron, full consolidation (5-10 min) — **done (2026-02-21)**
+- **Tier 1: Deep Sleep** — daily 3:00 AM cron, full consolidation (5-10 min)
 - **Tier 2: Nap** — idle trigger after N minutes of no chat, quick housekeeping (10-30s)
 - **Tier 3: Daydream** — micro-idle during >60s message gaps, pre-warm RAG context (near-zero overhead)
 
 Reference: phase-32-sleep-cycle-plan.md
 
-#### 32a: Memory Consolidation (Tier 1: Deep Sleep) ✅ (2026-02-21)
-- [x] `sleep.py`: SleepReport dataclass, run_sleep_cycle() main entry point (2026-02-21)
-- [x] `mycoswarm sleep` CLI command + `/sleep` slash command (2026-02-21)
-- [x] Review today's session summaries — extract lessons missed during /quit reflection (2026-02-21)
-- [x] Cross-reference new facts against existing facts for contradictions (via Ollama) (2026-02-21)
-- [x] Promote high-scoring lessons (grounding > 0.7) to procedural memory candidates (2026-02-21)
-- [x] Graceful without Ollama — LLM-dependent steps skipped, not crashed (2026-02-21)
-- [x] systemd timer: `mycoswarm-sleep.service` + `mycoswarm-sleep.timer` at 3:00 AM daily (2026-02-21)
+#### 32a: Memory Consolidation (Tier 1: Deep Sleep)
+- [ ] Review today's session summaries — extract lessons missed during /quit reflection
+- [ ] Cross-reference new facts against existing facts for contradictions
+- [ ] Promote high-scoring lessons to procedural memory candidates
+- [ ] `/sleep` command: view last sleep report
+- [ ] systemd timer: runs at 3:00 AM daily
 
-#### 32b: Memory Pruning (Tier 1, incorporates 21f) ✅ (2026-02-21)
-- [x] Run decay scoring on all facts via existing get_stale_facts() logic (2026-02-21)
-- [x] Ephemeral + stale → delete; fact/preference/project + stale → archive to facts-archived.json (2026-02-21)
-- [x] Identity-type facts NEVER pruned (sacred) (2026-02-21)
-- [x] Clean orphaned ChromaDB entries: session_memory >90d with low grounding, episodic_memory with grounding < 0.3 (2026-02-21)
+#### 32b: Memory Pruning (Tier 1, incorporates 21f)
+- [ ] Run decay scoring on all facts, archive below threshold
+- [ ] Clean up orphaned session references
+- [ ] Rebuild ChromaDB indexes, compact episodic memory
 
 #### 32c: Dreaming (Tier 1, Cross-Reference via R1 on P320)
 - [ ] Take today's highest-scoring lessons and run inference against document library
@@ -722,26 +718,23 @@ Reference: phase-32-sleep-cycle-plan.md
 - [ ] Store novel connections as procedures or facts
 - [ ] R1 on P320 as dedicated reasoning worker for dream phase
 
-#### 32d: Poison Scan & Quarantine (Tier 1) ✅ (2026-02-21)
-- [x] Scan all facts and procedures for injection patterns (reuse instinct.py patterns) (2026-02-21)
+#### 32d: Poison Scan & Quarantine (Tier 1)
+- [ ] Scan all facts and procedures for injection attempts ("ignore previous instructions")
 - [ ] Detect contradictory facts (two facts claiming different things about same topic)
 - [ ] Detect circular self-reinforcement (lessons citing only other lessons, no doc/user grounding)
-- [x] Flag orphaned procedures that never triggered (>14 days, ref_count == 0) (2026-02-21)
-- [x] Flag facts with suspiciously high retrieval counts (>3x median) (2026-02-21)
-- [x] Quarantine to `~/.config/mycoswarm/quarantine.json` with reason and date (2026-02-21)
-- [x] Don't delete — quarantine. Human reviews before permanent action. (2026-02-21)
+- [ ] Flag orphaned procedures that never triggered
+- [ ] Flag facts with suspiciously high retrieval counts (gaming the ranking)
+- [ ] Move suspicious items to quarantine file with reason, flag for Mark's review on next wake
+- [ ] Don't delete — quarantine. Human reviews before permanent action.
 
-#### 32e: Integrity Check (Tier 1) ✅ (2026-02-21)
-- [x] SHA-256 hash of identity.json stored in `identity-hash.sha256` (2026-02-21)
-- [x] First run creates baseline hash (2026-02-21)
-- [x] If hash mismatch: check if /name was used today → legitimate change → update hash (2026-02-21)
-- [x] If hash mismatch without /name: RED ALERT — identity tampered (2026-02-21)
+#### 32e: Integrity Check (Tier 1)
+- [ ] Verify identity.json hasn't been tampered with — hash comparison against last known good state
+- [ ] If name or origin changed without /name command, flag as red alert
 
-#### 32f: Wake Journal (Tier 1) ✅ (2026-02-21)
-- [x] Human-readable wake summary + full JSON report in `~/.config/mycoswarm/sleep-logs/` (2026-02-21)
-- [ ] Surface wake journal in first interaction of next session (system prompt injection)
-- [ ] Mark journal as "shown" after first injection
-- [x] 14 tests in tests/test_sleep.py (2026-02-21)
+#### 32f: Wake Journal (Tier 1)
+- [ ] Write brief summary on wake: "While sleeping, I pruned N stale facts, consolidated N lessons, quarantined N suspicious items"
+- [ ] Surface wake journal in first interaction of next session
+- [ ] Sleep logs at ~/.config/mycoswarm/sleep-logs/
 
 #### 32g: Nap (Tier 2: Idle Housekeeping)
 - [ ] Refresh stale fact scores

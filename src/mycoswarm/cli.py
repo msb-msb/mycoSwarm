@@ -22,6 +22,7 @@ Usage:
     mycoswarm memory              Show stored facts about the user
     mycoswarm memory --add "..."  Remember a fact
     mycoswarm memory --forget N   Forget a fact by ID
+    mycoswarm sleep               Run deep sleep cycle (consolidation, pruning, integrity)
     mycoswarm library ingest      Ingest documents into the local library
     mycoswarm library search      Search indexed documents
     mycoswarm library list        List indexed documents
@@ -1837,6 +1838,26 @@ def cmd_chat(args):
                 print()
                 continue
 
+            elif cmd == "/sleep":
+                _sleep_arg = user_input[len("/sleep"):].strip()
+                if _sleep_arg == "run":
+                    print("\n🌙 Running deep sleep cycle inline...")
+                    from mycoswarm.sleep import run_sleep_cycle
+                    _sleep_report = run_sleep_cycle(verbose=True)
+                    print(f"\n  Done. {len(_sleep_report.errors)} error(s), "
+                          f"{len(_sleep_report.skipped_steps)} skipped.")
+                else:
+                    # Show most recent wake journal
+                    from mycoswarm.sleep import SLEEP_LOG_DIR as _SLD
+                    _journals = sorted(_SLD.glob("wake-*.txt"), reverse=True)
+                    if _journals:
+                        print(f"\n📋 Latest wake journal ({_journals[0].name}):\n")
+                        print(_journals[0].read_text())
+                    else:
+                        print("\n  No wake journals found. Run: /sleep run")
+                print()
+                continue
+
             elif cmd == "/access":
                 from mycoswarm.resource_policy import format_access_check
                 _access_path = user_input[len("/access"):].strip()
@@ -3126,6 +3147,20 @@ def cmd_memory(args):
     print(f"\n  {len(facts)} fact(s). Forget with: mycoswarm memory --forget <number>")
 
 
+def cmd_sleep(args):
+    """Run deep sleep cycle (consolidation, pruning, integrity)."""
+    from mycoswarm.sleep import run_sleep_cycle
+    print("🌙 mycoSwarm Deep Sleep Cycle")
+    print("=" * 40)
+    report = run_sleep_cycle(verbose=True)
+    print()
+    if report.errors:
+        print(f"  ⚠️  {len(report.errors)} error(s) during cycle")
+    else:
+        print("  ✅ Cycle complete — no errors")
+    print(f"  📋 Wake journal written to ~/.config/mycoswarm/sleep-logs/")
+
+
 def main():
     parser = argparse.ArgumentParser(
         prog="mycoswarm",
@@ -3331,6 +3366,12 @@ def main():
         help="Remove a fact by ID (e.g. --forget 1)",
     )
     memory_parser.set_defaults(func=cmd_memory)
+
+    # sleep
+    sleep_parser = subparsers.add_parser(
+        "sleep", help="Run deep sleep cycle (consolidation, pruning, integrity)"
+    )
+    sleep_parser.set_defaults(func=cmd_sleep)
 
     args = parser.parse_args()
 
