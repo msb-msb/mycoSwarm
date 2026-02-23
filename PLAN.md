@@ -394,6 +394,9 @@ Reference: docs/ARCHITECTURE-RAG.md
 - [ ] Reformulate query and search again if first pass insufficient
 - [ ] Chain-of-retrieval for complex questions
 
+#### 22g: Document-Filtered Search
+- [ ] **Document-filtered search:** When user mentions a filename (e.g. "what does PLAN.md say about..."), filter ChromaDB search to that document's chunks only. Current semantic search on section numbers is weak — "Phase 37" doesn't embed distinctively.
+
 #### 22f: Graph RAG
 - [ ] Entity relationship extraction across documents
 - [ ] Knowledge graph for cross-document connections

@@ -1924,7 +1924,7 @@ def cmd_chat(args):
                 from mycoswarm.solo import detect_past_reference as _dpr
                 _past = _dpr(rag_query)
                 doc_hits, session_hits, procedure_hits = search_all(
-                    rag_query, n_results=5, session_boost=_past,
+                    rag_query, n_results=10, session_boost=_past,
                     intent=intent_result,
                 )
                 if not doc_hits and not session_hits:
