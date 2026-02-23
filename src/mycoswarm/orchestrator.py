@@ -33,6 +33,12 @@ DISTRIBUTABLE_TASKS = {"web_search", "web_fetch", "file_read", "code_run", "inte
 # Task types that prefer GPU inference nodes
 INFERENCE_TASKS = {"inference", "embedding", "translate", "file_summarize"}
 
+# Task types that should avoid the primary GPU (executive) node.
+# These use small models (gate, embedding) that would cause VRAM
+# swapping with the main inference model on the executive node.
+# Routing preference: specialist → light → executive (last resort).
+INFERENCE_SUPPORT_TASKS = {"intent_classify", "embedding"}
+
 # Task types and which capabilities they need
 TASK_ROUTING = {
     "inference": ["gpu_inference", "cpu_inference"],
@@ -167,6 +173,42 @@ class Orchestrator:
         score -= self._inflight.get(self.identity.node_id, 0) * 100
         return score
 
+    def _score_peer_for_support(self, peer: Peer) -> float:
+        """Score a peer for inference support tasks (gate, embedding).
+
+        Prefers specialist > light > executive to protect the primary
+        GPU node's VRAM from model swapping.
+        """
+        score = 0.0
+        if peer.node_tier == "specialist":
+            score += 1000  # Ideal: dedicated support GPU
+        elif peer.node_tier == "light":
+            score += 200   # Acceptable: CPU inference
+        elif peer.node_tier == "executive":
+            score -= 2000  # Avoid: protect primary GPU VRAM
+        if "gpu_inference" in peer.capabilities:
+            score += 500
+        if peer.is_stale:
+            score -= 5000
+        score -= self._inflight.get(peer.node_id, 0) * 100
+        return score
+
+    def _local_support_score(self) -> float:
+        """Score the local node for inference support tasks."""
+        score = 0.0
+        if self.identity.node_tier == "specialist":
+            score += 1000
+        elif self.identity.node_tier == "light":
+            score += 200
+        elif self.identity.node_tier == "executive":
+            score -= 2000
+        if "gpu_inference" in self.identity.capabilities:
+            score += 500
+        if not self.identity.ollama_running:
+            score -= 5000
+        score -= self._inflight.get(self.identity.node_id, 0) * 100
+        return score
+
     def pick_for_distribution(self, candidates: list[Peer]) -> Peer | None:
         """Pick the best node for a distributable task, including local.
 
@@ -211,7 +253,9 @@ class Orchestrator:
                 f"{task_type} (need: {required_caps})"
             )
 
-        if task_type in INFERENCE_TASKS:
+        if task_type in INFERENCE_SUPPORT_TASKS:
+            eligible.sort(key=self._score_peer_for_support, reverse=True)
+        elif task_type in INFERENCE_TASKS:
             eligible.sort(key=self._score_peer_for_inference, reverse=True)
         else:
             eligible.sort(key=self._score_peer_for_cpu_work, reverse=True)
@@ -318,7 +362,7 @@ class Orchestrator:
         has_caps = any(cap in self.identity.capabilities for cap in required_caps)
         if not has_caps:
             return False
-        if task_type in INFERENCE_TASKS and not self.identity.ollama_running:
+        if (task_type in INFERENCE_TASKS or task_type in INFERENCE_SUPPORT_TASKS) and not self.identity.ollama_running:
             return False
         return True
 
@@ -332,8 +376,63 @@ class Orchestrator:
         can_local = self.can_handle_locally(task.task_type)
         candidates = await self._select_nodes(task.task_type)
 
+        # --- Inference support tasks: protect executive VRAM ---
+        # These use small models (gate, embedding) that would evict the
+        # main inference model.  Route to specialist/light nodes first.
+        if task.task_type in INFERENCE_SUPPORT_TASKS:
+            requested_model = (task.payload or {}).get("model", "")
+
+            # Candidates already sorted by support score
+            pool = candidates
+            if requested_model:
+                model_pool = [
+                    p for p in pool
+                    if requested_model
+                    in getattr(p, "available_models", [])
+                ]
+                if model_pool:
+                    pool = model_pool
+                else:
+                    pool = []  # No peer has the model
+
+            if pool:
+                best = pool[0]
+                best_score = self._score_peer_for_support(best)
+                local_score = self._local_support_score()
+
+                # Check local model eligibility
+                local_eligible = can_local
+                if requested_model and can_local:
+                    local_eligible = (
+                        requested_model in self.identity.available_models
+                    )
+
+                if local_eligible and local_score >= best_score:
+                    return RoutingDecision(
+                        target=None,
+                        reason="Local handles support task",
+                    )
+
+                logger.info(
+                    f"🛡️ Routing {task.task_type} → {best.hostname} "
+                    f"(protecting executive VRAM)"
+                )
+                return RoutingDecision(
+                    target=best,
+                    reason=f"Support task → {best.hostname} "
+                           f"(protecting executive VRAM)",
+                )
+
+            # No suitable peer — local as last resort
+            if can_local:
+                return RoutingDecision(
+                    target=None,
+                    reason="Support task locally (no suitable peer)",
+                )
+            # Fall through to generic fallback
+
         # --- Distributable tasks: load-balance across peers + local ---
-        if task.task_type in DISTRIBUTABLE_TASKS:
+        elif task.task_type in DISTRIBUTABLE_TASKS:
             target = self.pick_for_distribution(candidates)
             if target is not None:
                 return RoutingDecision(

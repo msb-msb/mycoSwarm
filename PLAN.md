@@ -1009,10 +1009,15 @@ runs on rushuna or light nodes. No model swapping on Miu, ever.
 **Goal:** Transform serial chat pipeline into parallel DAG execution across
 the swarm, cutting response time by 50%+ and using all nodes productively.
 
-#### 37a: GPU Role Specialization
-- [ ] **rushuna as inference support:** gemma3:1b (intent gate) + nomic-embed (RAG embeddings) always resident on rushuna's 12GB VRAM
-- [ ] **Model pinning:** orchestrator routes intent_classify and embedding tasks to rushuna by default, Miu only as fallback
-- [ ] **Miu protection:** orchestrator never routes non-27b models to Miu when rushuna is available — prevents VRAM swapping
+#### 37a: GPU Role Specialization (2026-02-23)
+- [x] **INFERENCE_SUPPORT_TASKS constant:** `{"intent_classify", "embedding"}` — tasks that should avoid executive node to protect primary GPU VRAM (2026-02-23)
+- [x] **Support scoring:** `_score_peer_for_support()` and `_local_support_score()` — specialist (+1000) > light (+200) > executive (-2000), GPU bonus (+500) (2026-02-23)
+- [x] **route_task() priority:** INFERENCE_SUPPORT_TASKS checked first → DISTRIBUTABLE_TASKS → INFERENCE_TASKS → generic fallback (2026-02-23)
+- [x] **_select_nodes() sorting:** support tasks sorted by support score, inference by inference score, others by CPU score (2026-02-23)
+- [x] **Miu protection:** executive tier gets -2000 penalty for support tasks — rushuna or light nodes always preferred (2026-02-23)
+- [x] **can_handle_locally() updated:** checks Ollama for both INFERENCE_TASKS and INFERENCE_SUPPORT_TASKS (2026-02-23)
+- [x] **Tests:** 9 new tests (support scoring, routing, fallback), 24 orchestrator tests total, 562 suite total (2026-02-23)
+- [ ] **rushuna as inference support:** gemma3:1b (intent gate) + nomic-embed (RAG embeddings) always resident on rushuna's 12GB VRAM — waiting for P320 build (Feb 26)
 - [ ] **Optional upgrade:** gemma3:4b on rushuna as better gate model (~3GB, fits alongside embeddings)
 - [ ] **Monitoring:** track model swap events on Miu — goal is zero swaps during normal chat
 

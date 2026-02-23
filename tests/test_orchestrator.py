@@ -415,3 +415,268 @@ async def test_local_inference_score_inflight_penalty(make_identity):
     assert score_busy == score_idle - 200  # 2 inflight × 100
 
     await orch.close()
+
+
+# --- GPU role specialization (Phase 37a) ---
+
+
+@pytest.mark.asyncio
+async def test_support_score_prefers_specialist_over_executive(
+    make_peer, make_identity
+):
+    """Specialist peer scores much higher than executive for support tasks."""
+    registry = PeerRegistry()
+    identity = make_identity()
+    orch = Orchestrator(identity, registry)
+
+    specialist = make_peer(
+        node_id="spec-1", hostname="rushuna",
+        node_tier="specialist",
+        capabilities=["gpu_inference", "cpu_worker"],
+        vram_total_mb=12288,
+    )
+    executive = make_peer(
+        node_id="exec-1", hostname="miu",
+        node_tier="executive",
+        capabilities=["gpu_inference", "cpu_worker"],
+        vram_total_mb=24576,
+    )
+
+    spec_score = orch._score_peer_for_support(specialist)
+    exec_score = orch._score_peer_for_support(executive)
+
+    # specialist: 1000 + 500 = 1500
+    # executive: -2000 + 500 = -1500
+    assert spec_score > exec_score
+    assert spec_score > 0
+    assert exec_score < 0
+
+    await orch.close()
+
+
+@pytest.mark.asyncio
+async def test_support_score_prefers_light_over_executive(
+    make_peer, make_identity
+):
+    """Even a light CPU node scores higher than executive for support."""
+    registry = PeerRegistry()
+    identity = make_identity()
+    orch = Orchestrator(identity, registry)
+
+    light = make_peer(
+        node_id="light-1", hostname="naru",
+        node_tier="light",
+        capabilities=["cpu_worker"],
+    )
+    executive = make_peer(
+        node_id="exec-1", hostname="miu",
+        node_tier="executive",
+        capabilities=["gpu_inference", "cpu_worker"],
+        vram_total_mb=24576,
+    )
+
+    light_score = orch._score_peer_for_support(light)
+    exec_score = orch._score_peer_for_support(executive)
+
+    # light: 200, executive: -2000 + 500 = -1500
+    assert light_score > exec_score
+
+    await orch.close()
+
+
+@pytest.mark.asyncio
+async def test_embedding_routes_to_specialist_not_executive(
+    make_task, make_peer, make_identity
+):
+    """Embedding task on executive node routes to specialist peer."""
+    registry = PeerRegistry()
+    identity = make_identity(
+        node_tier="executive",
+        capabilities=["gpu_inference", "cpu_worker"],
+        vram_total_mb=24576,
+        ollama_running=True,
+        available_models=["gemma3:27b", "nomic-embed-text"],
+    )
+    orch = Orchestrator(identity, registry)
+
+    specialist = make_peer(
+        node_id="spec-1", hostname="rushuna",
+        node_tier="specialist",
+        capabilities=["gpu_inference", "cpu_worker"],
+        vram_total_mb=12288,
+        available_models=["gemma3:1b", "nomic-embed-text"],
+    )
+    await registry.add_or_update(specialist)
+
+    task = make_task("embedding", {"model": "nomic-embed-text", "text": "hello"})
+    decision = await orch.route_task(task)
+
+    assert decision.target is not None
+    assert decision.target.node_id == "spec-1"
+    assert "protecting executive VRAM" in decision.reason
+
+    await orch.close()
+
+
+@pytest.mark.asyncio
+async def test_embedding_falls_back_to_local_when_no_peers(
+    make_task, make_identity
+):
+    """Embedding stays local when no peers have the model (last resort)."""
+    registry = PeerRegistry()
+    identity = make_identity(
+        node_tier="executive",
+        capabilities=["gpu_inference", "cpu_worker"],
+        vram_total_mb=24576,
+        ollama_running=True,
+        available_models=["gemma3:27b", "nomic-embed-text"],
+    )
+    orch = Orchestrator(identity, registry)
+
+    task = make_task("embedding", {"model": "nomic-embed-text", "text": "hello"})
+    decision = await orch.route_task(task)
+
+    assert decision.target is None
+    assert decision.can_execute is True
+    assert "no suitable peer" in decision.reason
+
+    await orch.close()
+
+
+@pytest.mark.asyncio
+async def test_intent_classify_routes_to_specialist_over_executive(
+    make_task, make_peer, make_identity
+):
+    """intent_classify avoids executive, routes to specialist."""
+    registry = PeerRegistry()
+    identity = make_identity(
+        node_tier="executive",
+        capabilities=["gpu_inference", "cpu_worker", "cpu_inference"],
+        vram_total_mb=24576,
+        ollama_running=True,
+        available_models=["gemma3:27b"],
+    )
+    orch = Orchestrator(identity, registry)
+
+    specialist = make_peer(
+        node_id="spec-1", hostname="rushuna",
+        node_tier="specialist",
+        capabilities=["gpu_inference", "cpu_worker", "cpu_inference"],
+        vram_total_mb=12288,
+        available_models=["gemma3:1b"],
+    )
+    await registry.add_or_update(specialist)
+
+    task = make_task("intent_classify", {"query": "what time is it"})
+    decision = await orch.route_task(task)
+
+    assert decision.target is not None
+    assert decision.target.node_id == "spec-1"
+    assert "protecting executive VRAM" in decision.reason
+
+    await orch.close()
+
+
+@pytest.mark.asyncio
+async def test_intent_classify_routes_to_light_over_executive(
+    make_task, make_peer, make_identity
+):
+    """intent_classify routes to light node when no specialist available."""
+    registry = PeerRegistry()
+    identity = make_identity(
+        node_tier="executive",
+        capabilities=["gpu_inference", "cpu_worker", "cpu_inference"],
+        vram_total_mb=24576,
+        ollama_running=True,
+        available_models=["gemma3:27b"],
+    )
+    orch = Orchestrator(identity, registry)
+
+    light = make_peer(
+        node_id="light-1", hostname="naru",
+        node_tier="light",
+        capabilities=["cpu_worker", "cpu_inference"],
+        available_models=[],
+    )
+    await registry.add_or_update(light)
+
+    task = make_task("intent_classify", {"query": "hello"})
+    decision = await orch.route_task(task)
+
+    assert decision.target is not None
+    assert decision.target.node_id == "light-1"
+
+    await orch.close()
+
+
+@pytest.mark.asyncio
+async def test_embedding_on_specialist_stays_local(
+    make_task, make_peer, make_identity
+):
+    """When the local node IS the specialist, embedding stays local."""
+    registry = PeerRegistry()
+    identity = make_identity(
+        node_tier="specialist",
+        capabilities=["gpu_inference", "cpu_worker"],
+        vram_total_mb=12288,
+        ollama_running=True,
+        available_models=["gemma3:1b", "nomic-embed-text"],
+    )
+    orch = Orchestrator(identity, registry)
+
+    # Executive peer exists but should NOT steal embedding work
+    executive = make_peer(
+        node_id="exec-1", hostname="miu",
+        node_tier="executive",
+        capabilities=["gpu_inference", "cpu_worker"],
+        vram_total_mb=24576,
+        available_models=["gemma3:27b", "nomic-embed-text"],
+    )
+    await registry.add_or_update(executive)
+
+    task = make_task("embedding", {"model": "nomic-embed-text", "text": "hello"})
+    decision = await orch.route_task(task)
+
+    # Local specialist should handle it, not route to executive
+    assert decision.target is None
+    assert decision.can_execute is True
+
+    await orch.close()
+
+
+@pytest.mark.asyncio
+async def test_local_support_score_executive_penalty(make_identity):
+    """Executive local node gets heavy penalty for support tasks."""
+    registry = PeerRegistry()
+    identity = make_identity(
+        node_tier="executive",
+        capabilities=["gpu_inference", "cpu_worker"],
+        vram_total_mb=24576,
+        ollama_running=True,
+    )
+    orch = Orchestrator(identity, registry)
+
+    score = orch._local_support_score()
+    # -2000 (executive) + 500 (gpu) = -1500
+    assert score < 0
+
+    await orch.close()
+
+
+@pytest.mark.asyncio
+async def test_local_support_score_specialist_positive(make_identity):
+    """Specialist local node gets positive support score."""
+    registry = PeerRegistry()
+    identity = make_identity(
+        node_tier="specialist",
+        capabilities=["gpu_inference", "cpu_worker"],
+        vram_total_mb=12288,
+        ollama_running=True,
+    )
+    orch = Orchestrator(identity, registry)
+
+    score = orch._local_support_score()
+    # 1000 (specialist) + 500 (gpu) = 1500
+    assert score > 1000
+
+    await orch.close()
