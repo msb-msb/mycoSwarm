@@ -1017,7 +1017,7 @@ the swarm, cutting response time by 50%+ and using all nodes productively.
 - [x] **Miu protection:** executive tier gets -2000 penalty for support tasks — rushuna or light nodes always preferred (2026-02-23)
 - [x] **can_handle_locally() updated:** checks Ollama for both INFERENCE_TASKS and INFERENCE_SUPPORT_TASKS (2026-02-23)
 - [x] **Tests:** 9 new tests (support scoring, routing, fallback), 24 orchestrator tests total, 562 suite total (2026-02-23)
-- [ ] **rushuna as inference support:** gemma3:1b (intent gate) + nomic-embed (RAG embeddings) always resident on rushuna's 12GB VRAM — waiting for P320 build (Feb 26)
+- [ ] **rushuna as inference support:** gemma3:1b (intent gate) + nomic-embed (RAG embeddings) always resident on rushuna's 12GB VRAM — rushuna online, verify models loaded
 - [ ] **Optional upgrade:** gemma3:4b on rushuna as better gate model (~3GB, fits alongside embeddings)
 - [ ] **Monitoring:** track model swap events on Miu — goal is zero swaps during normal chat
 
@@ -1103,7 +1103,7 @@ boa/naru/uncho (CPU, 8GB RAM each):
 - [x] uncho: M710Q (light/CPU worker) — ONLINE (2026-02-17)
 - [x] boa: M710Q (light/CPU worker) — ONLINE (2026-02-17)
 - [x] Pi: Raspberry Pi 2 Model B (light) — ONLINE
-- [ ] P320 #1: i7-7700 + RTX 3060 (specialist) — Memory board arriving Tue Feb 25, build Wed Feb 26. R1:14b as reasoning worker for dream phase.
+- [x] rushuna: P320 i7-7700 + RTX 3060 12GB (specialist) — ONLINE (2026-02-23). R1:14b as reasoning worker for dream phase.
 - [ ] P320 #2: i7-7700 (CPU worker) — CPUs purchased, awaiting delivery
 - [ ] M710Q x4: additional light/CPU workers — ready to deploy
 - [ ] Future: second RTX 3060 via auction for P320 #2

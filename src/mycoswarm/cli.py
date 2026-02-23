@@ -1121,7 +1121,9 @@ def _read_user_input(prompt: str = "\n🍄> ") -> str:
 
     # Flush any residual stdin before entering cbreak
     try:
-        while _sel.select([sys.stdin], [], [], 0.01)[0]:
+        for _ in range(5):
+            if not _sel.select([sys.stdin], [], [], 0.05)[0]:
+                break
             os.read(fd, 4096)
     except (OSError, ValueError):
         pass
