@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.3.0 — GPU Specialization & Sleep Cycle (2026-02-24)
+* Phase 32a: Deep sleep cycle — 5-step overnight maintenance (memory consolidation, pruning, poison scan, integrity check, wake journal)
+* Phase 37a: GPU role specialization — INFERENCE_SUPPORT_TASKS routes intent_classify/embedding away from executive node, protecting Miu's VRAM from model swapping
+* Phase 38 added to PLAN.md — QLoRA sleep training for weight consolidation
+* Fix: agentic test datetime regex fast path — query no longer intercepted by _DATETIME_QUERY_RE
+* Fix: stdin drain loop — 5×50ms passes prevents double-post after long streaming responses
+* Fix: model-aware routing — don't route inference to peers missing the requested model
+* RAG /rag doc search bumped from 5 to 10 results for better large-document coverage
+* Added swarm node update script (scripts/mycoswarm-update-nodes.sh)
+* 562 tests passing
+
 ## v0.2.9 — Self-Concept & Wisdom Retrieval (2026-02-17)
 * Self-concept procedure trigger: identity queries ("what is love", "who are you", "do you feel") now search procedural memory
 * Three-layer coverage: inside search_all(), auto_tools block, and standalone fallback for short messages
