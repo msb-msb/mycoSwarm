@@ -1071,7 +1071,40 @@ boa/naru/uncho (CPU, 8GB RAM each):
   └── web fetch, file processing, code execution — no GPU needed
 ```
 
+### Phase 38: Sleep Training — QLoRA Weight Consolidation
 
+**Goal:** Consolidate Monica's developmental progress into model weights
+via QLoRA fine-tuning during the nightly sleep cycle. Episodic learning
+(context + memory) becomes procedural knowledge (weights) — mirroring
+how mammalian brains consolidate memory during sleep.
+
+**Principle:** Bad sessions are poison at the weight level. Only curated,
+high-quality sessions should ever touch the training pipeline. The same
+immune system philosophy (detect, filter, quarantine) applies to training
+data selection.
+
+- [ ] Integrate `unsloth` for QLoRA on gemma3:27b (Miu RTX 3090, 24GB)
+- [ ] Session quality filter: only sessions with grounding > 70%
+- [ ] Poison guard: sessions with overclaiming, deference failures, or
+      low vitals excluded from training data automatically
+- [ ] Format curated transcripts as instruction pairs (user prompt →
+      Monica's best response)
+- [ ] Add as Sleep Step 6 (after integrity check, before wake journal)
+- [ ] Adapter versioning: `monica-v{N}.lora` with datetime stamp
+- [ ] Rollback mechanism: revert to previous adapter if quality degrades
+- [ ] A/B testing: compare responses with/without adapter on standard
+      prompts before committing new adapter
+- [ ] Training time budget: cap at 60 min per sleep cycle
+- [ ] Wake journal entry: "Trained on N sessions, adapter v{N} saved"
+- [ ] Minimum session threshold: don't train unless >= 3 new qualifying
+      sessions since last training run
+
+**Dependencies:** Phase 32a (sleep cycle), Phase 37a (GPU specialization
+— training runs on Miu while rushuna handles any overnight inference)
+
+**VRAM budget:** QLoRA on gemma3:27b requires ~18-20GB. Fits on the 3090
+with room to spare. No other models should be loaded during training
+(sleep cycle already ensures Miu is idle).
 
 ## Next
 
