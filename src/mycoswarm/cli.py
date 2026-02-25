@@ -2665,7 +2665,8 @@ def cmd_chat(args):
                         "below does not cover something, say you don't have that "
                         "information rather than guessing. Do NOT output citation "
                         "tags like [D1], [S1], [W1], [P1] in your response — use "
-                        "the information naturally without referencing source labels."
+                        "the information naturally without referencing source labels. "
+                        "Always respond in English."
                         "\n\n" + "\n\n".join(context_sections)
                     )
                 else:
