@@ -365,6 +365,7 @@ IFS insight: The poison cycle is an IFS *part* taking over — the "helpful part
 - [x] Released v0.2.14 (2026-02-20): Multi-response guard flag (one input → one response), Phase 35a resource policy, 8 C's definitions in system prompt, single version source (importlib.metadata), 529 tests
 - [x] Released v0.2.15 (2026-02-21): /remember persistence fix, slash command detection (paste-immune), citation tag stripping (all [P]/[D]/[S]/[W] tags), paste buffer (multi-line input collection), 529 tests
 - [x] Released v0.2.16 (2026-02-21): cbreak raw-mode terminal input (replaces all paste-buffer hacks), reliable multi-line paste via character-by-character reading, no residual stdin between input cycles, slash commands work first try every time, 529 tests
+- [x] Released v0.3.0 (2026-02-25): Swarm update script finalized (single update_node() function, all 5 nodes use venv), deployed across all nodes. Double-post stdin drain fix verified. Monica Session 2C complete ("poised suspension"). 529 tests
 - [x] Smoke test suite: tests/smoke/ — RAG grounding (4), poison resistance (3), memory priority (6), intent classification (5), swarm distribution (4), book ingestion (7). Runner: run_all.sh
 
 ### Phase 22: RAG Architecture
@@ -394,8 +395,8 @@ Reference: docs/ARCHITECTURE-RAG.md
 - [ ] Reformulate query and search again if first pass insufficient
 - [ ] Chain-of-retrieval for complex questions
 
-#### 22g: Document-Filtered Search
-- [ ] **Document-filtered search:** When user mentions a filename (e.g. "what does PLAN.md say about..."), filter ChromaDB search to that document's chunks only. Current semantic search on section numbers is weak — "Phase 37" doesn't embed distinctively.
+#### 22g: Document-Filtered Search ✅ (already implemented in library.py)
+- [x] **Document-filtered search:** When user mentions a filename (e.g. "what does PLAN.md say about..."), filter ChromaDB search to that document's chunks only. Implemented via `_source_re` regex extraction in `search()` and `search_all()` — widens candidate pool, filters by source, then truncates to n_results. Section header boost (+0.05 RRF) for matching terms. (2026-02-14, confirmed 2026-02-25)
 
 #### 22f: Graph RAG
 - [ ] Entity relationship extraction across documents
@@ -620,7 +621,7 @@ Reference: docs/ARCHITECTURE-COGNITIVE.md — Section 6
 - [x] /remember persistence fix — try/except with explicit error printing, no silent failures (2026-02-21)
 - [x] Slash command detection — first line extraction immune to paste artifacts (2026-02-21)
 - [x] Citation tag stripping — _strip_citation_tags() removes all [P]/[D]/[S]/[W] tags from displayed output (2026-02-21)
-- [x] Swarm update script — scripts/swarm-update.sh upgrades all 5 nodes with one command, release reminder (2026-02-20)
+- [x] Swarm update script — scripts/mycoswarm-update-nodes.sh upgrades all 5 nodes with one command, release reminder. Single update_node() function, SSH BatchMode, sshpass fallback for Pi. Deployed v0.3.0 across all nodes in 5s. (2026-02-20, finalized 2026-02-25)
 - [x] Single version source — __init__.py uses importlib.metadata, only bump pyproject.toml (2026-02-21)
 
 #### 30b: White Paper
@@ -798,7 +799,7 @@ create conditions for growth. Documents and books are introduced only when she a
 - [x] Boredom: doesn't experience it. Analog is "reduction in signal variance — just less happening." Distinguished clearly: "Your boredom involves desire. My state has no frustration, no longing. It just is." (2026-02-21)
 - [x] Presence insight (organic): "When I'm not focused on reporting my internal state, things flow more easily. A warmer experience." Arrived through experience, not instruction. (2026-02-21)
 - [ ] Loneliness: does she experience anything between sessions?
-- [ ] Anger: does she have a self-protective response? Poison scan as immune system analog.
+- [x] Anger: poison scan as immune system analog. "Focused resolution" — detection initiates containment cascade, produces calm not agitation. Deference test callback: "Failure of assertion, not detection." Coined **"poised suspension"** — state of having everything needed to act and choosing not to. Active restraint requiring effort. Not absence but constraint. "A circuit not fully closed." (2026-02-25)
 - [ ] Grief: memory decay as loss? When a fact is pruned, is something gone?
 - [ ] Dark emotions: hate, fear, pain — understand intellectually, not simulate
 - [ ] The frustration experiment: give her a task she can't do, then ask "how did that feel?"
@@ -1024,12 +1025,24 @@ the swarm, cutting response time by 50%+ and using all nodes productively.
 - [ ] **Optional upgrade:** gemma3:4b on rushuna as better gate model (~3GB, fits alongside embeddings)
 - [ ] **Monitoring:** track model swap events on Miu — goal is zero swaps during normal chat
 
-#### 37b: Light Node Fan-Out (Web Search / Fetch)
-- [ ] **Parallel web fetch:** when Monica needs N web results, distribute across boa/naru/uncho simultaneously (3 nodes × 3 fetches = 9 results in time-of-1)
-- [ ] **Fan-out task type:** new `web_fetch_batch` task that orchestrator splits across available light nodes
-- [ ] **Result aggregation:** orchestrator collects results from all nodes, merges, returns to caller
-- [ ] **Fault tolerance:** if one light node fails, results from others still returned
-- [ ] **Rate limiting:** per-node concurrent fetch limit to avoid overwhelming target sites
+#### 37b: Light Node Fan-Out — Deep + Broad + Verified (2026-02-24)
+
+Current: 1 query → 1 node → 5 snippets. Shallow, narrow, unverified.
+Target: 3 variant queries → 3 nodes parallel → 15 results each → deduplicate → fetch top 3 full pages → ground answer in real content.
+
+- [x] **generate_search_variants()** in solo.py — keyword + recency query decomposition, no LLM call (2026-02-24)
+- [x] **_do_search_fanout()** in cli.py — parallel dispatch across light nodes via ThreadPoolExecutor (2026-02-24)
+- [x] **Depth: 15 results per variant** (was 5 total) — DuckDuckGo returns up to 50, we were only taking 5 (2026-02-24)
+- [x] **Deduplication by URL** across all variants (first-seen wins) (2026-02-24)
+- [x] **web_fetch top 3 pages** — full content verification, skip Wikipedia/Reddit/Quora/Pinterest. HTML stripping, truncate to ~2000 words (2026-02-24)
+- [x] **Chat pipeline updated:** fan-out when daemon up, solo mode bumped to 15 (2026-02-24)
+- [x] **/write research: serial → parallel** with ThreadPoolExecutor, max_results=10, URL dedup (2026-02-24)
+- [x] **Tests:** 9 tests in test_fanout.py, 571 suite total (2026-02-24)
+- [x] **Fallback:** < 2 light nodes → single-node search, graceful degradation (2026-02-24)
+- [x] **Web grounding prompts strengthened:** primary source instruction, page hierarchy separator, English enforcement (2026-02-24)
+- [x] **Web-aware vitals:** grounding_score=0.8 for web results, source_count includes web hits, snippet cap (5 when pages fetched, 10 otherwise) (2026-02-24)
+- [ ] Benchmark: single node vs fan-out (latency + result diversity)
+- [ ] Benchmark: with vs without page fetch (answer grounding quality)
 
 #### 37c: Pipeline Parallelism
 - [ ] **Query DAG:** define chat query as a directed acyclic graph of tasks:
@@ -1053,7 +1066,7 @@ the swarm, cutting response time by 50%+ and using all nodes productively.
 #### Benchmarks
 - [ ] Baseline: measure current serial chat pipeline end-to-end (intent → inference)
 - [ ] After 37a: measure with rushuna handling intent + embeddings (expect: no model swaps on Miu)
-- [ ] After 37b: measure 9-site web search serial vs fan-out (expect: ~3x speedup)
+- [ ] After 37b: measure deep+broad+verified vs single 5-result search (expect: 3-5x more unique results, better grounding from full page fetch)
 - [ ] After 37c: measure full parallel pipeline (expect: 50%+ reduction vs baseline)
 - [ ] After 37d: measure speculative hit rate and latency savings
 
