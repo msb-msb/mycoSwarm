@@ -2535,9 +2535,14 @@ def cmd_chat(args):
                         web_context_parts.append(
                             f"[W{wi}] {r['title']}\n    {r['snippet']}"
                         )
-                    # Append full page content after snippets
-                    for fp in ws_fetched:
-                        web_context_parts.append(fp)
+                    # Full pages go in separate list for stronger grounding
+                    if ws_fetched:
+                        web_context_parts.append(
+                            "\n--- FETCHED PAGE CONTENT (primary source — trust "
+                            "this over snippets and training data) ---"
+                        )
+                        for fp in ws_fetched:
+                            web_context_parts.append(fp)
                     tool_sources.append("web")
                 else:
                     print(" no results", flush=True)
@@ -2650,12 +2655,26 @@ def cmd_chat(args):
                     + "\n\n".join(rag_context_parts)
                 )
             if context_sections:
-                tool_context = (
-                    "Use the following context to answer. Do NOT output citation "
-                    "tags like [D1], [S1], [W1], [P1] in your response — use the "
-                    "information naturally without referencing source labels.\n\n"
-                    + "\n\n".join(context_sections)
-                )
+                if web_context_parts:
+                    # Web results present — strong grounding instruction
+                    tool_context = (
+                        "IMPORTANT: Answer based on the retrieved content below. "
+                        "This is your PRIMARY source of facts — do not fill gaps "
+                        "with information from your training data. If the content "
+                        "below does not cover something, say you don't have that "
+                        "information rather than guessing. Do NOT output citation "
+                        "tags like [D1], [S1], [W1], [P1] in your response — use "
+                        "the information naturally without referencing source labels."
+                        "\n\n" + "\n\n".join(context_sections)
+                    )
+                else:
+                    # RAG only — lighter instruction
+                    tool_context = (
+                        "Use the following context to answer. Do NOT output citation "
+                        "tags like [D1], [S1], [W1], [P1] in your response — use the "
+                        "information naturally without referencing source labels.\n\n"
+                        + "\n\n".join(context_sections)
+                    )
 
             # Accumulate RAG context for session grounding check
             if rag_context_parts:
@@ -2739,8 +2758,13 @@ def cmd_chat(args):
                 "stored), session history, and your training knowledge."
             )
             _web_aware = (
-                "You have web search results available below. "
-                "Use them confidently to answer the user's question."
+                "You have web search results and fetched page content below. "
+                "GROUND your answer in this retrieved content — it is your "
+                "primary source of facts. Do NOT rely on your training data "
+                "for specific claims, dates, prices, names, or recommendations "
+                "when web results cover the topic. If the web results contradict "
+                "your training knowledge, trust the web results (they are more "
+                "recent). Say what the sources say, not what you think you know."
             )
             _send_msgs[0] = {
                 **_send_msgs[0],
