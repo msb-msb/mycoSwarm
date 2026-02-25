@@ -315,6 +315,42 @@ def web_search_solo(query: str, max_results: int = 5) -> list[dict]:
         return []
 
 
+def generate_search_variants(query: str, max_variants: int = 3) -> list[str]:
+    """Generate search query variants for fan-out web search.
+
+    Returns up to max_variants distinct queries:
+    1. Original query (always)
+    2. Keyword-only version (strip filler words)
+    3. Recency-focused version (append current year)
+
+    These produce different DuckDuckGo result sets when dispatched
+    to separate nodes in parallel.
+    """
+    variants = [query]
+
+    # --- Variant 2: keyword extraction ---
+    _FILLER = {
+        "what", "is", "the", "a", "an", "of", "in", "for", "to", "and",
+        "or", "how", "does", "do", "can", "will", "are", "was", "were",
+        "been", "being", "have", "has", "had", "about", "with", "from",
+        "this", "that", "these", "those", "it", "its", "my", "your",
+        "our", "their", "me", "you", "we", "they", "he", "she",
+        "tell", "show", "give", "find", "get", "let", "please",
+        "could", "would", "should", "might", "may", "shall",
+    }
+    keywords = [w for w in query.split() if w.lower().strip("?.,!") not in _FILLER]
+    if len(keywords) >= 2 and keywords != query.split():
+        variants.append(" ".join(keywords))
+
+    # --- Variant 3: recency-focused ---
+    from datetime import datetime
+    year = str(datetime.now().year)
+    if year not in query:
+        variants.append(f"{query} {year}")
+
+    return variants[:max_variants]
+
+
 def chat_stream(
     messages: list[dict], model: str
 ) -> tuple[str, dict]:

@@ -572,6 +572,130 @@ def _do_search(url: str, query: str, task_id: str, max_results: int) -> dict:
     }
 
 
+def _do_search_fanout(
+    url: str, query: str, max_results_per_variant: int = 15,
+) -> tuple[list[dict], list[str]]:
+    """Fan-out web search: deep, broad, verified.
+
+    1. Generate 2-3 query variants
+    2. Dispatch each to different nodes in parallel (15 results each)
+    3. Merge + deduplicate by URL
+    4. Fetch top 3 candidate pages for full content
+    5. Return (search_results, fetched_pages)
+
+    Falls back to single-node search if < 2 light nodes available.
+    """
+    import uuid as _uuid
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from mycoswarm.solo import generate_search_variants
+
+    variants = generate_search_variants(query)
+
+    # Check how many light/specialist nodes are available
+    try:
+        with httpx.Client(headers=_swarm_headers(), timeout=3) as client:
+            r = client.get(f"{url}/peers")
+            peers = r.json()
+            worker_count = sum(
+                1 for p in peers
+                if p.get("node_tier") in ("light", "specialist")
+                and not p.get("is_stale", True)
+            )
+    except Exception:
+        worker_count = 0
+
+    # If fewer than 2 nodes, fall back to single deep search
+    if worker_count < 2:
+        task_id = f"ws-{_uuid.uuid4().hex[:8]}"
+        result = _do_search(url, query, task_id, max_results_per_variant)
+        data = result.get("data", {})
+        if data and data.get("status") == "completed":
+            return data.get("result", {}).get("results", []), []
+        return [], []
+
+    # --- Phase 1: Parallel search across variants ---
+    def _search_variant(variant_query: str) -> tuple[str, list[dict]]:
+        task_id = f"ws-fan-{_uuid.uuid4().hex[:8]}"
+        result = _do_search(url, variant_query, task_id, max_results_per_variant)
+        data = result.get("data", {})
+        node = result.get("node", "")
+        if data and data.get("status") == "completed":
+            return node, data.get("result", {}).get("results", [])
+        return node, []
+
+    all_results: list[dict] = []
+    nodes_used: list[str] = []
+
+    with ThreadPoolExecutor(max_workers=len(variants)) as pool:
+        futures = {pool.submit(_search_variant, v): v for v in variants}
+        for future in as_completed(futures, timeout=45):
+            try:
+                node, hits = future.result()
+                if node:
+                    nodes_used.append(node)
+                all_results.extend(hits)
+            except Exception:
+                pass
+
+    # Deduplicate by URL, preserving order (first seen wins)
+    seen_urls: set[str] = set()
+    deduped: list[dict] = []
+    for r in all_results:
+        u = r.get("url", "")
+        if u and u not in seen_urls:
+            seen_urls.add(u)
+            deduped.append(r)
+
+    # --- Phase 2: Fetch top 3 pages for full content verification ---
+    _SKIP_DOMAINS = {"wikipedia.org", "reddit.com", "quora.com", "pinterest.com"}
+    fetch_candidates = []
+    for r in deduped:
+        url_str = r.get("url", "")
+        if any(d in url_str for d in _SKIP_DOMAINS):
+            continue
+        fetch_candidates.append(url_str)
+        if len(fetch_candidates) >= 3:
+            break
+
+    fetched_pages: list[str] = []
+
+    def _fetch_page(page_url: str) -> tuple[str, str | None]:
+        """Fetch a page and extract text content (truncated)."""
+        try:
+            with httpx.Client(timeout=10, follow_redirects=True) as client:
+                resp = client.get(page_url)
+                if resp.status_code != 200:
+                    return page_url, None
+                content_type = resp.headers.get("content-type", "")
+                if "text/html" not in content_type:
+                    return page_url, None
+                import re
+                text = re.sub(r'<script[^>]*>.*?</script>', '', resp.text, flags=re.DOTALL)
+                text = re.sub(r'<style[^>]*>.*?</style>', '', text, flags=re.DOTALL)
+                text = re.sub(r'<[^>]+>', ' ', text)
+                text = re.sub(r'\s+', ' ', text).strip()
+                # Truncate to ~2000 words to avoid blowing context
+                words = text.split()
+                if len(words) > 2000:
+                    text = " ".join(words[:2000]) + " [truncated]"
+                return page_url, text
+        except Exception:
+            return page_url, None
+
+    if fetch_candidates:
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            futures = [pool.submit(_fetch_page, u) for u in fetch_candidates]
+            for future in as_completed(futures, timeout=15):
+                try:
+                    page_url, text = future.result()
+                    if text and len(text) > 200:
+                        fetched_pages.append(f"[FULL PAGE: {page_url}]\n{text}")
+                except Exception:
+                    pass
+
+    return deduped, fetched_pages
+
+
 def cmd_research(args):
     """Search the web then synthesize results via LLM inference.
 
@@ -1061,28 +1185,43 @@ def _generate_research_queries(topic: str) -> list[str]:
 
 
 def _run_article_research(queries: list[str]) -> str:
-    """Run web searches and compile results into a research context block."""
+    """Run web searches in parallel and compile results into a research context block."""
     from mycoswarm.solo import web_search_solo
+    from concurrent.futures import ThreadPoolExecutor, as_completed
 
-    all_results = []
-    for query in queries:
+    all_results: list[dict] = []
+
+    def _search(q: str) -> list[dict]:
         try:
-            hits = web_search_solo(query, max_results=3)
-            for r in hits:
-                all_results.append({
-                    "query": query,
-                    "title": r.get("title", ""),
-                    "snippet": r.get("snippet", ""),
-                    "url": r.get("url", ""),
-                })
+            return [
+                {"query": q, "title": r.get("title", ""),
+                 "snippet": r.get("snippet", ""), "url": r.get("url", "")}
+                for r in web_search_solo(q, max_results=10)
+            ]
         except Exception:
-            pass
+            return []
+
+    with ThreadPoolExecutor(max_workers=len(queries)) as pool:
+        futures = {pool.submit(_search, q): q for q in queries}
+        for future in as_completed(futures, timeout=30):
+            try:
+                all_results.extend(future.result())
+            except Exception:
+                pass
 
     if not all_results:
         return "No research results found. Draft based on existing knowledge and hardware context."
 
-    context = ""
+    # Deduplicate by URL
+    seen: set[str] = set()
+    unique: list[dict] = []
     for r in all_results:
+        if r["url"] not in seen:
+            seen.add(r["url"])
+            unique.append(r)
+
+    context = ""
+    for r in unique:
         context += f"**{r['title']}** ({r['url']})\n"
         context += f"  {r['snippet']}\n\n"
 
@@ -2375,26 +2514,30 @@ def cmd_chat(args):
 
             web_context_parts: list[str] = []
 
-            # --- Web search ---
+            # --- Web search (fan-out when daemon up) ---
             if need_web:
-                print("   🔍 Searching the web...", end="", flush=True)
                 if daemon_up:
-                    import uuid as _uuid
-                    _sid = f"auto-ws-{_uuid.uuid4().hex[:8]}"
-                    ws_data = _do_search(url, user_input, _sid, 5)
-                    ws_results = []
-                    if ws_data.get("data", {}).get("status") == "completed":
-                        ws_results = ws_data["data"].get("result", {}).get("results", [])
+                    print("   🔍 Searching the web (fan-out)...", end="", flush=True)
+                    ws_results, ws_fetched = _do_search_fanout(url, user_input)
                 else:
+                    print("   🔍 Searching the web...", end="", flush=True)
                     from mycoswarm.solo import web_search_solo
-                    ws_results = web_search_solo(user_input, max_results=5)
+                    ws_results = web_search_solo(user_input, max_results=15)
+                    ws_fetched = []
 
                 if ws_results:
-                    print(f" {len(ws_results)} results", flush=True)
-                    for wi, r in enumerate(ws_results, 1):
+                    print(f" {len(ws_results)} results", end="", flush=True)
+                    if ws_fetched:
+                        print(f" + {len(ws_fetched)} pages fetched", flush=True)
+                    else:
+                        print(flush=True)
+                    for wi, r in enumerate(ws_results[:10], 1):  # Top 10 snippets
                         web_context_parts.append(
                             f"[W{wi}] {r['title']}\n    {r['snippet']}"
                         )
+                    # Append full page content after snippets
+                    for fp in ws_fetched:
+                        web_context_parts.append(fp)
                     tool_sources.append("web")
                 else:
                     print(" no results", flush=True)
