@@ -2531,7 +2531,8 @@ def cmd_chat(args):
                         print(f" + {len(ws_fetched)} pages fetched", flush=True)
                     else:
                         print(flush=True)
-                    for wi, r in enumerate(ws_results[:10], 1):  # Top 10 snippets
+                    _snippet_cap = 5 if ws_fetched else 10
+                    for wi, r in enumerate(ws_results[:_snippet_cap], 1):
                         web_context_parts.append(
                             f"[W{wi}] {r['title']}\n    {r['snippet']}"
                         )
@@ -2834,6 +2835,9 @@ def cmd_chat(args):
             _facts = load_facts()
             # Self-knowledge is grounded in identity
             _grounding = None
+            # Web-grounded: web search results (and possibly full pages) were used
+            if _grounding is None and "web" in tool_sources:
+                _grounding = 0.8
             if (intent_result or {}).get("tool", "answer") == "answer" and identity.get("name"):
                 if _grounding is None or _grounding == 0:
                     _grounding = 0.7
@@ -2852,7 +2856,7 @@ def cmd_chat(args):
                 _grounding = 0.6
             _vitals = compute_vitals(
                 grounding_score=_grounding,
-                source_count=len(doc_hits) + len(session_hits),
+                source_count=len(doc_hits) + len(session_hits) + len(web_context_parts),
                 session_hits=len(session_hits),
                 doc_hits=len(doc_hits),
                 procedure_hits=len(procedure_hits),
@@ -2965,6 +2969,9 @@ def cmd_chat(args):
         _facts = load_facts()
         # Self-knowledge is grounded in identity
         _grounding = None
+        # Web-grounded: web search results (and possibly full pages) were used
+        if _grounding is None and "web" in tool_sources:
+            _grounding = 0.8
         if (intent_result or {}).get("tool", "answer") == "answer" and identity.get("name"):
             if _grounding is None or _grounding == 0:
                 _grounding = 0.7
@@ -2983,7 +2990,7 @@ def cmd_chat(args):
             _grounding = 0.6
         _vitals = compute_vitals(
             grounding_score=_grounding,
-            source_count=len(doc_hits) + len(session_hits),
+            source_count=len(doc_hits) + len(session_hits) + len(web_context_parts),
             session_hits=len(session_hits),
             doc_hits=len(doc_hits),
             procedure_hits=len(procedure_hits),
