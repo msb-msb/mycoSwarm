@@ -599,7 +599,7 @@ def _do_search_fanout(
             worker_count = sum(
                 1 for p in peers
                 if p.get("node_tier") in ("light", "specialist")
-                and not p.get("is_stale", True)
+                and not p.get("is_stale", False)
             )
     except Exception:
         worker_count = 0
