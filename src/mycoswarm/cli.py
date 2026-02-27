@@ -2437,11 +2437,13 @@ def cmd_chat(args):
         session_hits: list[dict] = []
         procedure_hits: list[dict] = []
         rag_context_parts: list[str] = []
+        web_context_parts: list[str] = []
 
         if auto_tools and len(user_input.split()) >= 5:
             print("   🤔 Classifying...", end="\r", flush=True)
 
             # Fast path: date/time queries — datetime already in system prompt, skip all retrieval
+            _intent_node = ""
             from mycoswarm.solo import _DATETIME_QUERY_RE
             if _DATETIME_QUERY_RE.search(user_input):
                 intent_result = {"tool": "answer", "mode": "chat", "scope": "facts"}
@@ -2457,6 +2459,7 @@ def cmd_chat(args):
                     "priority": 7,
                     "timeout_seconds": 30,
                 }
+                _intent_node = ""
                 try:
                     import time as _t
                     _ic_start = _t.time()
@@ -2473,6 +2476,7 @@ def cmd_chat(args):
                                 if _d.get("status") in ("completed", "failed"):
                                     if _d.get("status") == "completed" and _d.get("result"):
                                         intent_result = _d["result"]
+                                    _intent_node = _resolve_node_name(url, _d.get("node_id", ""))
                                     break
                             except Exception:
                                 pass
@@ -2490,6 +2494,8 @@ def cmd_chat(args):
             print(f"\r   🤔 intent: {intent_result['tool']}/{intent_result.get('mode', '?')}/{intent_result.get('scope', '?')}", flush=True)
 
             if debug:
+                _ic_node_label = _intent_node if daemon_up and _intent_node else "local"
+                print(f"🐛 DEBUG: INTENT classified by: {_ic_node_label}", flush=True)
                 print(f"🐛 DEBUG: INTENT: {intent_result}", flush=True)
 
             classification = intent_result["tool"]
