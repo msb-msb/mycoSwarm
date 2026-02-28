@@ -132,7 +132,7 @@ _DATETIME_QUERY_RE = re.compile(
     r"|what.s the (?:date|time|day)"
     r"|tell me the (?:date|time|day)"
     r"|current (?:date|time|day)"
-    r"|today.s date|right now"
+    r"|today.s date"
     r"|date and time|time and date"
     r")\b"
 )
