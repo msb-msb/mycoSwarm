@@ -2520,102 +2520,166 @@ def cmd_chat(args):
 
             web_context_parts: list[str] = []
 
-            # --- Web search (fan-out when daemon up) ---
-            if need_web:
+            # --- Determine which retrievals are needed ---
+            _do_rag = need_rag or past_ref or _self_concept
+
+            import re as _pre
+            _PROBLEM_RE = _pre.compile(
+                r'\b(error|bug|fix|issue|fail|broke|broken|wrong|crash|stuck|slow|missing|'
+                r'unexpected|weird|ignored|uncertain|unsure|confus\w*|not sure|too many|complex|'
+                r'overwhelm\w*|struggl\w*|frustrat\w*|how\s+to|why\s+does|doesn.t\s+work|not\s+working|'
+                r'problem|debug|solve|where\s+do\s+i\s+start|should\s+i)\b',
+                _pre.IGNORECASE,
+            )
+            _need_procedures = (
+                _PROBLEM_RE.search(user_input)
+                or _self_concept
+                or classification in ("answer", "chat")
+            )
+
+            # --- Parallel retrieval helpers ---
+            def _retrieve_web() -> tuple[list[dict], list[str]]:
                 if daemon_up:
-                    print("   🔍 Searching the web (fan-out)...", end="", flush=True)
-                    ws_results, ws_fetched = _do_search_fanout(url, user_input)
+                    return _do_search_fanout(url, user_input)
                 else:
-                    print("   🔍 Searching the web...", end="", flush=True)
                     from mycoswarm.solo import web_search_solo
-                    ws_results = web_search_solo(user_input, max_results=15)
-                    ws_fetched = []
+                    return web_search_solo(user_input, max_results=15), []
 
-                if ws_results:
-                    print(f" {len(ws_results)} results", end="", flush=True)
-                    if ws_fetched:
-                        print(f" + {len(ws_fetched)} pages fetched", flush=True)
-                    else:
-                        print(flush=True)
-                    _snippet_cap = 5 if ws_fetched else 10
-                    for wi, r in enumerate(ws_results[:_snippet_cap], 1):
-                        web_context_parts.append(
-                            f"[W{wi}] {r['title']}\n    {r['snippet']}"
-                        )
-                    # Full pages go in separate list for stronger grounding
-                    if ws_fetched:
-                        web_context_parts.append(
-                            "\n--- FETCHED PAGE CONTENT (primary source — trust "
-                            "this over snippets and training data) ---"
-                        )
-                        for fp in ws_fetched:
-                            web_context_parts.append(fp)
-                    tool_sources.append("web")
-                else:
-                    print(" no results", flush=True)
-
-            # --- RAG search (docs + sessions via search_all with intent) ---
-            doc_hits: list[dict] = []
-            session_hits: list[dict] = []
-            procedure_hits: list[dict] = []
-            if need_rag or past_ref or _self_concept:
-                scope = (intent_result or {}).get("scope", "all")
-                if _self_concept and not need_rag and not past_ref:
-                    print("   🔮 Searching wisdom...", end="", flush=True)
-                elif scope in ("session", "personal"):
-                    print("   💭 Searching past conversations...", end="", flush=True)
-                elif scope in ("docs", "documents"):
-                    print("   📚 Checking your documents...", end="", flush=True)
-                else:
-                    print("   📚 Searching docs + sessions...", end="", flush=True)
+            def _retrieve_rag() -> tuple[list[dict], list[dict], list[dict]]:
                 from mycoswarm.library import search_all
-                doc_hits, session_hits, procedure_hits = search_all(
+                return search_all(
                     user_input, n_results=5, intent=intent_result,
                     do_rerank=False, session_boost=past_ref,
                 )
-                parts = []
+
+            def _retrieve_procedures() -> list[dict]:
+                try:
+                    from mycoswarm.library import search_procedures
+                    return search_procedures(user_input, n_results=3)
+                except Exception as e:
+                    logger.debug("Procedural retrieval failed: %s", e)
+                    return []
+
+            # --- Dispatch: parallel when daemon up, serial in solo mode ---
+            doc_hits: list[dict] = []
+            session_hits: list[dict] = []
+            procedure_hits: list[dict] = []
+            ws_results: list[dict] = []
+            ws_fetched: list[str] = []
+
+            _task_count = sum([need_web, _do_rag, _need_procedures])
+
+            if daemon_up and _task_count >= 2:
+                # Parallel path — daemon mode with multiple retrievals
+                print("   ⚡ Gathering context...", end="", flush=True)
+                from concurrent.futures import ThreadPoolExecutor, as_completed
+
+                _futures: dict = {}
+                with ThreadPoolExecutor(max_workers=3) as _pool:
+                    if need_web:
+                        _futures["web"] = _pool.submit(_retrieve_web)
+                    if _do_rag:
+                        _futures["rag"] = _pool.submit(_retrieve_rag)
+                    if _need_procedures:
+                        _futures["proc"] = _pool.submit(_retrieve_procedures)
+
+                    for key, future in _futures.items():
+                        try:
+                            result = future.result(timeout=45)
+                            if key == "web":
+                                ws_results, ws_fetched = result
+                            elif key == "rag":
+                                doc_hits, session_hits, procedure_hits = result
+                            elif key == "proc":
+                                # Only use standalone procedures if RAG didn't return any
+                                if not procedure_hits:
+                                    procedure_hits = result
+                        except Exception as e:
+                            logger.debug("Parallel retrieval %s failed: %s", key, e)
+
+                # Print summary
+                _summary_parts = []
+                if ws_results:
+                    _summary_parts.append(f"{len(ws_results)} web")
+                    if ws_fetched:
+                        _summary_parts.append(f"{len(ws_fetched)} pages")
                 if doc_hits:
-                    parts.append(f"{len(doc_hits)} excerpts")
+                    _summary_parts.append(f"{len(doc_hits)} docs")
                 if session_hits:
-                    parts.append(f"{len(session_hits)} sessions")
-                if parts:
-                    print(f" {', '.join(parts)}", flush=True)
+                    _summary_parts.append(f"{len(session_hits)} sessions")
+                if procedure_hits:
+                    _summary_parts.append(f"{len(procedure_hits)} procedures")
+                if _summary_parts:
+                    print(f" {', '.join(_summary_parts)}", flush=True)
                 else:
                     print(" no results", flush=True)
+            else:
+                # Serial path — solo mode or single retrieval
+                if need_web:
+                    if daemon_up:
+                        print("   🔍 Searching the web (fan-out)...", end="", flush=True)
+                    else:
+                        print("   🔍 Searching the web...", end="", flush=True)
+                    ws_results, ws_fetched = _retrieve_web()
+                    if ws_results:
+                        print(f" {len(ws_results)} results", end="", flush=True)
+                        if ws_fetched:
+                            print(f" + {len(ws_fetched)} pages fetched", flush=True)
+                        else:
+                            print(flush=True)
+                    else:
+                        print(" no results", flush=True)
 
-                if debug:
-                    import re as _re
-                    _sf = _re.search(r'\b(\w+\.(?:md|txt|py|json|yaml|toml|cfg|csv))\b', user_input, _re.IGNORECASE)
-                    print(f"🐛 DEBUG: RETRIEVAL: source_filter={_sf.group(1) if _sf else None} scope={scope} past_ref={past_ref}", flush=True)
-                    for _di, _dh in enumerate(doc_hits, 1):
-                        print(f"🐛 DEBUG: DOC HIT [{_di}]: source={_dh.get('source')} chunk={_dh.get('chunk_index')} rrf={_dh.get('rrf_score', 'n/a')} text={_dh.get('text', '')[:100]!r}", flush=True)
-                    for _si, _sh in enumerate(session_hits, 1):
-                        print(f"🐛 DEBUG: SESSION HIT [{_si}]: date={_sh.get('date')} topic={_sh.get('topic', '')} text={_sh.get('summary', '')[:100]!r}", flush=True)
+                if _do_rag:
+                    scope = (intent_result or {}).get("scope", "all")
+                    if _self_concept and not need_rag and not past_ref:
+                        print("   🔮 Searching wisdom...", end="", flush=True)
+                    elif scope in ("session", "personal"):
+                        print("   💭 Searching past conversations...", end="", flush=True)
+                    elif scope in ("docs", "documents"):
+                        print("   📚 Checking your documents...", end="", flush=True)
+                    else:
+                        print("   📚 Searching docs + sessions...", end="", flush=True)
+                    doc_hits, session_hits, procedure_hits = _retrieve_rag()
+                    parts = []
+                    if doc_hits:
+                        parts.append(f"{len(doc_hits)} excerpts")
+                    if session_hits:
+                        parts.append(f"{len(session_hits)} sessions")
+                    if parts:
+                        print(f" {', '.join(parts)}", flush=True)
+                    else:
+                        print(" no results", flush=True)
 
-            # --- Procedural retrieval (independent of RAG path) ---
-            # Always retrieve for answer/chat intents (voice, safety, writing
-            # procedures need to be available during normal conversation),
-            # plus problem-like inputs and self-concept queries.
-            if not procedure_hits:
-                import re as _pre
-                _PROBLEM_RE = _pre.compile(
-                    r'\b(error|bug|fix|issue|fail|broke|broken|wrong|crash|stuck|slow|missing|'
-                    r'unexpected|weird|ignored|uncertain|unsure|confus\w*|not sure|too many|complex|'
-                    r'overwhelm\w*|struggl\w*|frustrat\w*|how\s+to|why\s+does|doesn.t\s+work|not\s+working|'
-                    r'problem|debug|solve|where\s+do\s+i\s+start|should\s+i)\b',
-                    _pre.IGNORECASE,
-                )
-                _need_procedures = (
-                    _PROBLEM_RE.search(user_input)
-                    or _self_concept
-                    or classification in ("answer", "chat")
-                )
                 if _need_procedures and not procedure_hits:
-                    try:
-                        from mycoswarm.library import search_procedures
-                        procedure_hits = search_procedures(user_input, n_results=3)
-                    except Exception as e:
-                        logger.debug("Procedural retrieval failed: %s", e)
+                    procedure_hits = _retrieve_procedures()
+
+            # --- Format web results ---
+            if ws_results:
+                _snippet_cap = 5 if ws_fetched else 10
+                for wi, r in enumerate(ws_results[:_snippet_cap], 1):
+                    web_context_parts.append(
+                        f"[W{wi}] {r['title']}\n    {r['snippet']}"
+                    )
+                if ws_fetched:
+                    web_context_parts.append(
+                        "\n--- FETCHED PAGE CONTENT (primary source — trust "
+                        "this over snippets and training data) ---"
+                    )
+                    for fp in ws_fetched:
+                        web_context_parts.append(fp)
+                tool_sources.append("web")
+
+            # --- Debug output for RAG ---
+            if _do_rag and debug:
+                import re as _re
+                scope = (intent_result or {}).get("scope", "all")
+                _sf = _re.search(r'\b(\w+\.(?:md|txt|py|json|yaml|toml|cfg|csv))\b', user_input, _re.IGNORECASE)
+                print(f"🐛 DEBUG: RETRIEVAL: source_filter={_sf.group(1) if _sf else None} scope={scope} past_ref={past_ref}", flush=True)
+                for _di, _dh in enumerate(doc_hits, 1):
+                    print(f"🐛 DEBUG: DOC HIT [{_di}]: source={_dh.get('source')} chunk={_dh.get('chunk_index')} rrf={_dh.get('rrf_score', 'n/a')} text={_dh.get('text', '')[:100]!r}", flush=True)
+                for _si, _sh in enumerate(session_hits, 1):
+                    print(f"🐛 DEBUG: SESSION HIT [{_si}]: date={_sh.get('date')} topic={_sh.get('topic', '')} text={_sh.get('summary', '')[:100]!r}", flush=True)
 
             # --- Format results ---
             for ri, hit in enumerate(doc_hits, 1):
