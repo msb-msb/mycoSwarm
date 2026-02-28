@@ -200,7 +200,16 @@ _INTENT_SYSTEM_PROMPT = (
     "IMPORTANT RULES:\n"
     "- Date/time/day questions are ALWAYS answer/chat/facts. The current date and time are already in the system prompt. NEVER use web_search for date or time.\n"
     "- Greetings and small talk are ALWAYS answer/chat/all.\n\n"
-    'Examples:\n{"tool": "answer", "mode": "chat", "scope": "facts"} — "what time is it?", "what\'s the date?", "tell me the date and time", "what day is it?"\n{"tool": "rag", "mode": "recall", "scope": "session"} — "what did we discuss about bees?"\n{"tool": "rag", "mode": "recall", "scope": "docs"} — "what does PLAN.md say about Phase 20?"'
+    "Choose web_and_rag when the user wants BOTH their personal context "
+    "(past discussions, documents) AND current web information.\n\n"
+    'Examples:\n'
+    '{"tool": "answer", "mode": "chat", "scope": "facts"} — "what time is it?", "what\'s the date?", "what day is it?"\n'
+    '{"tool": "answer", "mode": "chat", "scope": "all"} — "hello", "what is photosynthesis?"\n'
+    '{"tool": "web_search", "mode": "explore", "scope": "all"} — "what are the latest nvidia announcements?"\n'
+    '{"tool": "rag", "mode": "recall", "scope": "session"} — "what did we discuss about bees?"\n'
+    '{"tool": "rag", "mode": "recall", "scope": "docs"} — "what does PLAN.md say about Phase 20?"\n'
+    '{"tool": "web_and_rag", "mode": "explore", "scope": "all"} — "based on our past discussions and current web info, what GPU should I buy?"\n'
+    '{"tool": "web_and_rag", "mode": "recall", "scope": "session"} — "we talked about trading strategies — search the web for the latest BTC news too"'
 )
 
 _INTENT_DEFAULT = {"tool": "answer", "mode": "chat", "scope": "all"}

@@ -1009,8 +1009,8 @@ _INTENT_SYSTEM_PROMPT = (
     "with ONLY a JSON object, no other text.\n\n"
     '{"tool": "", "mode": "", "scope": ""}\n\n'
     "tool — what tools are needed:\n"
-    "  answer: general knowledge, math, coding, creative, conversation\n"
-    "  web_search: current/real-time info (news, prices, weather)\n"
+    "  answer: general knowledge, math, coding, creative, conversation, date/time questions (datetime is always available)\n"
+    "  web_search: current/real-time info (news, prices, weather, sports) — NOT date/time\n"
     "  rag: user's documents, notes, library, or past conversations\n"
     "  web_and_rag: needs both web and user's documents\n\n"
     "mode — what kind of thinking:\n"
@@ -1023,7 +1023,19 @@ _INTENT_SYSTEM_PROMPT = (
     "  docs: user's document library, files, notes, stored documents. Use docs when the user references a specific file by name (e.g. PLAN.md, README.md)\n"
     "  facts: stored user preferences and facts\n"
     "  all: search everything\n\n"
-    'Examples:\n{"tool": "rag", "mode": "recall", "scope": "session"} — "what did we discuss about bees?"\n{"tool": "rag", "mode": "recall", "scope": "docs"} — "what does PLAN.md say about Phase 20?"'
+    "IMPORTANT RULES:\n"
+    "- Date/time/day questions are ALWAYS answer/chat/facts. The current date and time are already in the system prompt. NEVER use web_search for date or time.\n"
+    "- Greetings and small talk are ALWAYS answer/chat/all.\n\n"
+    "Choose web_and_rag when the user wants BOTH their personal context "
+    "(past discussions, documents) AND current web information.\n\n"
+    'Examples:\n'
+    '{"tool": "answer", "mode": "chat", "scope": "facts"} — "what time is it?", "what\'s the date?", "what day is it?"\n'
+    '{"tool": "answer", "mode": "chat", "scope": "all"} — "hello", "what is photosynthesis?"\n'
+    '{"tool": "web_search", "mode": "explore", "scope": "all"} — "what are the latest nvidia announcements?"\n'
+    '{"tool": "rag", "mode": "recall", "scope": "session"} — "what did we discuss about bees?"\n'
+    '{"tool": "rag", "mode": "recall", "scope": "docs"} — "what does PLAN.md say about Phase 20?"\n'
+    '{"tool": "web_and_rag", "mode": "explore", "scope": "all"} — "based on our past discussions and current web info, what GPU should I buy?"\n'
+    '{"tool": "web_and_rag", "mode": "recall", "scope": "session"} — "we talked about trading strategies — search the web for the latest BTC news too"'
 )
 
 _INTENT_DEFAULT = {"tool": "answer", "mode": "chat", "scope": "all"}
