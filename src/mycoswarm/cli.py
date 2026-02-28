@@ -2508,6 +2508,7 @@ def cmd_chat(args):
             need_web = classification in ("web_search", "web_and_rag")
             need_rag = classification in ("rag", "web_and_rag")
 
+            import re
             # --- Safety net: upgrade to web_and_rag when gate model missed combined intent ---
             _WEB_SIGNAL_RE = re.compile(
                 r'(?i)\b(?:search the web|current|latest|recent news|right now|trending|today\'s)\b'
