@@ -2508,6 +2508,23 @@ def cmd_chat(args):
             need_web = classification in ("web_search", "web_and_rag")
             need_rag = classification in ("rag", "web_and_rag")
 
+            # --- Safety net: upgrade to web_and_rag when gate model missed combined intent ---
+            _WEB_SIGNAL_RE = re.compile(
+                r'(?i)\b(?:search the web|current|latest|recent news|right now|trending|today\'s)\b'
+            )
+            if classification == "web_search" and past_ref:
+                classification = "web_and_rag"
+                need_web = True
+                need_rag = True
+                if debug:
+                    print("🐛 DEBUG: INTENT upgraded to web_and_rag (past_ref + web detected)", flush=True)
+            elif classification == "rag" and _WEB_SIGNAL_RE.search(user_input):
+                classification = "web_and_rag"
+                need_web = True
+                need_rag = True
+                if debug:
+                    print("🐛 DEBUG: INTENT upgraded to web_and_rag (rag + web signal detected)", flush=True)
+
             # Self-concept queries look like casual chat to intent classifier
             # but need procedural wisdom (e.g. "what is love?", "who are you?")
             import re as _re_sc
