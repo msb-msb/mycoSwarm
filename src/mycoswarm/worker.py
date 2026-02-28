@@ -972,7 +972,7 @@ async def handle_code_run(task: TaskRequest) -> TaskResult:
 # --- Intent Classification Handler ---
 
 
-_GATE_MODEL_PREFERENCE = ("gemma3:1b", "llama3.2:1b", "gemma3:4b", "llama3.2:3b")
+_GATE_MODEL_PREFERENCE = ("gemma3:4b", "llama3.2:3b", "gemma3:1b", "llama3.2:1b")
 _EMBEDDING_ONLY = ("nomic-embed-text", "mxbai-embed", "all-minilm", "snowflake-arctic-embed")
 
 
