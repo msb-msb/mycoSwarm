@@ -121,7 +121,7 @@ _PAST_REFERENCE_RE = re.compile(
     r"we discussed|we talked about|you said|you told me"
     r"|we mentioned|remember when|what did we|did we discuss"
     r"|last time|earlier conversation|before.{0,20}we"
-    r"|our conversation|you suggested|you recommended|we decided"
+    r"|our conversation|our past|past discussions|what we.ve|our discussions|you suggested|you recommended|we decided"
     r")\b"
 )
 
