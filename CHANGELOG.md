@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.3.2 — Parallel Retrieval Pipeline & Web Grounding (2026-02-27)
+* Phase 37b: Fan-out web search — generate_search_variants() produces keyword + recency variants, _do_search_fanout() dispatches in parallel across light nodes with URL dedup and top-3 page fetch
+* Phase 37c: Parallel retrieval pipeline — ThreadPoolExecutor runs web/RAG/procedure searches concurrently when daemon is up, single "⚡ Gathering context..." progress line
+* Web grounding: full-page content marked as PRIMARY source, _grounding=0.8, snippet cap (5 when pages present), hierarchy separator
+* Gate model upgrade: gemma3:4b preferred over 1b for better intent classification
+* CLI-side web_and_rag upgrade: safety net catches combined intent when gate model misses (past_ref + web_search → web_and_rag, rag + web signal → web_and_rag)
+* Intent prompt: web_and_rag examples added to both solo.py and worker.py _INTENT_SYSTEM_PROMPT
+* English enforcement in web-present context injection
+* Fix: UnboundLocalError on web_context_parts when web search path skipped
+* 571 tests passing
+
 ## v0.3.0 — GPU Specialization & Sleep Cycle (2026-02-24)
 * Phase 32a: Deep sleep cycle — 5-step overnight maintenance (memory consolidation, pruning, poison scan, integrity check, wake journal)
 * Phase 37a: GPU role specialization — INFERENCE_SUPPORT_TASKS routes intent_classify/embedding away from executive node, protecting Miu's VRAM from model swapping
