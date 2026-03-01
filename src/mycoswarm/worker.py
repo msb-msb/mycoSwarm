@@ -83,6 +83,7 @@ def _build_ollama_request(
             "options": {
                 "temperature": payload.get("temperature", 0.7),
                 "num_predict": payload.get("max_tokens", 2048),
+                "num_ctx": payload.get("num_ctx", 4096),
             },
         }
         is_chat = True
@@ -94,6 +95,7 @@ def _build_ollama_request(
             "options": {
                 "temperature": payload.get("temperature", 0.7),
                 "num_predict": payload.get("max_tokens", 2048),
+                "num_ctx": payload.get("num_ctx", 4096),
             },
         }
         is_chat = False

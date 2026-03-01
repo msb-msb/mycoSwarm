@@ -356,6 +356,7 @@ def _run_inference(
                 "model": model,
                 "messages": messages,
                 "temperature": 0.7,
+                "num_ctx": 16384,
                 "max_tokens": 4096,
             },
             "source_node": "pipeline",
