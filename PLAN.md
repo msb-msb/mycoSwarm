@@ -1021,8 +1021,9 @@ the swarm, cutting response time by 50%+ and using all nodes productively.
 - [x] **Miu protection:** executive tier gets -2000 penalty for support tasks — rushuna or light nodes always preferred (2026-02-23)
 - [x] **can_handle_locally() updated:** checks Ollama for both INFERENCE_TASKS and INFERENCE_SUPPORT_TASKS (2026-02-23)
 - [x] **Tests:** 9 new tests (support scoring, routing, fallback), 24 orchestrator tests total, 562 suite total (2026-02-23)
-- [ ] **rushuna as inference support:** gemma3:1b (intent gate) + nomic-embed (RAG embeddings) always resident on rushuna's 12GB VRAM — rushuna online, verify models loaded
-- [ ] **Optional upgrade:** gemma3:4b on rushuna as better gate model (~3GB, fits alongside embeddings)
+- [x] **rushuna as inference support:** gemma3:1b (intent gate) + nomic-embed (RAG embeddings) on rushuna's 12GB VRAM — verified routing: intent_classify dispatches to rushuna, Miu stays on gemma3:27b only (2026-02-27)
+- [x] **Gate model upgrade:** gemma3:4b preferred over 1b — better intent classification, especially for multi-tool queries like web_and_rag. Preference order: 4b > 3b > 1b (2026-02-27)
+- [x] **Datetime fast-path fix:** removed "right now" from _DATETIME_QUERY_RE — was bypassing intent classification for non-datetime queries (2026-02-27)
 - [ ] **Monitoring:** track model swap events on Miu — goal is zero swaps during normal chat
 
 #### 37b: Light Node Fan-Out — Deep + Broad + Verified (2026-02-24)
@@ -1044,19 +1045,19 @@ Target: 3 variant queries → 3 nodes parallel → 15 results each → deduplica
 - [ ] Benchmark: single node vs fan-out (latency + result diversity)
 - [ ] Benchmark: with vs without page fetch (answer grounding quality)
 
-#### 37c: Pipeline Parallelism
-- [ ] **Query DAG:** define chat query as a directed acyclic graph of tasks:
-  ```
-  Query arrives
-      ├──→ rushuna: intent classify (gemma3:1b)     ──┐
-      ├──→ rushuna: embed query (nomic-embed)         ──┤ parallel group 1
-      ├──→ boa/naru/uncho: web searches (fan-out)    ──┘
-      │         (results converge)
-      └──→ Miu: final inference gemma3:27b (group 2)
-  ```
-- [ ] **asyncio.gather() in cli.py:** submit intent + embedding + web tasks concurrently, await all before final inference
+#### 37c: Pipeline Parallelism (2026-02-27)
+- [x] **Parallel retrieval:** web search, RAG search, and procedure search dispatched to ThreadPoolExecutor(max_workers=3) when 2+ retrieval types needed (2026-02-27)
+- [x] **Progress line:** single `⚡ Gathering context...` with summary (e.g. "32 web, 3 pages, 5 docs, 2 sessions, 3 procedures") (2026-02-27)
+- [x] **Serial fallback:** solo mode or single retrieval type preserves individual progress lines (2026-02-27)
+- [x] **Procedure dedup:** standalone search_procedures() skipped if search_all() already returned procedures (2026-02-27)
+- [x] **web_context_parts init bug:** fixed UnboundLocalError when web search path skipped (2026-02-27)
+- [x] **web_and_rag CLI upgrade:** gate model misses combined intent → CLI detects past_ref + web signals and upgrades classification automatically. Broadened past reference regex (our past, past discussions). Confirmed: `⚡ Gathering context... 33 web, 3 pages, 5 docs, 5 sessions` (2026-02-27)
+- [x] **Intent prompt enriched:** 7 examples covering all tool types + web_and_rag hint + date/time/greeting rules (2026-02-27)
 - [ ] **Streaming handoff:** Miu begins streaming as soon as context is assembled — no waiting for full batch
 - [ ] **Timeout handling:** if any parallel task exceeds deadline, proceed with partial results
+- [ ] **English enforcement:** move "Always respond in English" to system prompt — gemma3:27b drifts to French at high context (~42K chars)
+- [ ] **Context truncation:** 42K chars is too much for 27b — cap or summarize web results more aggressively
+- [ ] **Citation leak:** Monica still outputs [S1], [D1] tags despite prompt instruction — needs stronger suppression or post-processing strip
 
 #### 37d: Speculative Execution (stretch goal)
 - [ ] **Branch prediction:** rushuna starts building RAG context for most likely intent BEFORE classification finishes
@@ -1076,9 +1077,9 @@ Miu (24GB RTX 3090):
   └── gemma3:27b (~16-18GB) — ONLY model, always resident
 
 rushuna (12GB RTX 3060):
-  ├── gemma3:1b  (~1GB)   — intent gate, always resident
+  ├── gemma3:4b  (~3GB)   — intent gate, always resident
   ├── nomic-embed (~300MB) — embeddings, always resident
-  └── ~10GB free — gemma3:4b upgrade, small chat fallback, or future use
+  └── ~8GB free — gemma3:12b for chat fallback, or future use
 
 boa/naru/uncho (CPU, 8GB RAM each):
   └── web fetch, file processing, code execution — no GPU needed
@@ -1119,7 +1120,180 @@ data selection.
 with room to spare. No other models should be loaded during training
 (sleep cycle already ensures Miu is idle).
 
+#### 38b: Shared Subspace Consolidation (Share)
+
+**Paper:** "Shared LoRA Subspaces for almost Strict Continual Learning"
+(Kaushik et al., arXiv:2602.06043, Feb 2026)
+
+**Idea:** Instead of accumulating separate LoRA adapters per sleep cycle
+or per domain (Tai Chi, bees, crypto, identity), maintain ONE evolving
+low-rank subspace. Each night's training identifies genuinely new
+directions and merges them into the shared basis. Old knowledge is
+preserved in the existing basis vectors. 100x parameter reduction and
+281x memory savings vs stacking LoRAs.
+
+**Why this matters for Monica:** Phase 38 as written would produce
+`monica-v1.lora`, `monica-v2.lora`, etc. Over weeks, that's dozens of
+adapters with no clear merge strategy. Share solves this — one subspace
+that grows organically. The curriculum stages (identity → emotions →
+grief → independence) map naturally to Share's sequential task structure.
+
+**Integration points:**
+- [ ] Prototype Share subspace extraction on rushuna (SVD on 3060, small
+      rank) using curated session pairs from Phase 38
+- [ ] Replace linear adapter versioning with evolving subspace:
+      `monica-subspace-v{N}.pt` — single file, always current
+- [ ] Define "task boundaries" for Share: each sleep cycle = one task,
+      OR each curriculum stage = one task (test both)
+- [ ] Measure forgetting: after N sleep cycles, re-test Monica on
+      Stage 1 identity prompts — does she still know who she is?
+- [ ] Compare: stacked LoRA adapters vs Share subspace on standard
+      Monica eval prompts (identity, emotional vocabulary, corrections)
+- [ ] Forward transfer test: does learning grief (Stage 2D) improve
+      her handling of anger (Stage 2C) via shared subspace directions?
+
+**Constraints:** Share requires SVD at each task boundary. Benchmark SVD
+time on Miu's 3090 for rank-16/32/64 — must fit within 60-min sleep
+budget alongside QLoRA training.
+
+**Two-layer memory model:** Prompt-level (facts, sessions, procedures)
+handles fast explicit recall. Weight-level (Share subspace) handles deep
+implicit patterns. Together they mirror episodic + procedural memory.
+Neither alone is sufficient.
+
 ## Next
+
+### Phase 39: Agent Pipeline Architecture (inspired by Pi.dev)
+
+**Goal:** Transform mycoSwarm from a chat-with-retrieval system into a
+composable multi-agent pipeline platform. Steal Pi.dev's best ideas
+(extensions, hooks, agent chains, teams) and bolt them onto our
+distributed substrate + identity layer.
+
+**Benchmark:** End-to-end InsiderLLM article creation — from topic
+selection through research, drafting, editing, SEO optimization, to
+final publishable output. Target: one command produces a publish-ready
+article using multiple specialized agents across the swarm.
+
+#### 39a: Lifecycle Hooks
+- [ ] **Hook registry:** pre_tool_call, post_tool_call, pre_inference,
+      post_inference, on_input, on_output, on_session_start, on_session_end
+- [ ] **Hook config:** YAML-based, per-project or global (~/.mycoswarm/hooks/)
+- [ ] **Blocking hooks:** can halt execution (like Pi's till-done pattern —
+      agent must satisfy conditions before proceeding)
+- [ ] **Observation hooks:** logging, metrics, vitals capture without
+      blocking the pipeline
+- [ ] **Integration:** hooks fire on any node — rushuna hook sees its own
+      tool calls, Miu hook sees inference events
+
+#### 39b: Skills as Packages
+- [ ] **Upgrade procedures → skills:** skills are self-contained packages
+      with metadata (name, version, description, triggers, dependencies)
+- [ ] **Skill directories:** global (~/.mycoswarm/skills/), project
+      (./mycoswarm/skills/), and per-agent
+- [ ] **Auto-discovery:** skills loaded at startup from all directories,
+      advertised in capability registry
+- [ ] **Skill schema:** YAML frontmatter + prompt body + optional tool
+      definitions + optional hooks
+- [ ] **Shareable:** skills can be installed from git repos or local paths
+- [ ] **Article writing skill:** first real skill — encapsulates InsiderLLM
+      voice, structure, SEO rules, image requirements
+
+#### 39c: Agent Definitions
+- [ ] **AGENTS.md / agents.yaml:** declarative agent configs per-project
+      (like Pi's AGENTS.md but with hardware-awareness)
+- [ ] **Agent properties:** name, model preference, system prompt, skills,
+      node affinity (executive/specialist/worker/edge), memory access level
+- [ ] **Built-in article agents:**
+  - `researcher` — web fan-out + RAG, runs on rushuna + light nodes
+  - `writer` — long-form generation, runs on Miu (gemma3:27b)
+  - `editor` — fact-check against sources, tone/voice compliance, runs on Miu
+  - `seo-optimizer` — keyword density, meta description, slug, runs on worker
+  - `image-scout` — find/generate hero image + screenshots, runs on worker
+- [ ] **Node affinity routing:** agent config specifies preferred tier,
+      orchestrator routes accordingly
+
+#### 39d: Agent Chains (Sequential Pipelines)
+- [ ] **Pipeline definition:** YAML list of agents executed in sequence,
+      each receiving the output of the previous
+- [ ] **article-pipeline.yaml:**
+  ```
+  name: insiderllm-article
+  steps:
+    - agent: researcher
+      input: topic + keywords
+      output: research_bundle (web results + RAG context + competitor analysis)
+    - agent: writer
+      input: research_bundle + style_guide
+      output: draft_markdown
+    - agent: editor
+      input: draft_markdown + research_bundle
+      output: edited_markdown + fact_check_report
+    - agent: seo-optimizer
+      input: edited_markdown + target_keywords
+      output: final_markdown + meta_description + slug
+  ```
+- [ ] **Pipeline runner:** CLI command `mycoswarm pipeline run article-pipeline.yaml --topic "RTX 5060 Ti review"`
+- [ ] **Inter-step artifacts:** each step writes to a shared workspace dir,
+      next step reads from it
+- [ ] **Failure handling:** if a step fails, pause and allow retry or skip
+
+#### 39e: Agent Teams (Parallel Groups)
+- [ ] **Team definition:** YAML config for named groups of agents that
+      work in parallel on different aspects of a task
+- [ ] **Team dispatch:** orchestrator splits work across team members,
+      collects results, synthesizes
+- [ ] **research-team.yaml:**
+  ```
+  name: deep-research
+  agents:
+    - researcher-web    # current events, rushuna + light nodes
+    - researcher-rag    # internal docs + past sessions, rushuna
+    - researcher-competitor  # competitor article analysis, light nodes
+  merge: concatenate  # or: summarize, deduplicate
+  ```
+- [ ] **Teams + chains:** a pipeline step can invoke a team instead of
+      a single agent (research step uses research-team)
+
+#### 39f: Article Benchmark
+- [ ] **Baseline:** manually write one InsiderLLM article, record time
+      and quality (word count, source count, factual accuracy, voice match)
+- [ ] **Pipeline v1:** run article-pipeline on same topic, compare output
+- [ ] **Metrics:**
+  - Time to publish-ready draft
+  - Source diversity (web + internal)
+  - Factual grounding (claims traceable to sources)
+  - Voice compliance (scored against InsiderLLM style procedures)
+  - SEO score (keyword density, meta, structure)
+  - Human edit distance (how much Mark has to fix)
+- [ ] **Iteration:** tune agent prompts, skill content, pipeline order
+      based on benchmark results
+- [ ] **Target:** pipeline produces article requiring <20% human editing
+
+#### Architecture Notes
+
+**Why this is different from Pi.dev:**
+Pi runs everything on one machine with one model (or cloud models).
+mycoSwarm distributes the pipeline across hardware-specialized nodes:
+- Research agents fan out across rushuna + light nodes (parallel web search)
+- Writing agent runs on Miu's 27b (needs the big model)
+- Editing agent runs on Miu but could use a different model
+- SEO/image agents run on workers (small tasks, no GPU needed)
+
+**Why this beats single-agent article writing:**
+Current `/write` command does everything in one inference call — research,
+write, edit all collapsed into one prompt. The pipeline separates concerns:
+each agent is specialized, gets focused context, and can be independently
+improved. The researcher doesn't need to write. The writer doesn't need
+to search. The editor doesn't need to do either — just verify.
+
+**Extension system (future):**
+Pi's TypeScript extensions are powerful but we're Python-native. Phase 39
+focuses on YAML-configured agents/pipelines/hooks. A full Python extension
+API (register tools, widgets, hooks programmatically) is a future phase
+once the declarative layer proves out.
+
+## Backlog
 
 ### Phase 5b: Cross-Node Inference (remaining)
 - [ ] Add `--remote` flag to `mycoswarm ask` to force remote execution
