@@ -3426,6 +3426,41 @@ def cmd_sleep(args):
     print(f"  📋 Wake journal written to ~/.config/mycoswarm/sleep-logs/")
 
 
+def cmd_pipeline(args):
+    """Run a multi-step pipeline from a YAML definition."""
+    from datetime import datetime
+    from mycoswarm.pipeline import load_pipeline, run_pipeline
+
+    action = args.pipeline_action
+    if action != "run":
+        print(f"❌ Unknown pipeline action: {action}")
+        sys.exit(1)
+
+    yaml_path = args.yaml_path
+    if not os.path.isfile(yaml_path):
+        print(f"❌ Pipeline file not found: {yaml_path}")
+        sys.exit(1)
+
+    pipeline = load_pipeline(yaml_path)
+    topic = " ".join(args.topic)
+
+    if args.workspace:
+        workspace = args.workspace
+    else:
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        workspace = os.path.join(
+            "pipeline-output", f"{pipeline['name']}-{timestamp}"
+        )
+
+    run_pipeline(
+        pipeline,
+        topic=topic,
+        workspace_dir=workspace,
+        port=args.port,
+        debug=args.debug,
+    )
+
+
 def main():
     parser = argparse.ArgumentParser(
         prog="mycoswarm",
@@ -3631,6 +3666,32 @@ def main():
         help="Remove a fact by ID (e.g. --forget 1)",
     )
     memory_parser.set_defaults(func=cmd_memory)
+
+    # pipeline
+    pipeline_parser = subparsers.add_parser(
+        "pipeline", help="Run a multi-step pipeline from YAML"
+    )
+    pipeline_parser.add_argument(
+        "pipeline_action", choices=["run"], help="Pipeline action"
+    )
+    pipeline_parser.add_argument(
+        "yaml_path", help="Path to pipeline YAML file"
+    )
+    pipeline_parser.add_argument(
+        "--topic", nargs="+", required=True, help="Topic string for the pipeline"
+    )
+    pipeline_parser.add_argument(
+        "--workspace", type=str, default=None,
+        help="Output directory (default: ./pipeline-output/<name>-<timestamp>/)"
+    )
+    pipeline_parser.add_argument(
+        "--port", type=int, default=7890, help="Local daemon port"
+    )
+    pipeline_parser.add_argument(
+        "--debug", action="store_true", default=False,
+        help="Show debug output"
+    )
+    pipeline_parser.set_defaults(func=cmd_pipeline)
 
     # sleep
     sleep_parser = subparsers.add_parser(
