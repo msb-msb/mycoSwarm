@@ -3452,13 +3452,15 @@ def cmd_pipeline(args):
             "pipeline-output", f"{pipeline['name']}-{timestamp}"
         )
 
-    run_pipeline(
+    result = run_pipeline(
         pipeline,
         topic=topic,
         workspace_dir=workspace,
         port=args.port,
         debug=args.debug,
     )
+    if result is None:
+        sys.exit(1)
 
 
 def main():

@@ -258,14 +258,14 @@ def _do_web_search(
     parts: list[str] = []
     if results:
         snippet_lines = []
-        for i, r in enumerate(results[:15], 1):
+        for i, r in enumerate(results[:10], 1):
             snippet_lines.append(
                 f"[{i}] {r.get('title', '')}\n    {r.get('url', '')}\n    {r.get('snippet', '')}"
             )
-        parts.append("## Web Search Results\n" + "\n\n".join(snippet_lines))
+        parts.append("## WEB SEARCH RESULTS\n" + "\n\n".join(snippet_lines))
 
     if pages:
-        parts.append("## Fetched Page Content\n" + "\n\n---\n\n".join(pages))
+        parts.append("## FETCHED PAGE CONTENT\n" + "\n\n---\n\n".join(pages))
 
     return "\n\n".join(parts), stats
 
@@ -311,21 +311,21 @@ def _do_rag_search(
             source = h.get("source", "unknown")
             text = h.get("text", h.get("document", ""))
             doc_lines.append(f"[D{i}] ({source})\n{text}")
-        parts.append("## Document Results\n" + "\n\n".join(doc_lines))
+        parts.append("## DOCUMENT CONTEXT\n" + "\n\n".join(doc_lines))
 
     if session_hits:
         sess_lines = []
         for i, h in enumerate(session_hits, 1):
             text = h.get("text", h.get("document", ""))
             sess_lines.append(f"[S{i}]\n{text}")
-        parts.append("## Session Results\n" + "\n\n".join(sess_lines))
+        parts.append("## SESSION CONTEXT\n" + "\n\n".join(sess_lines))
 
     if procedure_hits:
         proc_lines = []
         for i, h in enumerate(procedure_hits, 1):
             text = h.get("text", h.get("document", ""))
             proc_lines.append(f"[P{i}]\n{text}")
-        parts.append("## Procedural Results\n" + "\n\n".join(proc_lines))
+        parts.append("## PROCEDURAL CONTEXT\n" + "\n\n".join(proc_lines))
 
     return "\n\n".join(parts), stats
 
@@ -432,9 +432,35 @@ def _discover_model(daemon_url: str | None, prefer: str | None = None) -> str:
     sys.exit(1)
 
 
+_GARBAGE_RE = re.compile(r'<unused\d+>|<\|[a-z_]+\|>|<0x[0-9A-Fa-f]+>')
+
+
 def _word_count(text: str) -> int:
     """Rough word count."""
     return len(text.split())
+
+
+def _clean_output(text: str) -> str:
+    """Strip garbage tokens from model output."""
+    return _GARBAGE_RE.sub('', text).strip()
+
+
+def _cap_context(web_ctx: str, rag_ctx: str, max_words: int = 4000) -> tuple[str, str]:
+    """Cap combined context to max_words. Truncates web results first."""
+    rag_words = _word_count(rag_ctx)
+    web_words = _word_count(web_ctx)
+    total = web_words + rag_words
+
+    if total <= max_words:
+        return web_ctx, rag_ctx
+
+    # RAG is generally more relevant — keep it, truncate web
+    web_budget = max(max_words - rag_words, max_words // 3)
+    if web_words > web_budget:
+        words = web_ctx.split()
+        web_ctx = " ".join(words[:web_budget]) + "\n[web context truncated]"
+
+    return web_ctx, rag_ctx
 
 
 def run_pipeline(
@@ -443,9 +469,10 @@ def run_pipeline(
     workspace_dir: str,
     port: int = 7890,
     debug: bool = False,
-) -> str:
+) -> str | None:
     """Execute a pipeline sequentially. Returns path to final output file.
 
+    Returns None if a step fails the minimum output gate.
     Each step reads the previous step's output (or the topic for step 1),
     optionally gathers tool context, runs inference, and writes output
     to workspace_dir/{step_name}.md.
@@ -525,6 +552,15 @@ def run_pipeline(
             else:
                 print()
 
+        # --- Cap context to avoid blowing the model's window ---
+        if len(context_parts) == 2:
+            context_parts[0], context_parts[1] = _cap_context(
+                context_parts[0], context_parts[1],
+            )
+        elif len(context_parts) == 1 and _word_count(context_parts[0]) > 4000:
+            words = context_parts[0].split()
+            context_parts[0] = " ".join(words[:4000]) + "\n[context truncated]"
+
         # --- Build user input ---
         # Special case: editor gets both research bundle and draft
         if step_name == "editor":
@@ -561,13 +597,15 @@ def run_pipeline(
         user_content = "\n\n".join(input_parts)
         input_words = _word_count(user_content)
 
+        if input_words > 6000:
+            print(f"   ⚠️  Large context: {input_words} words — may degrade output quality")
+
         if debug:
             print(f"   🐛 input: {input_words} words")
 
         # --- Run inference ---
         node_label = "local"
         if daemon_url:
-            # Pre-resolve which node will likely handle this
             try:
                 with httpx.Client(headers=_swarm_headers(), timeout=3) as client:
                     status = client.get(f"{daemon_url}/status").json()
@@ -582,6 +620,9 @@ def run_pipeline(
             model=model,
             daemon_url=daemon_url,
         )
+
+        # Clean garbage tokens
+        output_text = _clean_output(output_text)
 
         duration = time.time() - start
         words = _word_count(output_text)
@@ -601,6 +642,16 @@ def run_pipeline(
             print(f"   🐛 input: {input_words} words → output: {words} words")
             print(f"   🐛 {tps:.1f} tok/s | {duration:.1f}s")
             print(f"   🐛 saved: {output_path}")
+            preview = output_text[:200].replace("\n", "\\n")
+            print(f"   🐛 output preview: \"{preview}...\"")
+
+        # --- Minimum output gate ---
+        min_words = step.get("min_output_words", 50)
+        if words < min_words:
+            print(f"   ❌ Step failed — output too short ({words} words, minimum {min_words})")
+            print(f"   💡 Check the step's system prompt or increase context")
+            print(f"   📄 Partial output saved to: {output_path}")
+            return None  # halt pipeline
 
         previous_output = output_text
 
