@@ -52,6 +52,7 @@ def load_pipeline(yaml_path: str) -> dict:
         step.setdefault("task_type", None)
         step.setdefault("node_affinity", "any")
         step.setdefault("tools", [])
+        step.setdefault("depends_on", [])
         step.setdefault("description", "")
 
     return pipeline
@@ -175,12 +176,15 @@ _SKIP_FETCH = {"pinterest.com", "quora.com", "youtube.com", "facebook.com", "twi
 
 def _do_web_search(
     topic: str, daemon_url: str | None, debug: bool = False,
+    queries: list[str] | None = None,
 ) -> tuple[str, dict]:
     """Run wide web search and return (context_string, stats).
 
     Generates 20+ diverse queries (via LLM or templates) and dispatches
     them across the swarm in parallel. Deduplicates results by URL,
     fetches top 8 pages prioritized by source quality.
+
+    If queries is provided, uses those directly instead of generating.
     """
     results: list[dict] = []
     pages: list[str] = []
@@ -194,7 +198,7 @@ def _do_web_search(
     if daemon_url:
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
-        variants = _generate_search_queries(topic, n=20, debug=debug)
+        variants = queries if queries is not None else _generate_search_queries(topic, n=20, debug=debug)
         stats["num_queries"] = len(variants)
 
         def _search_variant(query: str) -> list[dict]:
@@ -282,7 +286,7 @@ def _do_web_search(
                         pass
     else:
         from mycoswarm.solo import web_search_solo
-        variants = _generate_search_queries(topic, n=10, debug=debug)
+        variants = queries if queries is not None else _generate_search_queries(topic, n=10, debug=debug)
         stats["num_queries"] = len(variants)
         for v in variants:
             vr = web_search_solo(v, max_results=10)
@@ -799,6 +803,84 @@ def _pad_with_templates(
     return existing[:n]
 
 
+def _extract_gaps(synth_text: str) -> str:
+    """Extract the ## Gaps section from synthesizer output."""
+    match = re.search(r'## Gaps\s*\n(.*?)(?=\n## |\Z)', synth_text, flags=re.DOTALL)
+    return match.group(1).strip() if match else ""
+
+
+_GAP_QUERY_PROMPT = (
+    "Convert each gap into 2-3 specific web search queries:\n\n"
+    "Gaps:\n{gaps_text}\n\n"
+    "Output ONLY search queries, one per line. Be specific — include "
+    "GPU model names, metric names (tok/s, TDP, watts), and site "
+    "names (reddit, techpowerup, tomshardware)."
+)
+
+
+def _generate_gap_queries(gaps_text: str, debug: bool = False) -> list[str]:
+    """Generate targeted search queries from synthesizer gaps using LLM."""
+    model = None
+    try:
+        with httpx.Client(timeout=3) as client:
+            resp = client.get(f"{_OLLAMA_BASE}/api/tags")
+            resp.raise_for_status()
+            available = [m["name"] for m in resp.json().get("models", [])]
+    except Exception:
+        return []
+
+    for pattern in _QUERY_GEN_MODELS:
+        for m in available:
+            if pattern in m:
+                model = m
+                break
+        if model:
+            break
+
+    if not model:
+        return []
+
+    if debug:
+        print(f"   🐛 gap query gen model: {model}")
+
+    prompt = _GAP_QUERY_PROMPT.format(gaps_text=gaps_text)
+
+    try:
+        with httpx.Client(timeout=httpx.Timeout(5.0, read=30.0)) as client:
+            resp = client.post(
+                f"{_OLLAMA_BASE}/api/chat",
+                json={
+                    "model": model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "options": {"temperature": 0.7, "num_predict": 400},
+                    "stream": False,
+                },
+            )
+            resp.raise_for_status()
+            raw = resp.json().get("message", {}).get("content", "")
+    except Exception:
+        return []
+
+    queries: list[str] = []
+    seen: set[str] = set()
+    for line in raw.strip().splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        line = re.sub(r'^[\d]+[.)]\s*', '', line)
+        line = re.sub(r'^[-*]\s*', '', line)
+        line = line.strip('"\'').strip()
+        lower = line.lower()
+        if 3 <= len(line.split()) <= 12 and lower not in seen:
+            queries.append(line)
+            seen.add(lower)
+
+    if debug:
+        print(f"   🐛 gap queries: {len(queries)}")
+
+    return queries
+
+
 def _cap_context(web_ctx: str, rag_ctx: str, max_words: int = 4000) -> tuple[str, str]:
     """Cap combined context to max_words. Truncates web results first."""
     rag_words = _word_count(rag_ctx)
@@ -882,7 +964,18 @@ def run_pipeline(
 
         if "web_search" in tools:
             web_start = time.time()
-            web_ctx, web_stats = _do_web_search(topic, daemon_url, debug=debug)
+            # Gap-filler: targeted search for missing data from synthesizer gaps
+            gap_queries = None
+            if step_name == "gap-filler":
+                synth_path = os.path.join(workspace_dir, "synthesizer.md")
+                if os.path.isfile(synth_path):
+                    with open(synth_path) as f:
+                        gaps_text = _extract_gaps(f.read())
+                    if gaps_text:
+                        gap_queries = _generate_gap_queries(gaps_text, debug=debug)
+                        if debug:
+                            print(f"   🐛 gap-fill: {len(gap_queries)} targeted queries from gaps")
+            web_ctx, web_stats = _do_web_search(topic, daemon_url, debug=debug, queries=gap_queries)
             web_elapsed = time.time() - web_start
             if web_ctx:
                 context_parts.append(web_ctx)
@@ -933,9 +1026,28 @@ def run_pipeline(
             context_parts[0] = " ".join(words[:4000]) + "\n[context truncated]"
 
         # --- Build user input ---
-        # Special case: editor gets both research bundle and draft
-        if step_name == "editor":
-            research_path = os.path.join(workspace_dir, "synthesizer.md")
+        # depends_on: load multiple named step outputs
+        if step.get("depends_on"):
+            input_parts = [f"Topic: {topic}"]
+            for dep_name in step["depends_on"]:
+                dep_path = os.path.join(workspace_dir, f"{dep_name}.md")
+                if os.path.isfile(dep_path):
+                    with open(dep_path) as f:
+                        dep_text = f.read()
+                    input_parts.append(f"## {dep_name.upper()} OUTPUT\n{dep_text}")
+                    if debug:
+                        dw = _word_count(dep_text)
+                        print(f"   🐛 depends_on: {dep_name}.md ({dw} words)")
+            if context_parts:
+                input_parts.append(
+                    "--- RETRIEVED CONTEXT ---\n" + "\n\n".join(context_parts)
+                )
+        # Special case: editor gets research bundle + draft
+        elif step_name == "editor":
+            # Prefer synthesizer-v2 (gap-filled), fall back to synthesizer
+            research_path = os.path.join(workspace_dir, "synthesizer-v2.md")
+            if not os.path.isfile(research_path):
+                research_path = os.path.join(workspace_dir, "synthesizer.md")
             writer_path = os.path.join(workspace_dir, "writer.md")
             if os.path.isfile(research_path) and os.path.isfile(writer_path):
                 with open(research_path) as f:
@@ -943,9 +1055,10 @@ def run_pipeline(
                 with open(writer_path) as f:
                     writer_text = f.read()
                 if debug:
+                    rname = os.path.basename(research_path)
                     rw = _word_count(research_text)
                     ww = _word_count(writer_text)
-                    print(f"   🐛 editor inputs: synthesizer.md ({rw} words) + writer.md ({ww} words)")
+                    print(f"   🐛 editor inputs: {rname} ({rw} words) + writer.md ({ww} words)")
                 input_parts = [
                     f"Topic: {topic}",
                     "## RESEARCH BUNDLE (ground truth — use this to fact-check)\n"

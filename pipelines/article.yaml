@@ -72,6 +72,50 @@ steps:
       - If a section has no data, write "NO DATA FOUND"
     min_output_words: 100
 
+  - name: gap-filler
+    task_type: extraction
+    description: Search for missing data identified by the synthesizer
+    system_prompt: |
+      You receive a research bundle with a ## Gaps section listing
+      missing data. Your job is to find that missing data.
+
+      For each gap, extract factual data points from the NEW search
+      results provided. Output ONLY a bullet-point list of new facts
+      found. One fact per line with source URL.
+
+      If a gap cannot be filled (no relevant data in search results),
+      write: "- [gap topic]: NOT FOUND IN NEW SEARCH"
+
+      Do NOT repeat facts already in the research bundle.
+      Do NOT add information from your training data.
+    tools:
+      - web_search
+    min_output_words: 20
+
+  - name: synthesizer-v2
+    task_type: synthesis
+    description: Re-synthesize with gap-fill data
+    depends_on:
+      - synthesizer
+      - gap-filler
+    tools:
+      - rag_search
+    system_prompt: |
+      You receive an original research bundle and NEW FACTS found
+      to fill gaps. Merge them into an updated research bundle.
+
+      Keep the same format (Price Data, Benchmark Data, Key Specs, etc.)
+      Update sections that now have data.
+      Keep ## Gaps but remove any that are now filled.
+      Add a ## New Data section listing what was found in the gap-fill.
+
+      Rules:
+      - Only use facts from the inputs
+      - Preserve source attributions
+      - Flag any contradictory data points
+      - If a section has no data, write "NO DATA FOUND"
+    min_output_words: 100
+
   - name: writer
     task_type: writing
     description: Draft the article from research
