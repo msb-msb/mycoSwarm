@@ -154,29 +154,55 @@ def _stream_response(url: str, task_id: str, timeout: int = 300) -> tuple[str, d
     return "".join(tokens), metrics
 
 
+def _extract_domain(url: str) -> str:
+    """Extract domain from URL, stripping www. prefix."""
+    try:
+        host = url.split("//", 1)[-1].split("/", 1)[0].split(":")[0]
+        return host[4:] if host.startswith("www.") else host
+    except Exception:
+        return ""
+
+
+# Priority scoring for page fetching — higher = fetch first
+_FETCH_PRIORITY = {
+    "techpowerup.com": 3, "tomshardware.com": 3, "anandtech.com": 3,
+    "pugetsystems.com": 3, "servethehome.com": 3,
+    "insiderllm.com": 3, "rtings.com": 2,
+    "reddit.com": 2, "overclock.net": 2,
+}
+_SKIP_FETCH = {"pinterest.com", "quora.com", "youtube.com", "facebook.com", "twitter.com", "x.com"}
+
+
 def _do_web_search(
     topic: str, daemon_url: str | None, debug: bool = False,
 ) -> tuple[str, dict]:
-    """Run web search and return (context_string, stats).
+    """Run wide web search and return (context_string, stats).
 
-    Stats: {"result_count": int, "pages_fetched": int, "top_urls": list[str]}
+    Generates 20+ diverse queries (via LLM or templates) and dispatches
+    them across the swarm in parallel. Deduplicates results by URL,
+    fetches top 8 pages prioritized by source quality.
     """
     results: list[dict] = []
     pages: list[str] = []
     query_counts: list[tuple[str, int]] = []
-    stats: dict = {"result_count": 0, "pages_fetched": 0, "top_urls": [], "query_counts": []}
+    raw_count = 0
+    stats: dict = {
+        "num_queries": 0, "raw_count": 0, "result_count": 0,
+        "pages_fetched": 0, "top_sources": [], "query_counts": [],
+    }
 
     if daemon_url:
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
-        variants = _generate_search_queries(topic)
+        variants = _generate_search_queries(topic, n=20, debug=debug)
+        stats["num_queries"] = len(variants)
 
         def _search_variant(query: str) -> list[dict]:
             task_id = f"ws-pipe-{uuid.uuid4().hex[:8]}"
             payload = {
                 "task_id": task_id,
                 "task_type": "web_search",
-                "payload": {"query": query, "max_results": 15},
+                "payload": {"query": query, "max_results": 10},
                 "source_node": "pipeline",
                 "priority": 7,
                 "timeout_seconds": 60,
@@ -188,13 +214,15 @@ def _do_web_search(
 
         with ThreadPoolExecutor(max_workers=len(variants)) as pool:
             futures = {pool.submit(_search_variant, v): v for v in variants}
-            for future in as_completed(futures, timeout=45):
+            for future in as_completed(futures, timeout=60):
                 try:
                     variant_results = future.result()
                     query_counts.append((futures[future], len(variant_results)))
                     results.extend(variant_results)
                 except Exception:
                     pass
+
+        raw_count = len(results)
 
         # Dedup by URL
         seen: set[str] = set()
@@ -206,15 +234,21 @@ def _do_web_search(
                 deduped.append(r)
         results = deduped
 
-        # Fetch top 3 pages
-        _SKIP = {"wikipedia.org", "reddit.com", "quora.com", "pinterest.com"}
-        candidates = []
+        # Fetch top 8 pages, prioritized by source quality
+        scored: list[tuple[str, int]] = []
         for r in results:
             url_str = r.get("url", "")
-            if not any(d in url_str for d in _SKIP):
-                candidates.append(url_str)
-            if len(candidates) >= 3:
-                break
+            domain = _extract_domain(url_str)
+            if any(s in domain for s in _SKIP_FETCH):
+                continue
+            score = 1
+            for d, s in _FETCH_PRIORITY.items():
+                if d in domain:
+                    score = s
+                    break
+            scored.append((url_str, score))
+        scored.sort(key=lambda x: -x[1])
+        candidates = [url for url, _ in scored[:8]]
 
         def _fetch(page_url: str) -> str | None:
             try:
@@ -236,9 +270,9 @@ def _do_web_search(
                 return None
 
         if candidates:
-            with ThreadPoolExecutor(max_workers=3) as pool:
+            with ThreadPoolExecutor(max_workers=min(len(candidates), 6)) as pool:
                 for future in as_completed(
-                    [pool.submit(_fetch, u) for u in candidates], timeout=15
+                    [pool.submit(_fetch, u) for u in candidates], timeout=20
                 ):
                     try:
                         text = future.result()
@@ -248,11 +282,14 @@ def _do_web_search(
                         pass
     else:
         from mycoswarm.solo import web_search_solo
-        variants = _generate_search_queries(topic)
+        variants = _generate_search_queries(topic, n=10, debug=debug)
+        stats["num_queries"] = len(variants)
         for v in variants:
             vr = web_search_solo(v, max_results=10)
             query_counts.append((v, len(vr)))
             results.extend(vr)
+
+        raw_count = len(results)
 
         # Dedup solo results by URL
         seen: set[str] = set()
@@ -264,10 +301,19 @@ def _do_web_search(
                 deduped.append(r)
         results = deduped
 
+    # Extract top source domains
+    domain_counts: dict[str, int] = {}
+    for r in results:
+        d = _extract_domain(r.get("url", ""))
+        if d:
+            domain_counts[d] = domain_counts.get(d, 0) + 1
+    top_sources = sorted(domain_counts, key=lambda d: -domain_counts[d])[:5]
+
     # Build stats
+    stats["raw_count"] = raw_count
     stats["result_count"] = len(results)
     stats["pages_fetched"] = len(pages)
-    stats["top_urls"] = [r.get("url", "") for r in results[:3]]
+    stats["top_sources"] = top_sources
     stats["query_counts"] = query_counts
 
     if not results and not pages:
@@ -276,7 +322,7 @@ def _do_web_search(
     parts: list[str] = []
     if results:
         snippet_lines = []
-        for i, r in enumerate(results[:10], 1):
+        for i, r in enumerate(results[:20], 1):
             snippet_lines.append(
                 f"[{i}] {r.get('title', '')}\n    {r.get('url', '')}\n    {r.get('snippet', '')}"
             )
@@ -541,41 +587,166 @@ def _strip_think_tags(text: str) -> str:
     return _THINK_RE.sub('', text).strip()
 
 
-def _generate_search_queries(topic: str, n: int = 5) -> list[str]:
-    """Generate diverse search queries from a topic for wider coverage.
+_OLLAMA_BASE = "http://localhost:11434"
 
-    Produces n queries covering different angles:
-    1. Original topic (always first)
-    2. Keyword-only comparison/benchmark variant
-    3. Review/recommendation variant
-    4. Community discussion variant (reddit)
-    5. Recency-focused variant (current year)
+_QUERY_GEN_PROMPT = (
+    "Generate {n} diverse web search queries to thoroughly research "
+    "this topic: {topic}\n\n"
+    "Cover ALL of these angles:\n"
+    "- General overview queries (2-3)\n"
+    "- Specific product comparisons (3-4): \"X vs Y\"\n"
+    "- Price/value queries (2-3): used market, deals, price history\n"
+    "- Technical benchmark queries (3-4): specific metrics, specs\n"
+    "- Community/forum queries (2-3): reddit, forum discussions\n"
+    "- Contrarian/alternative queries (2-3): underrated options, alternatives\n"
+    "- Software ecosystem queries (2): compatibility, driver support\n"
+    "- Recent news queries (2): latest releases, price drops\n\n"
+    "Rules:\n"
+    "- Each query must be 3-8 words\n"
+    "- No two queries should return the same search results\n"
+    "- Include specific product names where relevant\n"
+    "- Output ONLY the queries, one per line, no numbering, no explanation"
+)
+
+_QUERY_GEN_MODELS = ("gemma3:4b", "gemma3:1b", "llama3.2:3b", "llama3.2:1b")
+
+
+def _generate_search_queries(
+    topic: str, n: int = 20, debug: bool = False,
+) -> list[str]:
+    """Generate diverse search queries using a small LLM, with template fallback.
+
+    Primary: asks gemma3:4b (or smallest available) to generate n queries
+    covering genuinely different angles — comparisons, benchmarks, community
+    discussions, used market, contrarian picks, etc.
+    Fallback: template-based queries if no LLM is available.
+    Always returns exactly n queries.
     """
+    queries = _llm_generate_queries(topic, n, debug)
+    if len(queries) < n:
+        if debug and queries:
+            print(f"   🐛 LLM generated {len(queries)} queries, padding to {n}")
+        elif debug:
+            print(f"   🐛 LLM unavailable, using template queries")
+        queries = _pad_with_templates(topic, queries, n)
+    if debug:
+        print(f"   🐛 search queries: {len(queries)}")
+    return queries
+
+
+def _llm_generate_queries(topic: str, n: int, debug: bool) -> list[str]:
+    """Generate queries via local Ollama using a small fast model."""
+    try:
+        with httpx.Client(timeout=3) as client:
+            resp = client.get(f"{_OLLAMA_BASE}/api/tags")
+            resp.raise_for_status()
+            available = [m["name"] for m in resp.json().get("models", [])]
+    except Exception:
+        return []
+
+    model = None
+    for pattern in _QUERY_GEN_MODELS:
+        for m in available:
+            if pattern in m:
+                model = m
+                break
+        if model:
+            break
+
+    if not model:
+        return []
+
+    if debug:
+        print(f"   🐛 query gen model: {model}")
+
+    prompt = _QUERY_GEN_PROMPT.format(n=n, topic=topic)
+
+    try:
+        with httpx.Client(timeout=httpx.Timeout(5.0, read=30.0)) as client:
+            resp = client.post(
+                f"{_OLLAMA_BASE}/api/chat",
+                json={
+                    "model": model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "options": {"temperature": 0.8, "num_predict": 600},
+                    "stream": False,
+                },
+            )
+            resp.raise_for_status()
+            raw = resp.json().get("message", {}).get("content", "")
+    except Exception:
+        return []
+
+    # Parse: one query per line, strip numbering/bullets/quotes
+    queries: list[str] = []
+    seen: set[str] = set()
+    for line in raw.strip().splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        line = re.sub(r'^[\d]+[.)]\s*', '', line)
+        line = re.sub(r'^[-*]\s*', '', line)
+        line = line.strip('"\'').strip()
+        lower = line.lower()
+        if 3 <= len(line.split()) <= 12 and lower not in seen:
+            queries.append(line)
+            seen.add(lower)
+
+    return queries
+
+
+_FILLER_WORDS = {
+    "what", "is", "the", "a", "an", "of", "in", "for", "to", "and",
+    "or", "how", "does", "do", "can", "will", "are", "was", "were",
+    "been", "being", "have", "has", "had", "about", "with", "from",
+    "this", "that", "these", "those", "it", "its", "my", "your",
+    "our", "their", "best", "most", "top",
+}
+
+
+def _pad_with_templates(
+    topic: str, existing: list[str], n: int,
+) -> list[str]:
+    """Pad query list with template-based fallbacks to guarantee n queries."""
     from datetime import datetime
     year = str(datetime.now().year)
 
-    _FILLER = {
-        "what", "is", "the", "a", "an", "of", "in", "for", "to", "and",
-        "or", "how", "does", "do", "can", "will", "are", "was", "were",
-        "been", "being", "have", "has", "had", "about", "with", "from",
-        "this", "that", "these", "those", "it", "its", "my", "your",
-        "our", "their", "me", "you", "we", "they", "he", "she",
-        "tell", "show", "give", "find", "get", "let", "please",
-        "could", "would", "should", "might", "may", "shall",
-    }
-    keywords = [w for w in topic.split() if w.lower().strip("?.,!") not in _FILLER]
-    keyword_str = " ".join(keywords) if len(keywords) >= 2 else topic
+    keywords = [
+        w for w in topic.split()
+        if w.lower().strip("?.,!") not in _FILLER_WORDS
+    ]
+    kw = " ".join(keywords) if keywords else topic
 
-    queries = [topic]
-    queries.append(f"{keyword_str} comparison benchmark {year}")
-    queries.append(f"{keyword_str} review recommendation")
-    queries.append(f"reddit {keyword_str}")
-    if year not in topic:
-        queries.append(f"{topic} {year}")
-    else:
-        queries.append(f"latest {keyword_str}")
+    templates = [
+        topic,
+        f"best used {kw} {year}",
+        f"{kw} vs alternatives comparison",
+        f"{kw} price used market {year}",
+        f"reddit {kw} {year}",
+        f"reddit best {kw} recommendation",
+        f"{kw} benchmark tokens per second",
+        f"{kw} VRAM requirements performance",
+        f"{kw} power consumption wattage",
+        f"underrated {kw} alternatives {year}",
+        f"{kw} driver support compatibility",
+        f"latest {kw} news {year}",
+        f"{kw} price drop deals {year}",
+        f"{kw} review hands on {year}",
+        f"forum discussion {kw} experience",
+        f"{kw} real world performance test",
+        f"budget {kw} build guide {year}",
+        f"{kw} long term reliability issues",
+        f"{kw} buying guide {year}",
+        f"{kw} comparison chart specs",
+    ]
 
-    return queries[:n]
+    existing_lower = {q.lower() for q in existing}
+    for t in templates:
+        if t.lower() not in existing_lower and len(existing) < n:
+            existing.append(t)
+            existing_lower.add(t.lower())
+
+    return existing[:n]
 
 
 def _cap_context(web_ctx: str, rag_ctx: str, max_words: int = 4000) -> tuple[str, str]:
@@ -665,16 +836,17 @@ def run_pipeline(
             web_elapsed = time.time() - web_start
             if web_ctx:
                 context_parts.append(web_ctx)
-            qc = web_stats.get("query_counts", [])
-            nq = len(qc)
+            nq = web_stats.get("num_queries", 0)
+            raw = web_stats.get("raw_count", 0)
             rc = web_stats["result_count"]
             pf = web_stats["pages_fetched"]
-            print(f"   🔍 Web: {nq} queries → {rc} results, {pf} pages fetched ({web_elapsed:.1f}s)")
-            for qi, (q, c) in enumerate(qc, 1):
-                print(f"      q{qi}: \"{q}\" → {c} results")
+            print(f"   🔍 Web: {nq} queries → {raw} results ({rc} unique), {pf} pages fetched ({web_elapsed:.1f}s)")
+            top_src = web_stats.get("top_sources", [])
+            if top_src:
+                print(f"      Top sources: {', '.join(top_src)}")
             if debug:
-                for url in web_stats.get("top_urls", []):
-                    print(f"      → {url}")
+                for q, c in web_stats.get("query_counts", []):
+                    print(f"      q: \"{q}\" → {c} results")
 
         if "rag_search" in tools:
             rag_start = time.time()
