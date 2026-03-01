@@ -163,13 +163,13 @@ def _do_web_search(
     """
     results: list[dict] = []
     pages: list[str] = []
-    stats: dict = {"result_count": 0, "pages_fetched": 0, "top_urls": []}
+    query_counts: list[tuple[str, int]] = []
+    stats: dict = {"result_count": 0, "pages_fetched": 0, "top_urls": [], "query_counts": []}
 
     if daemon_url:
-        from mycoswarm.solo import generate_search_variants
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
-        variants = generate_search_variants(topic)
+        variants = _generate_search_queries(topic)
 
         def _search_variant(query: str) -> list[dict]:
             task_id = f"ws-pipe-{uuid.uuid4().hex[:8]}"
@@ -190,7 +190,9 @@ def _do_web_search(
             futures = {pool.submit(_search_variant, v): v for v in variants}
             for future in as_completed(futures, timeout=45):
                 try:
-                    results.extend(future.result())
+                    variant_results = future.result()
+                    query_counts.append((futures[future], len(variant_results)))
+                    results.extend(variant_results)
                 except Exception:
                     pass
 
@@ -246,12 +248,27 @@ def _do_web_search(
                         pass
     else:
         from mycoswarm.solo import web_search_solo
-        results = web_search_solo(topic, max_results=10)
+        variants = _generate_search_queries(topic)
+        for v in variants:
+            vr = web_search_solo(v, max_results=10)
+            query_counts.append((v, len(vr)))
+            results.extend(vr)
+
+        # Dedup solo results by URL
+        seen: set[str] = set()
+        deduped: list[dict] = []
+        for r in results:
+            u = r.get("url", "")
+            if u and u not in seen:
+                seen.add(u)
+                deduped.append(r)
+        results = deduped
 
     # Build stats
     stats["result_count"] = len(results)
     stats["pages_fetched"] = len(pages)
     stats["top_urls"] = [r.get("url", "") for r in results[:3]]
+    stats["query_counts"] = query_counts
 
     if not results and not pages:
         return "", stats
@@ -516,6 +533,51 @@ def _clean_output(text: str) -> str:
     return _GARBAGE_RE.sub('', text).strip()
 
 
+_THINK_RE = re.compile(r'<think>.*?</think>', flags=re.DOTALL)
+
+
+def _strip_think_tags(text: str) -> str:
+    """Remove <think>...</think> blocks from deepseek-r1 output."""
+    return _THINK_RE.sub('', text).strip()
+
+
+def _generate_search_queries(topic: str, n: int = 5) -> list[str]:
+    """Generate diverse search queries from a topic for wider coverage.
+
+    Produces n queries covering different angles:
+    1. Original topic (always first)
+    2. Keyword-only comparison/benchmark variant
+    3. Review/recommendation variant
+    4. Community discussion variant (reddit)
+    5. Recency-focused variant (current year)
+    """
+    from datetime import datetime
+    year = str(datetime.now().year)
+
+    _FILLER = {
+        "what", "is", "the", "a", "an", "of", "in", "for", "to", "and",
+        "or", "how", "does", "do", "can", "will", "are", "was", "were",
+        "been", "being", "have", "has", "had", "about", "with", "from",
+        "this", "that", "these", "those", "it", "its", "my", "your",
+        "our", "their", "me", "you", "we", "they", "he", "she",
+        "tell", "show", "give", "find", "get", "let", "please",
+        "could", "would", "should", "might", "may", "shall",
+    }
+    keywords = [w for w in topic.split() if w.lower().strip("?.,!") not in _FILLER]
+    keyword_str = " ".join(keywords) if len(keywords) >= 2 else topic
+
+    queries = [topic]
+    queries.append(f"{keyword_str} comparison benchmark {year}")
+    queries.append(f"{keyword_str} review recommendation")
+    queries.append(f"reddit {keyword_str}")
+    if year not in topic:
+        queries.append(f"{topic} {year}")
+    else:
+        queries.append(f"latest {keyword_str}")
+
+    return queries[:n]
+
+
 def _cap_context(web_ctx: str, rag_ctx: str, max_words: int = 4000) -> tuple[str, str]:
     """Cap combined context to max_words. Truncates web results first."""
     rag_words = _word_count(rag_ctx)
@@ -603,15 +665,16 @@ def run_pipeline(
             web_elapsed = time.time() - web_start
             if web_ctx:
                 context_parts.append(web_ctx)
+            qc = web_stats.get("query_counts", [])
+            nq = len(qc)
             rc = web_stats["result_count"]
             pf = web_stats["pages_fetched"]
-            print(f"   🔍 Web: {rc} results, {pf} pages fetched", end="")
+            print(f"   🔍 Web: {nq} queries → {rc} results, {pf} pages fetched ({web_elapsed:.1f}s)")
+            for qi, (q, c) in enumerate(qc, 1):
+                print(f"      q{qi}: \"{q}\" → {c} results")
             if debug:
-                print(f" ({web_elapsed:.1f}s)")
                 for url in web_stats.get("top_urls", []):
                     print(f"      → {url}")
-            else:
-                print()
 
         if "rag_search" in tools:
             rag_start = time.time()
@@ -657,6 +720,10 @@ def run_pipeline(
                     research_text = f.read()
                 with open(writer_path) as f:
                     writer_text = f.read()
+                if debug:
+                    rw = _word_count(research_text)
+                    ww = _word_count(writer_text)
+                    print(f"   🐛 editor inputs: synthesizer.md ({rw} words) + writer.md ({ww} words)")
                 input_parts = [
                     f"Topic: {topic}",
                     "## RESEARCH BUNDLE (ground truth — use this to fact-check)\n"
@@ -700,6 +767,14 @@ def run_pipeline(
 
         # Clean garbage tokens
         output_text = _clean_output(output_text)
+
+        # Strip <think>...</think> blocks (deepseek-r1 chain-of-thought)
+        think_contents = re.findall(r'<think>(.*?)</think>', output_text, flags=re.DOTALL)
+        if think_contents:
+            think_words = sum(_word_count(t) for t in think_contents)
+            if debug:
+                print(f"   🐛 reasoning: {think_words} words (stripped from output)")
+        output_text = _strip_think_tags(output_text)
 
         duration = time.time() - start
         words = _word_count(output_text)
