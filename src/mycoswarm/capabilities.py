@@ -219,7 +219,7 @@ def classify_node(profile: HardwareProfile) -> NodeCapabilities:
 # --- Pipeline task-type → model mapping ---
 
 TASK_MODEL_MAP: dict[str, dict] = {
-    "extraction": {"model_class": "small", "prefer_models": ["gemma3:12b", "gemma3:4b"]},
+    "extraction": {"model_class": "small", "prefer_models": ["deepseek-r1:14b", "gemma3:12b"]},
     "classification": {"model_class": "small", "prefer_models": ["gemma3:4b", "gemma3:1b"]},
     "embedding": {"model_class": "embed", "prefer_models": ["nomic-embed-text"]},
     "synthesis": {"model_class": "large", "prefer_models": ["gemma3:27b"]},
