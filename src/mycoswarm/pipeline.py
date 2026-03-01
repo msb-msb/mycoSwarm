@@ -7,6 +7,7 @@ and rag_search tools to gather context before inference.
 
 import json
 import os
+import re
 import sys
 import time
 import uuid
@@ -76,6 +77,21 @@ def _swarm_headers() -> dict:
         return {}
 
 
+def _resolve_node_name(daemon_url: str, node_id: str) -> str:
+    """Map a node_id to a hostname via /status and /peers."""
+    try:
+        with httpx.Client(headers=_swarm_headers(), timeout=3) as client:
+            status = client.get(f"{daemon_url}/status").json()
+            if status.get("node_id") == node_id:
+                return status.get("hostname", node_id)
+            for p in client.get(f"{daemon_url}/peers").json():
+                if p.get("node_id") == node_id:
+                    return p.get("hostname", node_id)
+    except Exception:
+        pass
+    return node_id
+
+
 def _submit_and_poll(url: str, task_payload: dict, timeout: int = 300) -> dict | None:
     """Submit a task to the daemon and poll until completion."""
     task_id = task_payload["task_id"]
@@ -137,13 +153,18 @@ def _stream_response(url: str, task_id: str, timeout: int = 300) -> tuple[str, d
     return "".join(tokens), metrics
 
 
-def _do_web_search(topic: str, daemon_url: str | None, debug: bool = False) -> str:
-    """Run web search and return formatted context string."""
+def _do_web_search(
+    topic: str, daemon_url: str | None, debug: bool = False,
+) -> tuple[str, dict]:
+    """Run web search and return (context_string, stats).
+
+    Stats: {"result_count": int, "pages_fetched": int, "top_urls": list[str]}
+    """
     results: list[dict] = []
     pages: list[str] = []
+    stats: dict = {"result_count": 0, "pages_fetched": 0, "top_urls": []}
 
     if daemon_url:
-        # Fan-out search via daemon
         from mycoswarm.solo import generate_search_variants
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -192,8 +213,6 @@ def _do_web_search(topic: str, daemon_url: str | None, debug: bool = False) -> s
             if len(candidates) >= 3:
                 break
 
-        import re
-
         def _fetch(page_url: str) -> str | None:
             try:
                 with httpx.Client(timeout=10, follow_redirects=True) as client:
@@ -225,12 +244,16 @@ def _do_web_search(topic: str, daemon_url: str | None, debug: bool = False) -> s
                     except Exception:
                         pass
     else:
-        # Solo fallback
         from mycoswarm.solo import web_search_solo
         results = web_search_solo(topic, max_results=10)
 
+    # Build stats
+    stats["result_count"] = len(results)
+    stats["pages_fetched"] = len(pages)
+    stats["top_urls"] = [r.get("url", "") for r in results[:3]]
+
     if not results and not pages:
-        return ""
+        return "", stats
 
     parts: list[str] = []
     if results:
@@ -244,17 +267,25 @@ def _do_web_search(topic: str, daemon_url: str | None, debug: bool = False) -> s
     if pages:
         parts.append("## Fetched Page Content\n" + "\n\n---\n\n".join(pages))
 
-    return "\n\n".join(parts)
+    return "\n\n".join(parts), stats
 
 
-def _do_rag_search(topic: str, debug: bool = False) -> str:
-    """Run RAG search and return formatted context string."""
+def _do_rag_search(
+    topic: str, debug: bool = False,
+) -> tuple[str, dict]:
+    """Run RAG search and return (context_string, stats).
+
+    Stats: {"doc_hits": int, "session_hits": int, "procedure_hits": int,
+            "top_sources": list[str]}
+    """
+    stats: dict = {"doc_hits": 0, "session_hits": 0, "procedure_hits": 0, "top_sources": []}
+
     try:
         from mycoswarm.library import search_all
     except ImportError:
         if debug:
             print("   ⚠️  RAG not available (chromadb not installed)")
-        return ""
+        return "", stats
 
     try:
         doc_hits, session_hits, procedure_hits = search_all(
@@ -263,7 +294,14 @@ def _do_rag_search(topic: str, debug: bool = False) -> str:
     except Exception as e:
         if debug:
             print(f"   ⚠️  RAG search failed: {e}")
-        return ""
+        return "", stats
+
+    stats["doc_hits"] = len(doc_hits)
+    stats["session_hits"] = len(session_hits)
+    stats["procedure_hits"] = len(procedure_hits)
+    stats["top_sources"] = list(dict.fromkeys(
+        h.get("source", "unknown") for h in doc_hits[:5]
+    ))
 
     parts: list[str] = []
 
@@ -289,7 +327,7 @@ def _do_rag_search(topic: str, debug: bool = False) -> str:
             proc_lines.append(f"[P{i}]\n{text}")
         parts.append("## Procedural Results\n" + "\n\n".join(proc_lines))
 
-    return "\n\n".join(parts)
+    return "\n\n".join(parts), stats
 
 
 def _run_inference(
@@ -302,6 +340,7 @@ def _run_inference(
     """Run a single inference call. Returns (output_text, metrics).
 
     Uses daemon streaming if available, falls back to solo chat_stream.
+    Metrics include: model, tokens_per_second, duration_seconds, node_id.
     """
     messages = [
         {"role": "system", "content": system_prompt},
@@ -327,16 +366,35 @@ def _run_inference(
             with httpx.Client(headers=_swarm_headers(), timeout=5) as client:
                 resp = client.post(f"{daemon_url}/task", json=payload)
                 resp.raise_for_status()
+                submit_data = resp.json()
+                # Capture routing info (e.g. "Routed to Miu")
+                routed_msg = submit_data.get("message", "")
+                if "Routed to" in routed_msg:
+                    node_hint = routed_msg.replace("Routed to ", "")
+                else:
+                    node_hint = ""
         except httpx.ConnectError:
-            # Fall through to solo
             daemon_url = None
+            node_hint = ""
 
         if daemon_url:
-            return _stream_response(daemon_url, task_id, timeout=timeout)
+            text, metrics = _stream_response(daemon_url, task_id, timeout=timeout)
+            # Resolve node_id to hostname if we didn't get it from routing
+            if not metrics.get("node_name"):
+                nid = metrics.get("node_id", "")
+                if node_hint:
+                    metrics["node_name"] = node_hint
+                elif nid and daemon_url:
+                    metrics["node_name"] = _resolve_node_name(daemon_url, nid)
+                else:
+                    metrics["node_name"] = "local"
+            return text, metrics
 
     # Solo fallback
     from mycoswarm.solo import chat_stream
-    return chat_stream(messages, model)
+    text, metrics = chat_stream(messages, model)
+    metrics["node_name"] = "local"
+    return text, metrics
 
 
 def _discover_model(daemon_url: str | None, prefer: str | None = None) -> str:
@@ -407,11 +465,12 @@ def run_pipeline(
 
     previous_output: str | None = None
     last_output_path = ""
+    pipeline_start = time.time()
 
     for i, step in enumerate(steps):
         step_num = i + 1
         step_name = step["name"]
-        print(f"\n📝 Step {step_num}/{total}: {step_name} — {step['description']}")
+        print(f"\n📝 Step {step_num}/{total}: {step_name}")
 
         start = time.time()
 
@@ -419,28 +478,52 @@ def run_pipeline(
         model = _discover_model(daemon_url, prefer=step.get("model"))
         if debug:
             print(f"   🐛 model: {model}")
+            print(f"   🐛 node_affinity: {step.get('node_affinity', 'any')}")
 
         # --- Gather tool context ---
         tools = step.get("tools", [])
         context_parts: list[str] = []
 
         if "web_search" in tools:
-            print("   🔍 Searching web...", end="", flush=True)
-            web_ctx = _do_web_search(topic, daemon_url, debug=debug)
+            web_start = time.time()
+            web_ctx, web_stats = _do_web_search(topic, daemon_url, debug=debug)
+            web_elapsed = time.time() - web_start
             if web_ctx:
                 context_parts.append(web_ctx)
-                print(f" {_word_count(web_ctx)} words")
+            rc = web_stats["result_count"]
+            pf = web_stats["pages_fetched"]
+            print(f"   🔍 Web: {rc} results, {pf} pages fetched", end="")
+            if debug:
+                print(f" ({web_elapsed:.1f}s)")
+                for url in web_stats.get("top_urls", []):
+                    print(f"      → {url}")
             else:
-                print(" no results")
+                print()
 
         if "rag_search" in tools:
-            print("   📚 Searching documents...", end="", flush=True)
-            rag_ctx = _do_rag_search(topic, debug=debug)
+            rag_start = time.time()
+            rag_ctx, rag_stats = _do_rag_search(topic, debug=debug)
+            rag_elapsed = time.time() - rag_start
             if rag_ctx:
                 context_parts.append(rag_ctx)
-                print(f" {_word_count(rag_ctx)} words")
+            dh = rag_stats["doc_hits"]
+            sh = rag_stats["session_hits"]
+            ph = rag_stats["procedure_hits"]
+            rag_parts = []
+            if dh:
+                rag_parts.append(f"{dh} docs")
+            if sh:
+                rag_parts.append(f"{sh} sessions")
+            if ph:
+                rag_parts.append(f"{ph} procedures")
+            rag_summary = ", ".join(rag_parts) if rag_parts else "no results"
+            print(f"   📚 RAG: {rag_summary}", end="")
+            if debug:
+                print(f" ({rag_elapsed:.1f}s)")
+                for src in rag_stats.get("top_sources", []):
+                    print(f"      → {src}")
             else:
-                print(" no results")
+                print()
 
         # --- Build user input ---
         # Special case: editor gets both research bundle and draft
@@ -459,7 +542,6 @@ def run_pipeline(
                     "## DRAFT ARTICLE (review this)\n" + writer_text,
                 ]
             else:
-                # Fallback if files missing
                 input_parts = [f"Topic: {topic}"]
                 if previous_output:
                     input_parts.append(previous_output)
@@ -477,12 +559,23 @@ def run_pipeline(
                 )
 
         user_content = "\n\n".join(input_parts)
+        input_words = _word_count(user_content)
 
         if debug:
-            print(f"   🐛 input: {_word_count(user_content)} words")
+            print(f"   🐛 input: {input_words} words")
 
         # --- Run inference ---
-        print(f"   🧠 Generating...", flush=True)
+        node_label = "local"
+        if daemon_url:
+            # Pre-resolve which node will likely handle this
+            try:
+                with httpx.Client(headers=_swarm_headers(), timeout=3) as client:
+                    status = client.get(f"{daemon_url}/status").json()
+                    node_label = status.get("hostname", "local")
+            except Exception:
+                pass
+
+        print(f"   🧠 Generating on {node_label} ({model})...", end="", flush=True)
         output_text, metrics = _run_inference(
             system_prompt=step["system_prompt"],
             user_content=user_content,
@@ -493,6 +586,7 @@ def run_pipeline(
         duration = time.time() - start
         words = _word_count(output_text)
         tps = metrics.get("tokens_per_second", 0)
+        actual_node = metrics.get("node_name", node_label)
 
         # --- Write output ---
         output_path = os.path.join(workspace_dir, f"{step_name}.md")
@@ -500,15 +594,21 @@ def run_pipeline(
             f.write(output_text)
         last_output_path = output_path
 
-        print(f"\n   ✅ Done — {words} words | {duration:.1f}s | {tps:.1f} tok/s")
-        print(f"   📄 {output_path}")
+        print(f" done — {words} words, {duration:.0f}s")
+
+        if debug:
+            print(f"   🐛 node: {actual_node}")
+            print(f"   🐛 input: {input_words} words → output: {words} words")
+            print(f"   🐛 {tps:.1f} tok/s | {duration:.1f}s")
+            print(f"   🐛 saved: {output_path}")
 
         previous_output = output_text
 
     # --- Summary ---
+    total_time = time.time() - pipeline_start
     print(f"\n{'─' * 60}")
     print(f"🍄 Pipeline complete: {pipeline['name']}")
-    print(f"   Steps: {total}")
+    print(f"   Steps: {total} | Total: {total_time:.0f}s")
     print(f"   Final output: {last_output_path}")
     print(f"   Workspace: {workspace_dir}")
 
