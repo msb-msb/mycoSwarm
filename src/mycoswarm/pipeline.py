@@ -380,8 +380,43 @@ def _run_inference(
             node_hint = ""
 
         if daemon_url:
-            text, metrics = _stream_response(daemon_url, task_id, timeout=timeout)
-            # Resolve node_id to hostname if we didn't get it from routing
+            # Stream from target node directly when routed remotely.
+            # The local daemon doesn't create a stream queue for remote
+            # tasks — the stream lives on the target node.
+            target_ip = submit_data.get("target_ip")
+            target_port = submit_data.get("target_port")
+            if target_ip and target_port:
+                stream_url = f"http://{target_ip}:{target_port}"
+            else:
+                stream_url = daemon_url
+
+            text, metrics = _stream_response(stream_url, task_id, timeout=timeout)
+
+            # If streaming returned nothing (e.g. stream finished before
+            # we connected), poll the daemon for the stored result.
+            if not text:
+                poll_start = time.time()
+                with httpx.Client(headers=_swarm_headers(), timeout=5) as client:
+                    while time.time() - poll_start < timeout:
+                        time.sleep(1.0)
+                        try:
+                            r = client.get(f"{daemon_url}/task/{task_id}")
+                            data = r.json()
+                            if data.get("status") == "completed":
+                                text = data.get("result", {}).get("response", "")
+                                metrics = {
+                                    "model": data.get("result", {}).get("model", model),
+                                    "tokens_per_second": data.get("result", {}).get("tokens_per_second", 0),
+                                    "duration_seconds": data.get("duration_seconds", 0),
+                                    "node_id": data.get("node_id", ""),
+                                }
+                                break
+                            elif data.get("status") == "failed":
+                                break
+                        except Exception:
+                            pass
+
+            # Resolve node name
             if not metrics.get("node_name"):
                 nid = metrics.get("node_id", "")
                 if node_hint:
