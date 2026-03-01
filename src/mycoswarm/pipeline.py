@@ -565,7 +565,7 @@ def run_pipeline(
         # --- Build user input ---
         # Special case: editor gets both research bundle and draft
         if step_name == "editor":
-            research_path = os.path.join(workspace_dir, "researcher.md")
+            research_path = os.path.join(workspace_dir, "synthesizer.md")
             writer_path = os.path.join(workspace_dir, "writer.md")
             if os.path.isfile(research_path) and os.path.isfile(writer_path):
                 with open(research_path) as f:

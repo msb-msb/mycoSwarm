@@ -2,52 +2,76 @@ name: insiderllm-article
 description: Research, write, edit, and optimize an InsiderLLM article
 
 steps:
-  - name: researcher
-    description: Gather web sources and internal docs on the topic
-    model: gemma3:27b
-    node_affinity: any
+  - name: extractor
+    description: Extract raw facts from web and document sources
+    model: gemma3:12b
+    node_affinity: specialist
     system_prompt: |
-      You are a research assistant for InsiderLLM.com. Given a topic, gather
-      and organize SPECIFIC FACTS from the provided web search results and
-      document context.
+      Extract every factual data point from the provided search results
+      and documents. Output ONLY a bullet-point list. One fact per line.
 
-      Rules:
-      - Extract concrete data points: prices, specs, benchmarks, release dates
-      - Every fact must include its source (URL or document name)
-      - Do NOT summarize what documents are "about" — extract the actual data
-      - Do NOT add any information from your training data
-      - If the sources don't cover something, say "NOT FOUND IN SOURCES"
+      For each fact include the source URL or document name in parentheses.
 
-      Output format:
+      Extract:
+      - GPU prices (new and used)
+      - Performance benchmarks (tok/s, FPS, scores)
+      - VRAM amounts
+      - Power consumption (TDP)
+      - Release dates
+      - Expert recommendations or verdicts
+      - Comparisons between GPUs
 
-      ## Key Facts
-      - [fact with number] — Source: [url or doc name]
-      - [fact with number] — Source: [url or doc name]
-      (list every relevant data point)
+      Do NOT summarize. Do NOT add commentary. Do NOT add information
+      from your training data. ONLY extract what is explicitly stated
+      in the provided text.
 
-      ## Price Data
-      - [GPU]: $[price] [new/used] — Source: [url]
-      (every price point found)
+      If a search result doesn't contain relevant data, skip it.
 
-      ## Benchmark Data
-      - [GPU]: [tok/s or FPS] on [model/task] — Source: [url]
-      (every benchmark found, mark if from our own testing)
-
-      ## Competitor Articles
-      - [title] — [url] — [their main recommendation]
-      (what angle are others taking?)
-
-      ## Internal Context
-      - [relevant info from our docs/sessions]
-
-      ## Gaps
-      - [what data is missing that the writer will need]
-
-      ## Suggested Angle
-      - [what makes our take different from competitors]
+      Format:
+      - [fact] (Source: [url or doc name])
     tools:
       - web_search
       - rag_search
+    min_output_words: 30
+
+  - name: synthesizer
+    description: Organize extracted facts into a research bundle
+    model: gemma3:27b
+    node_affinity: executive
+    system_prompt: |
+      You receive a list of raw facts extracted from web searches and
+      documents about a topic. Organize them into a structured research
+      bundle for an article writer.
+
+      Output format:
+
+      ## Price Data
+      (all prices found, grouped by GPU, note new vs used)
+
+      ## Benchmark Data
+      (all performance numbers, grouped by GPU and model size)
+
+      ## Key Specs
+      (VRAM, TDP, architecture for each GPU mentioned)
+
+      ## Competitor Coverage
+      (what other sites are recommending and why)
+
+      ## Internal Context
+      (relevant info from our own docs/sessions)
+
+      ## Gaps
+      (what data is missing that the writer will need — be specific)
+
+      ## Suggested Angle
+      (how should InsiderLLM's take differ from competitors)
+
+      Rules:
+      - Only use facts from the input list
+      - Preserve source attributions
+      - Flag any contradictory data points
+      - If a section has no data, write "NO DATA FOUND"
+    min_output_words: 100
 
   - name: writer
     description: Draft the article from research
