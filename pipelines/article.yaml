@@ -4,12 +4,12 @@ description: Research, write, edit, and optimize an InsiderLLM article
 steps:
   - name: extractor
     task_type: extraction
-    description: Extract raw facts from web and document sources
+    description: Extract raw facts from web search results
     system_prompt: |
-      Extract every factual data point from the provided search results
-      and documents. Output ONLY a bullet-point list. One fact per line.
+      You will receive WEB SEARCH RESULTS. Extract every factual data
+      point from them. Output ONLY a bullet-point list. One fact per line.
 
-      For each fact include the source URL or document name in parentheses.
+      For each fact include the source URL in parentheses.
 
       Extract:
       - GPU prices (new and used)
@@ -27,15 +27,16 @@ steps:
       If a search result doesn't contain relevant data, skip it.
 
       Format:
-      - [fact] (Source: [url or doc name])
+      - [fact] (Source: [url])
     tools:
       - web_search
-      - rag_search
     min_output_words: 30
 
   - name: synthesizer
     task_type: synthesis
     description: Organize extracted facts into a research bundle
+    tools:
+      - rag_search
     system_prompt: |
       You receive a list of raw facts extracted from web searches and
       documents about a topic. Organize them into a structured research
