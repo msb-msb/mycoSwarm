@@ -443,17 +443,38 @@ def run_pipeline(
                 print(" no results")
 
         # --- Build user input ---
-        input_parts: list[str] = [f"Topic: {topic}"]
+        # Special case: editor gets both research bundle and draft
+        if step_name == "editor":
+            research_path = os.path.join(workspace_dir, "researcher.md")
+            writer_path = os.path.join(workspace_dir, "writer.md")
+            if os.path.isfile(research_path) and os.path.isfile(writer_path):
+                with open(research_path) as f:
+                    research_text = f.read()
+                with open(writer_path) as f:
+                    writer_text = f.read()
+                input_parts = [
+                    f"Topic: {topic}",
+                    "## RESEARCH BUNDLE (ground truth — use this to fact-check)\n"
+                    + research_text,
+                    "## DRAFT ARTICLE (review this)\n" + writer_text,
+                ]
+            else:
+                # Fallback if files missing
+                input_parts = [f"Topic: {topic}"]
+                if previous_output:
+                    input_parts.append(previous_output)
+        else:
+            input_parts: list[str] = [f"Topic: {topic}"]
 
-        if context_parts:
-            input_parts.append(
-                "--- RETRIEVED CONTEXT ---\n" + "\n\n".join(context_parts)
-            )
+            if context_parts:
+                input_parts.append(
+                    "--- RETRIEVED CONTEXT ---\n" + "\n\n".join(context_parts)
+                )
 
-        if previous_output:
-            input_parts.append(
-                f"--- OUTPUT FROM PREVIOUS STEP ---\n{previous_output}"
-            )
+            if previous_output:
+                input_parts.append(
+                    f"--- OUTPUT FROM PREVIOUS STEP ---\n{previous_output}"
+                )
 
         user_content = "\n\n".join(input_parts)
 
