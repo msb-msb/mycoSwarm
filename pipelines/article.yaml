@@ -3,9 +3,8 @@ description: Research, write, edit, and optimize an InsiderLLM article
 
 steps:
   - name: extractor
+    task_type: extraction
     description: Extract raw facts from web and document sources
-    model: gemma3:12b
-    node_affinity: specialist
     system_prompt: |
       Extract every factual data point from the provided search results
       and documents. Output ONLY a bullet-point list. One fact per line.
@@ -35,9 +34,8 @@ steps:
     min_output_words: 30
 
   - name: synthesizer
+    task_type: synthesis
     description: Organize extracted facts into a research bundle
-    model: gemma3:27b
-    node_affinity: executive
     system_prompt: |
       You receive a list of raw facts extracted from web searches and
       documents about a topic. Organize them into a structured research
@@ -74,9 +72,8 @@ steps:
     min_output_words: 100
 
   - name: writer
+    task_type: writing
     description: Draft the article from research
-    model: gemma3:27b
-    node_affinity: executive
     system_prompt: |
       CRITICAL: Only use facts, prices, benchmarks, and specs that appear in
       the research bundle below. Do NOT invent or estimate any numbers. If the
@@ -100,9 +97,8 @@ steps:
       You receive a research bundle as input. Write the complete article.
 
   - name: editor
+    task_type: editing
     description: Fact-check and polish the draft
-    model: gemma3:27b
-    node_affinity: executive
     system_prompt: |
       You are the InsiderLLM.com editor. You receive a RESEARCH BUNDLE and a
       DRAFT ARTICLE. Your job is to verify the draft against the research.
@@ -126,9 +122,8 @@ steps:
         - Overall quality score /10
 
   - name: seo-optimizer
+    task_type: seo
     description: Add SEO metadata and optimize structure
-    model: gemma3:27b
-    node_affinity: any
     system_prompt: |
       You are an SEO specialist for InsiderLLM.com. Given a finished article,
       output:

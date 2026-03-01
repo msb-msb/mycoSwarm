@@ -49,6 +49,7 @@ def load_pipeline(yaml_path: str) -> dict:
             print(f"❌ Step '{step['name']}' missing 'system_prompt'")
             sys.exit(1)
         step.setdefault("model", None)
+        step.setdefault("task_type", None)
         step.setdefault("node_affinity", "any")
         step.setdefault("tools", [])
         step.setdefault("description", "")
@@ -398,36 +399,70 @@ def _run_inference(
     return text, metrics
 
 
-def _discover_model(daemon_url: str | None, prefer: str | None = None) -> str:
-    """Pick the best model from daemon or local Ollama."""
+def _get_swarm_model_map(daemon_url: str | None) -> dict[str, str]:
+    """Build {model_name: hostname} map from daemon + peers.
+
+    Returns all available models across the swarm with the hostname
+    of the node that has them.
+    """
+    model_map: dict[str, str] = {}
+
     if daemon_url:
         try:
             with httpx.Client(headers=_swarm_headers(), timeout=5) as client:
-                resp = client.get(f"{daemon_url}/status")
-                resp.raise_for_status()
-                models = resp.json().get("ollama_models", [])
+                status = client.get(f"{daemon_url}/status").json()
+                hostname = status.get("hostname", "local")
+                for m in status.get("ollama_models", []):
+                    model_map[m] = hostname
 
-                if not models:
-                    peers = client.get(f"{daemon_url}/peers").json()
-                    for p in peers:
-                        if p.get("available_models"):
-                            models = p["available_models"]
-                            break
+                for p in client.get(f"{daemon_url}/peers").json():
+                    peer_host = p.get("hostname", p.get("node_id", "peer"))
+                    for m in p.get("available_models", []):
+                        if m not in model_map:
+                            model_map[m] = peer_host
         except Exception:
-            models = []
+            pass
     else:
         from mycoswarm.solo import check_ollama
         _, models = check_ollama()
+        for m in models:
+            model_map[m] = "local"
 
-    if prefer and prefer in models:
-        return prefer
+    return model_map
 
-    # Prefer large models
-    for m in models:
+
+def _resolve_step_model(
+    step: dict, model_map: dict[str, str],
+) -> tuple[str, str]:
+    """Resolve the model for a pipeline step. Returns (model, hostname).
+
+    Priority: explicit model > task_type preferred models > fallback to largest.
+    """
+    from mycoswarm.capabilities import TASK_MODEL_MAP
+
+    # Explicit model override
+    if step.get("model"):
+        model = step["model"]
+        host = model_map.get(model, "unknown")
+        return model, host
+
+    # Resolve via task_type
+    task_type = step.get("task_type", "general")
+    task_config = TASK_MODEL_MAP.get(task_type, TASK_MODEL_MAP["general"])
+
+    for preferred in task_config["prefer_models"]:
+        if preferred in model_map:
+            return preferred, model_map[preferred]
+
+    # Fallback: largest available model
+    for m, host in model_map.items():
         if any(s in m for s in ("27b", "32b", "14b")):
-            return m
-    if models:
-        return models[0]
+            return m, host
+
+    # Last resort: first available
+    if model_map:
+        m = next(iter(model_map))
+        return m, model_map[m]
 
     print("❌ No models available.")
     sys.exit(1)
@@ -489,6 +524,21 @@ def run_pipeline(
     print(f"   Mode: {mode} | Steps: {total}")
     print(f"   Topic: {topic}")
     print(f"   Workspace: {workspace_dir}")
+
+    # Resolve routing for all steps upfront
+    model_map = _get_swarm_model_map(daemon_url)
+    step_routing: list[tuple[str, str]] = []  # (model, hostname) per step
+    for step in steps:
+        m, h = _resolve_step_model(step, model_map)
+        step_routing.append((m, h))
+
+    # Print routing table
+    max_name = max(len(s["name"]) for s in steps)
+    print(f"\n🧭 Routing:")
+    for step, (m, h) in zip(steps, step_routing):
+        name = step["name"].ljust(max_name)
+        task_hint = f" [{step['task_type']}]" if step.get("task_type") else ""
+        print(f"   {name} → {m} ({h}){task_hint}")
     print(f"{'─' * 60}")
 
     previous_output: str | None = None
@@ -498,15 +548,15 @@ def run_pipeline(
     for i, step in enumerate(steps):
         step_num = i + 1
         step_name = step["name"]
+        model, node_host = step_routing[i]
         print(f"\n📝 Step {step_num}/{total}: {step_name}")
 
         start = time.time()
 
-        # Resolve model for this step
-        model = _discover_model(daemon_url, prefer=step.get("model"))
         if debug:
             print(f"   🐛 model: {model}")
-            print(f"   🐛 node_affinity: {step.get('node_affinity', 'any')}")
+            tt = step.get("task_type", "none")
+            print(f"   🐛 task_type: {tt}, node_affinity: {step.get('node_affinity', 'any')}")
 
         # --- Gather tool context ---
         tools = step.get("tools", [])
@@ -605,16 +655,7 @@ def run_pipeline(
             print(f"   🐛 input: {input_words} words")
 
         # --- Run inference ---
-        node_label = "local"
-        if daemon_url:
-            try:
-                with httpx.Client(headers=_swarm_headers(), timeout=3) as client:
-                    status = client.get(f"{daemon_url}/status").json()
-                    node_label = status.get("hostname", "local")
-            except Exception:
-                pass
-
-        print(f"   🧠 Generating on {node_label} ({model})...", end="", flush=True)
+        print(f"   🧠 Generating on {node_host} ({model})...", end="", flush=True)
         output_text, metrics = _run_inference(
             system_prompt=step["system_prompt"],
             user_content=user_content,
@@ -628,7 +669,7 @@ def run_pipeline(
         duration = time.time() - start
         words = _word_count(output_text)
         tps = metrics.get("tokens_per_second", 0)
-        actual_node = metrics.get("node_name", node_label)
+        actual_node = metrics.get("node_name", node_host)
 
         # --- Write output ---
         output_path = os.path.join(workspace_dir, f"{step_name}.md")

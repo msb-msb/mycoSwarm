@@ -214,3 +214,18 @@ def classify_node(profile: HardwareProfile) -> NodeCapabilities:
         caps.node_tier = NodeTier.EDGE
 
     return caps
+
+
+# --- Pipeline task-type → model mapping ---
+
+TASK_MODEL_MAP: dict[str, dict] = {
+    "extraction": {"model_class": "small", "prefer_models": ["gemma3:12b", "gemma3:4b"]},
+    "classification": {"model_class": "small", "prefer_models": ["gemma3:4b", "gemma3:1b"]},
+    "embedding": {"model_class": "embed", "prefer_models": ["nomic-embed-text"]},
+    "synthesis": {"model_class": "large", "prefer_models": ["gemma3:27b"]},
+    "writing": {"model_class": "large", "prefer_models": ["gemma3:27b"]},
+    "editing": {"model_class": "large", "prefer_models": ["gemma3:27b"]},
+    "seo": {"model_class": "medium", "prefer_models": ["gemma3:12b", "gemma3:27b"]},
+    "research": {"model_class": "small", "prefer_models": ["gemma3:12b"]},
+    "general": {"model_class": "large", "prefer_models": ["gemma3:27b"]},
+}
