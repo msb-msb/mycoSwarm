@@ -608,41 +608,94 @@ _QUERY_GEN_PROMPT = (
     "- Output ONLY the queries, one per line, no numbering, no explanation"
 )
 
-_QUERY_GEN_MODELS = ("gemma3:4b", "gemma3:1b", "llama3.2:3b", "llama3.2:1b")
+_QUERY_GEN_MODELS = ("gemma3:4b", "gemma3:12b", "llama3.2:3b", "gemma3:1b")
+
+_MUST_HAVE_QUERIES = [
+    "RTX 3090 used price 2026",
+    "GPU tokens per second LLM benchmark",
+    "r/LocalLLaMA best GPU recommendation",
+    "RTX 4060 Ti vs RTX 3060 AI inference",
+    "cheapest 24GB VRAM GPU",
+    "best GPU for ollama local LLM",
+    "tom's hardware GPU benchmark AI",
+    "RTX 5060 Ti review local AI",
+    "used GPU for AI eBay prices",
+    "GPU power consumption AI inference watts",
+]
+
+
+def _has_word_overlap(query: str, existing: list[str], threshold: float = 0.6) -> bool:
+    """Check if query has >threshold word overlap with any existing query."""
+    q_words = set(query.lower().split())
+    if not q_words:
+        return False
+    for e in existing:
+        e_words = set(e.lower().split())
+        overlap = len(q_words & e_words)
+        if overlap / len(q_words) > threshold:
+            return True
+    return False
+
+
+def _append_must_haves(queries: list[str]) -> tuple[int, int]:
+    """Append must-have queries, skipping fuzzy duplicates.
+
+    Returns (added_count, deduped_count).
+    """
+    added = 0
+    deduped = 0
+    for mq in _MUST_HAVE_QUERIES:
+        if _has_word_overlap(mq, queries):
+            deduped += 1
+        else:
+            queries.append(mq)
+            added += 1
+    return added, deduped
 
 
 def _generate_search_queries(
     topic: str, n: int = 20, debug: bool = False,
 ) -> list[str]:
-    """Generate diverse search queries using a small LLM, with template fallback.
+    """Generate diverse search queries using LLM + must-have queries + templates.
 
-    Primary: asks gemma3:4b (or smallest available) to generate n queries
-    covering genuinely different angles — comparisons, benchmarks, community
-    discussions, used market, contrarian picks, etc.
-    Fallback: template-based queries if no LLM is available.
-    Always returns exactly n queries.
+    1. LLM (gemma3:4b preferred) generates n diverse queries
+    2. Must-have queries appended with fuzzy dedup (>60% word overlap = skip)
+    3. Template fallback pads to n if LLM unavailable or returned too few
+    Final count is typically 25-30 queries.
     """
-    queries = _llm_generate_queries(topic, n, debug)
-    if len(queries) < n:
-        if debug and queries:
-            print(f"   🐛 LLM generated {len(queries)} queries, padding to {n}")
-        elif debug:
-            print(f"   🐛 LLM unavailable, using template queries")
+    queries, model_used = _llm_generate_queries(topic, n)
+    llm_count = len(queries)
+
+    if llm_count < n:
         queries = _pad_with_templates(topic, queries, n)
+
     if debug:
+        if model_used:
+            print(f"   🐛 LLM generated {llm_count} queries ({model_used})")
+        else:
+            print(f"   🐛 LLM unavailable, using template queries")
+
+    # Always append must-have queries (fuzzy dedup against existing)
+    added, deduped = _append_must_haves(queries)
+    if debug:
+        print(f"   🐛 added {added} must-have queries ({deduped} deduped)")
         print(f"   🐛 search queries: {len(queries)}")
+
     return queries
 
 
-def _llm_generate_queries(topic: str, n: int, debug: bool) -> list[str]:
-    """Generate queries via local Ollama using a small fast model."""
+def _llm_generate_queries(topic: str, n: int) -> tuple[list[str], str | None]:
+    """Generate queries via local Ollama using a small fast model.
+
+    Returns (queries, model_name) where model_name is None if unavailable.
+    """
     try:
         with httpx.Client(timeout=3) as client:
             resp = client.get(f"{_OLLAMA_BASE}/api/tags")
             resp.raise_for_status()
             available = [m["name"] for m in resp.json().get("models", [])]
     except Exception:
-        return []
+        return [], None
 
     model = None
     for pattern in _QUERY_GEN_MODELS:
@@ -654,10 +707,7 @@ def _llm_generate_queries(topic: str, n: int, debug: bool) -> list[str]:
             break
 
     if not model:
-        return []
-
-    if debug:
-        print(f"   🐛 query gen model: {model}")
+        return [], None
 
     prompt = _QUERY_GEN_PROMPT.format(n=n, topic=topic)
 
@@ -675,7 +725,7 @@ def _llm_generate_queries(topic: str, n: int, debug: bool) -> list[str]:
             resp.raise_for_status()
             raw = resp.json().get("message", {}).get("content", "")
     except Exception:
-        return []
+        return [], None
 
     # Parse: one query per line, strip numbering/bullets/quotes
     queries: list[str] = []
@@ -692,7 +742,7 @@ def _llm_generate_queries(topic: str, n: int, debug: bool) -> list[str]:
             queries.append(line)
             seen.add(lower)
 
-    return queries
+    return queries, model
 
 
 _FILLER_WORDS = {
