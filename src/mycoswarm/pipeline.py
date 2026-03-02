@@ -566,6 +566,46 @@ def _clean_output(text: str) -> str:
     return _GARBAGE_RE.sub('', text).strip()
 
 
+_URL_RE = re.compile(r'https?://\S+')
+
+
+def _filter_unsourced_bullets(text: str, debug: bool = False) -> str:
+    """Remove bullet points that don't contain a URL."""
+    lines = text.split("\n")
+    filtered = []
+    stripped = 0
+    for line in lines:
+        # Keep non-bullet lines (headers, blank lines)
+        if not line.strip().startswith("-"):
+            filtered.append(line)
+            continue
+        # Bullet must contain a URL
+        if _URL_RE.search(line):
+            filtered.append(line)
+        else:
+            stripped += 1
+    if debug and stripped:
+        print(f"   🐛 stripped {stripped} unsourced bullet(s)")
+    return "\n".join(filtered)
+
+
+def _truncate_to_word_limit(text: str, max_words: int, debug: bool = False) -> str:
+    """Truncate text at the last complete bullet point before the word limit."""
+    lines = text.split("\n")
+    truncated = []
+    count = 0
+    for line in lines:
+        line_words = len(line.split())
+        if count + line_words > max_words:
+            break
+        truncated.append(line)
+        count += line_words
+    result = "\n".join(truncated)
+    if debug:
+        print(f"   🐛 truncated to {count} words (max: {max_words})")
+    return result
+
+
 _THINK_RE = re.compile(r'<think>.*?</think>', flags=re.DOTALL)
 
 
@@ -1232,6 +1272,16 @@ def run_pipeline(
             if debug:
                 print(f"   🐛 reasoning: {think_words} words (stripped from output)")
         output_text = _strip_think_tags(output_text)
+
+        # --- Post-generation filters ---
+        # Source enforcement: strip unsourced bullets from gap-filler
+        if step_name == "gap-filler":
+            output_text = _filter_unsourced_bullets(output_text, debug=debug)
+
+        # Hard output cap: truncate at last complete bullet before limit
+        max_words = step.get("max_output_words")
+        if max_words and _word_count(output_text) > max_words:
+            output_text = _truncate_to_word_limit(output_text, max_words, debug=debug)
 
         duration = time.time() - start
         words = _word_count(output_text)

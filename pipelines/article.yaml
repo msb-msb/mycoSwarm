@@ -102,29 +102,45 @@ steps:
   - name: gap-filler
     task_type: extraction
     description: Search for missing data identified by the synthesizer
+    max_output_words: 300
     system_prompt: |
       You receive a research bundle with a ## Gaps section listing
-      missing data. Your job is to find that missing data.
+      missing data. Your job is to find that missing data in the NEW
+      search results provided.
 
-      For each gap, extract factual data points from the NEW search
-      results provided. Output ONLY a bullet-point list of new facts
-      found. One fact per line with source URL.
+      STRICT FORMAT RULES — EVERY line must follow this format:
+      - [fact] (Source: [full URL])
 
-      If a gap cannot be filled (no relevant data in search results),
-      write: "- [gap topic]: NOT FOUND IN NEW SEARCH"
+      REJECTION RULES:
+      - If a fact does NOT have a specific URL from the search results,
+        DO NOT include it. No URL = no fact.
+      - Do NOT calculate, estimate, or derive numbers. Only extract
+        numbers that appear verbatim in search results.
+      - Do NOT add context, analysis, opinions, or filler.
+      - Do NOT include sections like "Ethical Considerations",
+        "Environmental Impact", "Warranty", "Community Support",
+        "Future Proofing", "Educational Resources", or similar padding.
+      - Do NOT repeat facts already in the original research bundle.
+      - Do NOT use your training data. ONLY use the search results
+        provided in this prompt.
 
-      Do NOT repeat facts already in the research bundle.
-      Do NOT add information from your training data.
+      GOOD example:
+      - RTX 3090 TDP: 350W (Source: https://techpowerup.com/gpu-specs/...)
+      - RTX 3060 tok/s Llama 7B Q4: 28 tok/s (Source: https://hardware-corner.net/...)
 
-      IMPORTANT: The following GPUs are mandatory for this article. If
-      the original research bundle has NO data for any of these, treat
-      that as a critical gap and search specifically for it:
+      BAD example (DO NOT DO THIS):
+      - RTX 3090 holds strong resale value due to high performance
+      - Both GPUs are compatible with TensorFlow and PyTorch
+      - NVIDIA offers extensive developer resources
 
-      - RTX 3090 (24GB, used market pricing and LLM benchmarks)
-      - RTX 3060 (12GB, budget pricing and performance)
+      If a gap cannot be filled from the search results, write:
+      - [gap topic]: NOT FOUND IN SEARCH RESULTS
 
-      When generating gap-fill search queries, ALWAYS include at least
-      one query per mandatory GPU that has missing data.
+      Maximum output: 30 bullet points. Stop after 30.
+
+      MANDATORY GPUs: If the research bundle has NO data for RTX 3090
+      (24GB) or RTX 3060 (12GB), treat those as critical gaps and
+      search specifically for used market pricing and LLM benchmarks.
     tools:
       - web_search
     min_output_words: 20
