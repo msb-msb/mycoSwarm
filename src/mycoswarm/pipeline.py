@@ -712,6 +712,7 @@ def _query_gen_via_swarm(
     daemon_url: str,
     temperature: float = 0.8,
     max_tokens: int = 600,
+    debug: bool = False,
 ) -> tuple[str, str | None, str]:
     """Run query gen prompt through the swarm via Router.
 
@@ -776,9 +777,18 @@ def _query_gen_via_swarm(
     }
 
     data = _submit_and_poll(daemon_url, payload, timeout=60)
+    if debug:
+        status = data.get("status") if data else "None"
+        result_keys = list(data.get("result", {}).keys()) if data else []
+        response_preview = str(data.get("result", {}).get("response", ""))[:100] if data else "N/A"
+        text_preview = str(data.get("result", {}).get("text", ""))[:100] if data else "N/A"
+        print(f"   🐛 swarm task raw: status={status}, result_keys={result_keys}")
+        print(f"   🐛 swarm task response field: {response_preview}")
+        print(f"   🐛 swarm task text field: {text_preview}")
     if data and data.get("status") == "completed":
-        text = data.get("result", {}).get("response", "")
-        return text, model, node_hostname
+        text = data.get("result", {}).get("response", "") or data.get("result", {}).get("text", "")
+        if text:
+            return text, model, node_hostname
     return "", model, node_hostname
 
 
@@ -832,6 +842,7 @@ def _llm_generate_queries(
         try:
             raw, model, node = _query_gen_via_swarm(
                 prompt, daemon_url, temperature=0.8, max_tokens=600,
+                debug=debug,
             )
             if raw:
                 return _parse_query_lines(raw), model, node
@@ -961,6 +972,7 @@ def _generate_gap_queries(
         try:
             raw, model, node = _query_gen_via_swarm(
                 prompt, daemon_url, temperature=0.7, max_tokens=400,
+                debug=debug,
             )
             if raw:
                 if debug and model:
