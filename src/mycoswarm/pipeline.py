@@ -635,7 +635,7 @@ _QUERY_GEN_PROMPT = (
     "- Output ONLY the queries, one per line, no numbering, no explanation"
 )
 
-_QUERY_GEN_MODELS = ("gemma3:4b", "gemma3:12b", "llama3.2:3b", "gemma3:1b")
+_QUERY_GEN_MODELS = ("qwen3.5:9b", "gemma3:4b", "gemma3:12b", "llama3.2:3b", "gemma3:1b")
 
 _MUST_HAVE_QUERIES = [
     "RTX 3090 used price 2026",
@@ -834,8 +834,9 @@ def _llm_generate_queries(
             )
             if raw:
                 return _parse_query_lines(raw), model, node
-        except Exception:
-            pass  # fall through to solo
+        except Exception as e:
+            if debug:
+                print(f"   🐛 query gen swarm failed: {e}")
 
     # Solo fallback: call localhost Ollama directly
     try:
@@ -965,9 +966,9 @@ def _generate_gap_queries(
                 if debug:
                     print(f"   🐛 gap queries: {len(queries)}")
                 return queries
-        except Exception:
+        except Exception as e:
             if debug:
-                print("   🐛 gap query gen swarm failed, falling back to local")
+                print(f"   🐛 gap query gen swarm failed: {e}")
 
     # Solo fallback: call localhost Ollama directly
     model = None
