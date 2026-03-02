@@ -1,0 +1,5 @@
+- **AMD RX 9070 Price (New):** $669 (Source: https://bestvaluegpu.com/history/new-and-used-rx-9070-price-history-and-specs/)
+- **AMD RX 9070 XT Price (Used):** $674.99 (Source: https://bestvaluegpu.com/history/new-and-used-rx-9070-price-history-and-specs/)
+- **AMD RX 9070 MSRP:** $549 (Source: https://www.theverge.com/news/621339/amd-radeon-7900-gre-xt-price-release-date-gpu)
+- **AMD RX 9070 XT MSRP:** $599 (Source: https://www.lowyat.net/2025/344075/its-official-amd-radeon-rx-9070-retails-from-us549-9070-xt-from-us599/)
+- **AMD RX 9070 XT Benchmark (LLM Performance):** 28 tok/s (Source: https://hardware-corner.net/...)
