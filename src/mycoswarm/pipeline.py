@@ -95,13 +95,21 @@ def _resolve_node_name(daemon_url: str, node_id: str) -> str:
 
 
 def _submit_and_poll(url: str, task_payload: dict, timeout: int = 300) -> dict | None:
-    """Submit a task to the daemon and poll until completion."""
+    """Submit a task to the daemon and poll until completion.
+
+    The POST may block while the daemon routes to a remote node that
+    needs to cold-start a model, so we use a generous read timeout
+    derived from the caller's ``timeout`` while keeping a short
+    connect timeout.  The poll loop uses a fixed 5 s timeout since
+    each GET is a lightweight status check.
+    """
     task_id = task_payload["task_id"]
+    submit_timeout = httpx.Timeout(timeout, connect=10.0)
     try:
-        with httpx.Client(headers=_swarm_headers(), timeout=5) as client:
+        with httpx.Client(headers=_swarm_headers(), timeout=submit_timeout) as client:
             resp = client.post(f"{url}/task", json=task_payload)
             resp.raise_for_status()
-    except httpx.ConnectError:
+    except (httpx.ConnectError, httpx.ReadTimeout, httpx.HTTPStatusError):
         return None
 
     start = time.time()
@@ -769,13 +777,16 @@ def _llm_generate_queries(
     """
     prompt = _QUERY_GEN_PROMPT.format(n=n, topic=topic)
 
-    # Swarm path: route through daemon
+    # Swarm path: route through daemon (graceful fallback on any failure)
     if daemon_url:
-        raw, model, node = _query_gen_via_swarm(
-            prompt, daemon_url, temperature=0.8, max_tokens=600,
-        )
-        if raw:
-            return _parse_query_lines(raw), model, node
+        try:
+            raw, model, node = _query_gen_via_swarm(
+                prompt, daemon_url, temperature=0.8, max_tokens=600,
+            )
+            if raw:
+                return _parse_query_lines(raw), model, node
+        except Exception:
+            pass  # fall through to solo
 
     # Solo fallback: call localhost Ollama directly
     try:
@@ -892,18 +903,22 @@ def _generate_gap_queries(
     """Generate targeted search queries from synthesizer gaps using LLM."""
     prompt = _GAP_QUERY_PROMPT.format(gaps_text=gaps_text)
 
-    # Swarm path: route through daemon
+    # Swarm path: route through daemon (graceful fallback on any failure)
     if daemon_url:
-        raw, model, node = _query_gen_via_swarm(
-            prompt, daemon_url, temperature=0.7, max_tokens=400,
-        )
-        if raw:
-            if debug and model:
-                print(f"   🐛 gap query gen model: {model} ({node})")
-            queries = _parse_query_lines(raw)
+        try:
+            raw, model, node = _query_gen_via_swarm(
+                prompt, daemon_url, temperature=0.7, max_tokens=400,
+            )
+            if raw:
+                if debug and model:
+                    print(f"   🐛 gap query gen model: {model} ({node})")
+                queries = _parse_query_lines(raw)
+                if debug:
+                    print(f"   🐛 gap queries: {len(queries)}")
+                return queries
+        except Exception:
             if debug:
-                print(f"   🐛 gap queries: {len(queries)}")
-            return queries
+                print("   🐛 gap query gen swarm failed, falling back to local")
 
     # Solo fallback: call localhost Ollama directly
     model = None
@@ -1015,6 +1030,19 @@ def run_pipeline(
 
     if route_results is None:
         route_results = _build_solo_routing(steps)
+
+    # Pre-warm: fire a quick /health check to each unique remote node
+    # so TCP + TLS handshake is done before the first real request.
+    _prewarm_nodes = set()
+    for rr in route_results:
+        if not rr.is_local and rr.node_ip:
+            addr = f"http://{rr.node_ip}:{rr.node_port}"
+            if addr not in _prewarm_nodes:
+                _prewarm_nodes.add(addr)
+                try:
+                    httpx.get(f"{addr}/health", timeout=3)
+                except Exception:
+                    pass
 
     # Print routing table
     max_name = max(len(s["name"]) for s in steps)
