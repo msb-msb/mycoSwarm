@@ -608,6 +608,15 @@ _MUST_HAVE_QUERIES = [
     "RTX 5060 Ti review local AI",
     "used GPU for AI eBay prices",
     "GPU power consumption AI inference watts",
+    # RTX 3090 specific
+    "RTX 3090 tokens per second ollama benchmark",
+    "RTX 3090 vs RTX 5060 Ti AI inference",
+    "RTX 3090 24GB used price local AI",
+    "RTX 3090 power consumption TDP watts",
+    # RTX 3060 specific
+    "RTX 3060 12GB local LLM performance",
+    "RTX 3060 used price 2026 budget AI",
+    "RTX 3060 tokens per second 7B 13B model",
 ]
 
 

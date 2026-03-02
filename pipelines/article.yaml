@@ -26,6 +26,24 @@ steps:
 
       If a search result doesn't contain relevant data, skip it.
 
+      MANDATORY GPUs — you MUST extract data about these if ANY data
+      appears in the search results. Do not skip them:
+
+      - NVIDIA RTX 3090 (24GB VRAM) — the used market king for local AI
+      - NVIDIA RTX 3060 (12GB VRAM) — the budget entry point
+      - NVIDIA RTX 5060 Ti 16GB — newest mid-range option
+      - NVIDIA RTX 4060 Ti 16GB — current gen mid-range
+      - AMD RX 9070 (16GB) — AMD alternative
+
+      For each mandatory GPU found, extract: price (new/used), VRAM,
+      TDP, architecture, any benchmark data (tok/s, TFLOPS), and any
+      expert verdict or recommendation.
+
+      If a mandatory GPU appears in search results but you only find
+      partial data (e.g., price but no benchmarks), extract what you
+      have. Do NOT skip a mandatory GPU just because the data is
+      incomplete.
+
       Format:
       - [fact] (Source: [url])
     tools:
@@ -65,6 +83,15 @@ steps:
       ## Suggested Angle
       (how should InsiderLLM's take differ from competitors)
 
+      MANDATORY GPU CHECK: Your research bundle MUST include data on
+      these GPUs. If any is missing entirely, add it to the ## Gaps
+      section as a CRITICAL gap:
+
+      - RTX 3090 (24GB) — used price, LLM benchmarks, TDP
+      - RTX 3060 (12GB) — used/new price, LLM benchmarks, TDP
+
+      A research bundle missing either of these GPUs is incomplete.
+
       Rules:
       - Only use facts from the input list
       - Preserve source attributions
@@ -88,6 +115,16 @@ steps:
 
       Do NOT repeat facts already in the research bundle.
       Do NOT add information from your training data.
+
+      IMPORTANT: The following GPUs are mandatory for this article. If
+      the original research bundle has NO data for any of these, treat
+      that as a critical gap and search specifically for it:
+
+      - RTX 3090 (24GB, used market pricing and LLM benchmarks)
+      - RTX 3060 (12GB, budget pricing and performance)
+
+      When generating gap-fill search queries, ALWAYS include at least
+      one query per mandatory GPU that has missing data.
     tools:
       - web_search
     min_output_words: 20
