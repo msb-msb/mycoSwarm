@@ -294,7 +294,7 @@ def _do_web_search(
                         pass
     else:
         from mycoswarm.solo import web_search_solo
-        variants = queries if queries is not None else _generate_search_queries(topic, n=10, debug=debug, daemon_url=None)
+        variants = queries if queries is not None else _generate_search_queries(topic, n=10, debug=debug, daemon_url=daemon_url)
         stats["num_queries"] = len(variants)
         for v in variants:
             vr = web_search_solo(v, max_results=10)
@@ -793,7 +793,7 @@ def _generate_search_queries(
     3. Template fallback pads to n if LLM unavailable or returned too few
     Final count is typically 25-30 queries.
     """
-    queries, model_used, node_used = _llm_generate_queries(topic, n, daemon_url=daemon_url)
+    queries, model_used, node_used = _llm_generate_queries(topic, n, daemon_url=daemon_url, debug=debug)
     llm_count = len(queries)
 
     if llm_count < n:
@@ -818,6 +818,7 @@ def _generate_search_queries(
 
 def _llm_generate_queries(
     topic: str, n: int, daemon_url: str | None = None,
+    debug: bool = False,
 ) -> tuple[list[str], str | None, str]:
     """Generate queries via LLM. Routes through swarm when daemon available.
 
@@ -834,6 +835,8 @@ def _llm_generate_queries(
             )
             if raw:
                 return _parse_query_lines(raw), model, node
+            elif debug:
+                print(f"   🐛 query gen swarm returned empty (model={model}, node={node})")
         except Exception as e:
             if debug:
                 print(f"   🐛 query gen swarm failed: {e}")
@@ -966,6 +969,8 @@ def _generate_gap_queries(
                 if debug:
                     print(f"   🐛 gap queries: {len(queries)}")
                 return queries
+            elif debug:
+                print(f"   🐛 gap query gen swarm returned empty (model={model}, node={node})")
         except Exception as e:
             if debug:
                 print(f"   🐛 gap query gen swarm failed: {e}")
