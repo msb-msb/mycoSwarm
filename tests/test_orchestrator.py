@@ -27,8 +27,8 @@ async def test_executive_scored_low_for_web_search(make_peer, make_identity):
         node_tier="light", capabilities=["cpu_worker"],
     )
 
-    exec_score = orch._score_peer_for_cpu_work(executive)
-    light_score = orch._score_peer_for_cpu_work(light)
+    exec_score = orch.router._score_peer_for_cpu_work(executive)
+    light_score = orch.router._score_peer_for_cpu_work(light)
 
     # Executive gets -500, light gets +50 → light wins
     assert light_score > exec_score
@@ -49,9 +49,9 @@ async def test_inflight_penalty_reduces_score(make_peer, make_identity):
         node_tier="light", capabilities=["cpu_worker"],
     )
 
-    score_before = orch._score_peer_for_cpu_work(peer)
+    score_before = orch.router._score_peer_for_cpu_work(peer)
     orch.record_dispatch("busy-1")
-    score_after = orch._score_peer_for_cpu_work(peer)
+    score_after = orch.router._score_peer_for_cpu_work(peer)
 
     assert score_after == score_before - 100
 
@@ -142,8 +142,8 @@ async def test_score_peer_for_inference_prefers_gpu(make_peer, make_identity):
         vram_total_mb=0,
     )
 
-    gpu_score = orch._score_peer_for_inference(gpu_peer)
-    cpu_score = orch._score_peer_for_inference(cpu_peer)
+    gpu_score = orch.router._score_peer_for_inference(gpu_peer)
+    cpu_score = orch.router._score_peer_for_inference(cpu_peer)
 
     assert gpu_score > cpu_score
 
@@ -241,8 +241,8 @@ async def test_route_task_inference_to_gpu_peer(make_task, make_peer, make_ident
 
 
 @pytest.mark.asyncio
-async def test_route_task_inference_local_gpu_wins(make_task, make_peer, make_identity):
-    """Local GPU node scores higher than remote GPU — stays local."""
+async def test_route_task_inference_specialist_preferred(make_task, make_peer, make_identity):
+    """Specialist peer preferred over executive for inference (scoring flip)."""
     registry = PeerRegistry()
     identity = make_identity(
         node_tier="executive",
@@ -253,7 +253,9 @@ async def test_route_task_inference_local_gpu_wins(make_task, make_peer, make_id
     )
     orch = Orchestrator(identity, registry)
 
-    # Smaller GPU peer
+    # Specialist peer: less VRAM but higher tier bonus (+500 vs +200)
+    # specialist: 1000 (gpu) + 122.88 (12288/100) + 500 (specialist) = 1622.88
+    # local exec: 1000 (gpu) + 245.76 (24576/100) + 200 (executive) = 1445.76
     smaller_peer = make_peer(
         node_id="gpu-2", hostname="small-gpu",
         node_tier="specialist",
@@ -266,9 +268,9 @@ async def test_route_task_inference_local_gpu_wins(make_task, make_peer, make_id
     task = make_task("inference", {"model": "gemma3:27b", "prompt": "hello"})
     decision = await orch.route_task(task)
 
-    # Local RTX 3090 (exec, 24GB) should score higher than remote 3060 (spec, 12GB)
-    assert decision.target is None
-    assert decision.can_execute is True
+    # Specialist wins due to scoring flip
+    assert decision.target is not None
+    assert decision.target.node_id == "gpu-2"
 
     await orch.close()
 
@@ -369,9 +371,9 @@ async def test_local_inference_score_gpu_node(make_identity):
     )
     orch = Orchestrator(identity, registry)
 
-    score = orch._local_inference_score()
-    # 1000 (gpu) + 245.76 (vram) + 500 (executive) = ~1745
-    assert score > 1500
+    score = orch.router._local_inference_score()
+    # 1000 (gpu) + 245.76 (vram) + 200 (executive) = ~1445
+    assert score > 1400
 
     await orch.close()
 
@@ -388,7 +390,7 @@ async def test_local_inference_score_no_ollama(make_identity):
     )
     orch = Orchestrator(identity, registry)
 
-    score = orch._local_inference_score()
+    score = orch.router._local_inference_score()
     assert score < 0  # -5000 penalty
 
     await orch.close()
@@ -407,10 +409,10 @@ async def test_local_inference_score_inflight_penalty(make_identity):
     )
     orch = Orchestrator(identity, registry)
 
-    score_idle = orch._local_inference_score()
+    score_idle = orch.router._local_inference_score()
     orch.record_dispatch("myco-local")
     orch.record_dispatch("myco-local")
-    score_busy = orch._local_inference_score()
+    score_busy = orch.router._local_inference_score()
 
     assert score_busy == score_idle - 200  # 2 inflight × 100
 
@@ -442,8 +444,8 @@ async def test_support_score_prefers_specialist_over_executive(
         vram_total_mb=24576,
     )
 
-    spec_score = orch._score_peer_for_support(specialist)
-    exec_score = orch._score_peer_for_support(executive)
+    spec_score = orch.router._score_peer_for_support(specialist)
+    exec_score = orch.router._score_peer_for_support(executive)
 
     # specialist: 1000 + 500 = 1500
     # executive: -2000 + 500 = -1500
@@ -475,8 +477,8 @@ async def test_support_score_prefers_light_over_executive(
         vram_total_mb=24576,
     )
 
-    light_score = orch._score_peer_for_support(light)
-    exec_score = orch._score_peer_for_support(executive)
+    light_score = orch.router._score_peer_for_support(light)
+    exec_score = orch.router._score_peer_for_support(executive)
 
     # light: 200, executive: -2000 + 500 = -1500
     assert light_score > exec_score
@@ -656,7 +658,7 @@ async def test_local_support_score_executive_penalty(make_identity):
     )
     orch = Orchestrator(identity, registry)
 
-    score = orch._local_support_score()
+    score = orch.router._local_support_score()
     # -2000 (executive) + 500 (gpu) = -1500
     assert score < 0
 
@@ -675,7 +677,7 @@ async def test_local_support_score_specialist_positive(make_identity):
     )
     orch = Orchestrator(identity, registry)
 
-    score = orch._local_support_score()
+    score = orch.router._local_support_score()
     # 1000 (specialist) + 500 (gpu) = 1500
     assert score > 1000
 

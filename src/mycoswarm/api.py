@@ -239,7 +239,7 @@ def create_api(
 ) -> FastAPI:
     """Create the FastAPI application for this node."""
     # Lazy import to avoid circular dependency (orchestrator imports api models)
-    from mycoswarm.orchestrator import DISTRIBUTABLE_TASKS
+    from mycoswarm.router import DISTRIBUTABLE_TASKS
 
     app = FastAPI(
         title=f"mycoSwarm Node: {identity.hostname}",

@@ -501,73 +501,48 @@ def _run_inference(
     return text, metrics
 
 
-def _get_swarm_model_map(daemon_url: str | None) -> dict[str, str]:
-    """Build {model_name: hostname} map from daemon + peers.
-
-    Returns all available models across the swarm with the hostname
-    of the node that has them.
-    """
-    model_map: dict[str, str] = {}
-
-    if daemon_url:
-        try:
-            with httpx.Client(headers=_swarm_headers(), timeout=5) as client:
-                status = client.get(f"{daemon_url}/status").json()
-                hostname = status.get("hostname", "local")
-                for m in status.get("ollama_models", []):
-                    model_map[m] = hostname
-
-                for p in client.get(f"{daemon_url}/peers").json():
-                    peer_host = p.get("hostname", p.get("node_id", "peer"))
-                    for m in p.get("available_models", []):
-                        if m not in model_map:
-                            model_map[m] = peer_host
-        except Exception:
-            pass
-    else:
-        from mycoswarm.solo import check_ollama
-        _, models = check_ollama()
-        for m in models:
-            model_map[m] = "local"
-
-    return model_map
-
-
-def _resolve_step_model(
-    step: dict, model_map: dict[str, str],
-) -> tuple[str, str]:
-    """Resolve the model for a pipeline step. Returns (model, hostname).
-
-    Priority: explicit model > task_type preferred models > fallback to largest.
-    """
+def _build_solo_routing(steps: list[dict]) -> list:
+    """Build routing for solo mode (no daemon) using local Ollama models."""
     from mycoswarm.capabilities import TASK_MODEL_MAP
+    from mycoswarm.router import RouteResult
+    from mycoswarm.solo import check_ollama
 
-    # Explicit model override
-    if step.get("model"):
-        model = step["model"]
-        host = model_map.get(model, "unknown")
-        return model, host
+    _, solo_models = check_ollama()
+    solo_set = set(solo_models)
 
-    # Resolve via task_type
-    task_type = step.get("task_type", "general")
-    task_config = TASK_MODEL_MAP.get(task_type, TASK_MODEL_MAP["general"])
+    results: list[RouteResult] = []
+    for step in steps:
+        if step.get("model"):
+            m = step["model"]
+        else:
+            task_type = step.get("task_type", "general")
+            task_config = TASK_MODEL_MAP.get(task_type, TASK_MODEL_MAP["general"])
+            m = None
+            for preferred in task_config["prefer_models"]:
+                if preferred in solo_set:
+                    m = preferred
+                    break
+            if m is None:
+                for sm in solo_set:
+                    if any(s in sm for s in ("27b", "32b", "14b")):
+                        m = sm
+                        break
+            if m is None and solo_set:
+                m = next(iter(solo_set))
+            if m is None:
+                print("❌ No models available.")
+                sys.exit(1)
 
-    for preferred in task_config["prefer_models"]:
-        if preferred in model_map:
-            return preferred, model_map[preferred]
-
-    # Fallback: largest available model
-    for m, host in model_map.items():
-        if any(s in m for s in ("27b", "32b", "14b")):
-            return m, host
-
-    # Last resort: first available
-    if model_map:
-        m = next(iter(model_map))
-        return m, model_map[m]
-
-    print("❌ No models available.")
-    sys.exit(1)
+        results.append(RouteResult(
+            model=m,
+            node_hostname="local",
+            node_ip="127.0.0.1",
+            node_port=0,
+            is_local=True,
+            reason="Solo mode",
+            task_type=step.get("task_type", "general"),
+        ))
+    return results
 
 
 _GARBAGE_RE = re.compile(r'<unused\d+>|<\|[a-z_]+\|>|<0x[0-9A-Fa-f]+>')
@@ -925,20 +900,32 @@ def run_pipeline(
     print(f"   Topic: {topic}")
     print(f"   Workspace: {workspace_dir}")
 
-    # Resolve routing for all steps upfront
-    model_map = _get_swarm_model_map(daemon_url)
-    step_routing: list[tuple[str, str]] = []  # (model, hostname) per step
-    for step in steps:
-        m, h = _resolve_step_model(step, model_map)
-        step_routing.append((m, h))
+    # Resolve routing for all steps upfront via unified Router
+    from mycoswarm.router import Router
+
+    route_results = None
+    if daemon_url:
+        try:
+            from mycoswarm.auth import load_token
+            token = load_token()
+        except Exception:
+            token = None
+        try:
+            router = Router.from_daemon(daemon_url, swarm_token=token)
+            route_results = router.build_routing_table(steps)
+        except Exception:
+            pass  # fall back to solo
+
+    if route_results is None:
+        route_results = _build_solo_routing(steps)
 
     # Print routing table
     max_name = max(len(s["name"]) for s in steps)
     print(f"\n🧭 Routing:")
-    for step, (m, h) in zip(steps, step_routing):
+    for step, rr in zip(steps, route_results):
         name = step["name"].ljust(max_name)
         task_hint = f" [{step['task_type']}]" if step.get("task_type") else ""
-        print(f"   {name} → {m} ({h}){task_hint}")
+        print(f"   {name} → {rr.model} ({rr.node_hostname}){task_hint}")
     print(f"{'─' * 60}")
 
     previous_output: str | None = None
@@ -948,7 +935,8 @@ def run_pipeline(
     for i, step in enumerate(steps):
         step_num = i + 1
         step_name = step["name"]
-        model, node_host = step_routing[i]
+        model = route_results[i].model
+        node_host = route_results[i].node_hostname
         print(f"\n📝 Step {step_num}/{total}: {step_name}")
 
         start = time.time()

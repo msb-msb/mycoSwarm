@@ -484,7 +484,7 @@ class TestIntentRouting:
     """Test intent_classify is registered in routing tables."""
 
     def test_task_routing_includes_intent_classify(self):
-        from mycoswarm.orchestrator import TASK_ROUTING
+        from mycoswarm.router import TASK_ROUTING
 
         assert "intent_classify" in TASK_ROUTING
         assert "cpu_worker" in TASK_ROUTING["intent_classify"]
@@ -496,7 +496,7 @@ class TestIntentRouting:
         assert callable(HANDLERS["intent_classify"])
 
     def test_distributable_tasks_includes_intent_classify(self):
-        """intent_classify is in DISTRIBUTABLE_TASKS (now in orchestrator.py)."""
-        from mycoswarm.orchestrator import DISTRIBUTABLE_TASKS
+        """intent_classify is in DISTRIBUTABLE_TASKS (now in router.py)."""
+        from mycoswarm.router import DISTRIBUTABLE_TASKS
 
         assert "intent_classify" in DISTRIBUTABLE_TASKS
