@@ -36,7 +36,7 @@ INFERENCE_TASKS = {"inference", "embedding", "translate", "file_summarize"}
 # These use small models (gate, embedding) that would cause VRAM
 # swapping with the main inference model on the executive node.
 # Routing preference: specialist > light > executive (last resort).
-INFERENCE_SUPPORT_TASKS = {"intent_classify", "embedding"}
+INFERENCE_SUPPORT_TASKS = {"intent_classify", "embedding", "query_gen"}
 
 # Task types and which capabilities they need
 TASK_ROUTING = {
@@ -50,6 +50,7 @@ TASK_ROUTING = {
     "code_run": ["code_execution", "cpu_worker"],
     "intent_classify": ["cpu_worker", "gpu_inference", "cpu_inference"],
     "file_process": ["cpu_worker"],
+    "query_gen": ["gpu_inference", "cpu_inference"],
 }
 
 

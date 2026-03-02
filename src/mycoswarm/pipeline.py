@@ -198,7 +198,7 @@ def _do_web_search(
     if daemon_url:
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
-        variants = queries if queries is not None else _generate_search_queries(topic, n=20, debug=debug)
+        variants = queries if queries is not None else _generate_search_queries(topic, n=20, debug=debug, daemon_url=daemon_url)
         stats["num_queries"] = len(variants)
 
         def _search_variant(query: str) -> list[dict]:
@@ -286,7 +286,7 @@ def _do_web_search(
                         pass
     else:
         from mycoswarm.solo import web_search_solo
-        variants = queries if queries is not None else _generate_search_queries(topic, n=10, debug=debug)
+        variants = queries if queries is not None else _generate_search_queries(topic, n=10, debug=debug, daemon_url=None)
         stats["num_queries"] = len(variants)
         for v in variants:
             vr = web_search_solo(v, max_results=10)
@@ -632,8 +632,102 @@ def _append_must_haves(queries: list[str]) -> tuple[int, int]:
     return added, deduped
 
 
+def _parse_query_lines(raw: str) -> list[str]:
+    """Parse LLM output into individual search queries."""
+    queries: list[str] = []
+    seen: set[str] = set()
+    for line in raw.strip().splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        line = re.sub(r'^[\d]+[.)]\s*', '', line)
+        line = re.sub(r'^[-*]\s*', '', line)
+        line = line.strip('"\'').strip()
+        lower = line.lower()
+        if 3 <= len(line.split()) <= 12 and lower not in seen:
+            queries.append(line)
+            seen.add(lower)
+    return queries
+
+
+def _query_gen_via_swarm(
+    prompt: str,
+    daemon_url: str,
+    temperature: float = 0.8,
+    max_tokens: int = 600,
+) -> tuple[str, str | None, str]:
+    """Run query gen prompt through the swarm via Router.
+
+    Returns (raw_text, model_used, node_hostname).
+    Routes as inference task — the scoring flip naturally
+    prefers specialist nodes for small models.
+    """
+    from mycoswarm.capabilities import TASK_MODEL_MAP
+    from mycoswarm.router import Router
+
+    try:
+        from mycoswarm.auth import load_token
+        token = load_token()
+    except Exception:
+        token = None
+
+    try:
+        router = Router.from_daemon(daemon_url, swarm_token=token)
+    except Exception:
+        return "", None, ""
+
+    # Collect all models across swarm
+    all_models: set[str] = set(router.identity.available_models)
+    for p in router._peers:
+        all_models.update(p.available_models)
+
+    # Pick best model from query_gen preferences (substring match)
+    prefer = TASK_MODEL_MAP.get("query_gen", {}).get(
+        "prefer_models", list(_QUERY_GEN_MODELS),
+    )
+    model = None
+    for pattern in prefer:
+        for avail in all_models:
+            if pattern in avail:
+                model = avail
+                break
+        if model:
+            break
+
+    if not model:
+        return "", None, ""
+
+    # Resolve which node will handle it (for debug output)
+    result = router.resolve_sync("inference", model=model)
+    node_hostname = result.node_hostname if result else "unknown"
+
+    # Submit inference task via daemon
+    task_id = f"querygen-{uuid.uuid4().hex[:8]}"
+    payload = {
+        "task_id": task_id,
+        "task_type": "inference",
+        "payload": {
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "num_ctx": 4096,
+        },
+        "source_node": "pipeline",
+        "priority": 7,
+        "timeout_seconds": 60,
+    }
+
+    data = _submit_and_poll(daemon_url, payload, timeout=60)
+    if data and data.get("status") == "completed":
+        text = data.get("result", {}).get("response", "")
+        return text, model, node_hostname
+    return "", model, node_hostname
+
+
 def _generate_search_queries(
     topic: str, n: int = 20, debug: bool = False,
+    daemon_url: str | None = None,
 ) -> list[str]:
     """Generate diverse search queries using LLM + must-have queries + templates.
 
@@ -642,7 +736,7 @@ def _generate_search_queries(
     3. Template fallback pads to n if LLM unavailable or returned too few
     Final count is typically 25-30 queries.
     """
-    queries, model_used = _llm_generate_queries(topic, n)
+    queries, model_used, node_used = _llm_generate_queries(topic, n, daemon_url=daemon_url)
     llm_count = len(queries)
 
     if llm_count < n:
@@ -650,7 +744,9 @@ def _generate_search_queries(
 
     if debug:
         if model_used:
-            print(f"   🐛 LLM generated {llm_count} queries ({model_used})")
+            label = f"{model_used} ({node_used})" if node_used else model_used
+            print(f"   🐛 query gen model: {label}")
+            print(f"   🐛 LLM generated {llm_count} queries")
         else:
             print(f"   🐛 LLM unavailable, using template queries")
 
@@ -663,18 +759,32 @@ def _generate_search_queries(
     return queries
 
 
-def _llm_generate_queries(topic: str, n: int) -> tuple[list[str], str | None]:
-    """Generate queries via local Ollama using a small fast model.
+def _llm_generate_queries(
+    topic: str, n: int, daemon_url: str | None = None,
+) -> tuple[list[str], str | None, str]:
+    """Generate queries via LLM. Routes through swarm when daemon available.
 
-    Returns (queries, model_name) where model_name is None if unavailable.
+    Returns (queries, model_name, node_hostname).
+    model_name is None if unavailable. node_hostname may be empty.
     """
+    prompt = _QUERY_GEN_PROMPT.format(n=n, topic=topic)
+
+    # Swarm path: route through daemon
+    if daemon_url:
+        raw, model, node = _query_gen_via_swarm(
+            prompt, daemon_url, temperature=0.8, max_tokens=600,
+        )
+        if raw:
+            return _parse_query_lines(raw), model, node
+
+    # Solo fallback: call localhost Ollama directly
     try:
         with httpx.Client(timeout=3) as client:
             resp = client.get(f"{_OLLAMA_BASE}/api/tags")
             resp.raise_for_status()
             available = [m["name"] for m in resp.json().get("models", [])]
     except Exception:
-        return [], None
+        return [], None, ""
 
     model = None
     for pattern in _QUERY_GEN_MODELS:
@@ -686,9 +796,7 @@ def _llm_generate_queries(topic: str, n: int) -> tuple[list[str], str | None]:
             break
 
     if not model:
-        return [], None
-
-    prompt = _QUERY_GEN_PROMPT.format(n=n, topic=topic)
+        return [], None, ""
 
     try:
         with httpx.Client(timeout=httpx.Timeout(5.0, read=30.0)) as client:
@@ -704,24 +812,9 @@ def _llm_generate_queries(topic: str, n: int) -> tuple[list[str], str | None]:
             resp.raise_for_status()
             raw = resp.json().get("message", {}).get("content", "")
     except Exception:
-        return [], None
+        return [], None, ""
 
-    # Parse: one query per line, strip numbering/bullets/quotes
-    queries: list[str] = []
-    seen: set[str] = set()
-    for line in raw.strip().splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        line = re.sub(r'^[\d]+[.)]\s*', '', line)
-        line = re.sub(r'^[-*]\s*', '', line)
-        line = line.strip('"\'').strip()
-        lower = line.lower()
-        if 3 <= len(line.split()) <= 12 and lower not in seen:
-            queries.append(line)
-            seen.add(lower)
-
-    return queries, model
+    return _parse_query_lines(raw), model, "local"
 
 
 _FILLER_WORDS = {
@@ -793,8 +886,26 @@ _GAP_QUERY_PROMPT = (
 )
 
 
-def _generate_gap_queries(gaps_text: str, debug: bool = False) -> list[str]:
+def _generate_gap_queries(
+    gaps_text: str, daemon_url: str | None = None, debug: bool = False,
+) -> list[str]:
     """Generate targeted search queries from synthesizer gaps using LLM."""
+    prompt = _GAP_QUERY_PROMPT.format(gaps_text=gaps_text)
+
+    # Swarm path: route through daemon
+    if daemon_url:
+        raw, model, node = _query_gen_via_swarm(
+            prompt, daemon_url, temperature=0.7, max_tokens=400,
+        )
+        if raw:
+            if debug and model:
+                print(f"   🐛 gap query gen model: {model} ({node})")
+            queries = _parse_query_lines(raw)
+            if debug:
+                print(f"   🐛 gap queries: {len(queries)}")
+            return queries
+
+    # Solo fallback: call localhost Ollama directly
     model = None
     try:
         with httpx.Client(timeout=3) as client:
@@ -818,8 +929,6 @@ def _generate_gap_queries(gaps_text: str, debug: bool = False) -> list[str]:
     if debug:
         print(f"   🐛 gap query gen model: {model}")
 
-    prompt = _GAP_QUERY_PROMPT.format(gaps_text=gaps_text)
-
     try:
         with httpx.Client(timeout=httpx.Timeout(5.0, read=30.0)) as client:
             resp = client.post(
@@ -836,19 +945,7 @@ def _generate_gap_queries(gaps_text: str, debug: bool = False) -> list[str]:
     except Exception:
         return []
 
-    queries: list[str] = []
-    seen: set[str] = set()
-    for line in raw.strip().splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        line = re.sub(r'^[\d]+[.)]\s*', '', line)
-        line = re.sub(r'^[-*]\s*', '', line)
-        line = line.strip('"\'').strip()
-        lower = line.lower()
-        if 3 <= len(line.split()) <= 12 and lower not in seen:
-            queries.append(line)
-            seen.add(lower)
+    queries = _parse_query_lines(raw)
 
     if debug:
         print(f"   🐛 gap queries: {len(queries)}")
@@ -960,7 +1057,7 @@ def run_pipeline(
                     with open(synth_path) as f:
                         gaps_text = _extract_gaps(f.read())
                     if gaps_text:
-                        gap_queries = _generate_gap_queries(gaps_text, debug=debug)
+                        gap_queries = _generate_gap_queries(gaps_text, daemon_url=daemon_url, debug=debug)
                         if debug:
                             print(f"   🐛 gap-fill: {len(gap_queries)} targeted queries from gaps")
             web_ctx, web_stats = _do_web_search(topic, daemon_url, debug=debug, queries=gap_queries)

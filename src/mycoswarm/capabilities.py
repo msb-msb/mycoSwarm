@@ -228,4 +228,5 @@ TASK_MODEL_MAP: dict[str, dict] = {
     "seo": {"model_class": "medium", "prefer_models": ["gemma3:12b", "gemma3:27b"]},
     "research": {"model_class": "small", "prefer_models": ["gemma3:12b"]},
     "general": {"model_class": "large", "prefer_models": ["gemma3:27b"]},
+    "query_gen": {"model_class": "small", "prefer_models": ["gemma3:4b", "gemma3:12b", "llama3.2:3b", "gemma3:1b"]},
 }
