@@ -1,0 +1,5 @@
+- NVIDIA RTX 3090 (24GB VRAM) used price: $700-850 (Source: InsiderLLM)
+- NVIDIA RTX 3060 (12GB VRAM) used price: $170-220 (Source: InsiderLLM)
+- AMD RX 9070 (16GB) - details not explicitly mentioned in the provided results.
+- NVIDIA RTX 5060 Ti 16GB - details not explicitly mentioned in the provided results.
+- NVIDIA RTX 4060 Ti 16GB - details not explicitly mentioned in the provided results.
