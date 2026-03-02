@@ -472,6 +472,21 @@ class Orchestrator:
                     )
                     if local_has_model:
                         local_score = self._local_inference_score()
+
+                        # Reserve executive for large models — prefer
+                        # specialist/light peers for models that fit on them.
+                        # This offloads small models (deepseek-r1:14b, gemma3:12b)
+                        # so the executive stays free for large models (27b+).
+                        if (self.identity.node_tier == "executive"
+                                and best_peer.node_tier in ("specialist", "light")):
+                            local_score -= 600
+                            logger.info(
+                                f"🔀 Executive penalty: local "
+                                f"{local_score + 600:.0f} → {local_score:.0f} "
+                                f"(prefer {best_peer.hostname} "
+                                f"[{best_peer.node_tier}])"
+                            )
+
                         if local_score >= best_score:
                             logger.info(
                                 f"📍 Local inference wins "
