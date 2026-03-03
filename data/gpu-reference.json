@@ -363,6 +363,12 @@
           "source": "reddit.com/r/LocalLLaMA",
           "date": "2024-01",
           "notes": "Ollama Q6_K; 7B fits single 3090"
+        },
+        "gemma3_27b": {
+          "tok_s": 39.9,
+          "source": "self-tested Miu",
+          "date": "2026-03-03",
+          "notes": "Ollama gemma3:27b, RTX 3090 24GB. 27B model fits entirely in VRAM."
         }
       }
     },
