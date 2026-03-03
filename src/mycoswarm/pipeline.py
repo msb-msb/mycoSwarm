@@ -236,6 +236,14 @@ def _format_reference_context(ref: dict, topic: str) -> str:
         line += f" | {gpu.get('ai_notes', '')}"
         lines.append(line)
 
+        bench = gpu.get("benchmarks", {})
+        if bench:
+            parts = []
+            for bname, bdata in bench.items():
+                label = bname.replace("_", " ").replace("q4", "Q4").replace("q6", "Q6").replace("q8", "Q8").replace("f16", "F16")
+                parts.append(f"{label}: {bdata['tok_s']} tok/s")
+            lines.append(f"  Benchmarks: {' | '.join(parts)}")
+
     lines.append("")
 
     # RAM summary
@@ -267,6 +275,7 @@ def _format_reference_context(ref: dict, topic: str) -> str:
         lines.append(rules["offload_penalty"])
     if rules.get("rocm_caveat"):
         lines.append(rules["rocm_caveat"])
+    lines.append("NVIDIA cards average ~0.13 tok/s per GB/s of bandwidth for Llama 3 8B Q4. AMD ROCm cards achieve ~0.06 tok/s per GB/s due to less optimized kernels.")
 
     lines.append("--- END VERIFIED REFERENCE DATA ---")
     return "\n".join(lines)
