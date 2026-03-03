@@ -224,6 +224,14 @@ steps:
       - VRAM amounts and memory types
       - "Sources say..." or "Reports indicate..." with no source
       - Comparison claims ("2x faster", "half the price") — verify the math
+      - MISATTRIBUTED NUMBERS: A benchmark number may exist in the
+        bundle but be assigned to the WRONG model or GPU. Verify that
+        the specific number matches the EXACT model name, quantization
+        level, and GPU it's attributed to. "Right number, wrong model"
+        is a factual error — mark as ❌ and correct it.
+      - MATH CLAIMS: If the article says "2.5x faster" or "half the
+        price", verify the actual calculation from bundle data. Show
+        your math.
 
       ## PHASE 2: STRUCTURAL REVIEW
 
@@ -280,6 +288,8 @@ steps:
       A perfect 50/50 should be RARE. Be critical. An article with
       unverified claims cannot score above 7 on accuracy. An article
       missing significant bundle data cannot score above 7 on coverage.
+      An article with misattributed benchmarks (right number, wrong
+      model/GPU) cannot score above 6 on factual accuracy.
 
   - name: seo-optimizer
     task_type: seo
