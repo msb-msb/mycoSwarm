@@ -2,7 +2,7 @@
   "_meta": {
     "version": "1.0.0",
     "description": "Canonical GPU and system RAM reference for InsiderLLM pipeline. Verified specs are ground truth \u2014 models may add to but never contradict these values.",
-    "last_updated": "2026-03-02",
+    "last_updated": "2026-03-03",
     "maintainer": "mark@insiderllm.com",
     "notes": [
       "used_price_usd: manually updated from eBay sold listings",
@@ -110,7 +110,26 @@
       },
       "used_price_updated": "2026-03-02",
       "used_price_source": "ebay sold auctions",
-      "benchmarks": {}
+      "benchmarks": {
+        "llama3_8b_q4": {
+          "tok_s": 51,
+          "source": "localscore.ai",
+          "date": "2026-03",
+          "notes": "localscore community median; llama.cpp CUDA"
+        },
+        "llama2_7b_q4": {
+          "tok_s": 76,
+          "source": "github.com/ggml-org/llama.cpp/discussions/15013",
+          "date": "2024-12",
+          "notes": "llama.cpp CUDA tg128 flash attention"
+        },
+        "llama2_13b_q4": {
+          "tok_s": 35,
+          "source": "hardware-corner.net",
+          "date": "2025-06",
+          "notes": "llama.cpp Q4_0"
+        }
+      }
     },
     "rtx-3070-8gb": {
       "name": "NVIDIA RTX 3070",
@@ -143,7 +162,14 @@
       },
       "used_price_updated": "2026-03-02",
       "used_price_source": "ebay sold auctions",
-      "benchmarks": {}
+      "benchmarks": {
+        "llama3_8b_q4": {
+          "tok_s": 71,
+          "source": "github.com/XiongjieDai/GPU-Benchmarks-on-LLM-Inference",
+          "date": "2024-05",
+          "notes": "llama.cpp CUDA tg1024 RunPod"
+        }
+      }
     },
     "rtx-3070-ti-8gb": {
       "name": "NVIDIA RTX 3070 Ti",
@@ -209,7 +235,14 @@
       },
       "used_price_updated": "2026-03-02",
       "used_price_source": "ebay sold auctions",
-      "benchmarks": {}
+      "benchmarks": {
+        "llama3_8b_q4": {
+          "tok_s": 106,
+          "source": "github.com/XiongjieDai/GPU-Benchmarks-on-LLM-Inference",
+          "date": "2024-05",
+          "notes": "llama.cpp CUDA tg1024 RunPod"
+        }
+      }
     },
     "rtx-3080-12gb": {
       "name": "NVIDIA RTX 3080 12GB",
@@ -242,7 +275,14 @@
       },
       "used_price_updated": "2026-03-02",
       "used_price_source": "ebay sold auctions",
-      "benchmarks": {}
+      "benchmarks": {
+        "llama3_8b_q4": {
+          "tok_s": 107,
+          "source": "github.com/XiongjieDai/GPU-Benchmarks-on-LLM-Inference",
+          "date": "2024-05",
+          "notes": "3080 Ti proxy \u2014 same GA102, same bandwidth; llama.cpp CUDA tg1024"
+        }
+      }
     },
     "rtx-3090-24gb": {
       "name": "NVIDIA RTX 3090",
@@ -275,7 +315,32 @@
       },
       "used_price_updated": "2026-03-02",
       "used_price_source": "ebay sold auctions",
-      "benchmarks": {}
+      "benchmarks": {
+        "llama3_8b_q4": {
+          "tok_s": 112,
+          "source": "github.com/XiongjieDai/GPU-Benchmarks-on-LLM-Inference",
+          "date": "2024-05",
+          "notes": "llama.cpp CUDA tg1024 RunPod"
+        },
+        "llama3_8b_f16": {
+          "tok_s": 47,
+          "source": "github.com/XiongjieDai/GPU-Benchmarks-on-LLM-Inference",
+          "date": "2024-05",
+          "notes": "llama.cpp CUDA tg1024"
+        },
+        "llama3_70b_q4": {
+          "tok_s": 16,
+          "source": "github.com/XiongjieDai/GPU-Benchmarks-on-LLM-Inference",
+          "date": "2024-05",
+          "notes": "2x GPU required; llama.cpp CUDA tg1024"
+        },
+        "mistral_7b_q6": {
+          "tok_s": 85,
+          "source": "reddit.com/r/LocalLLaMA",
+          "date": "2024-01",
+          "notes": "Ollama Q6_K; 7B fits single 3090"
+        }
+      }
     },
     "rtx-4060-8gb": {
       "name": "NVIDIA RTX 4060",
@@ -308,7 +373,14 @@
       },
       "used_price_updated": "2026-03-02",
       "used_price_source": "ebay sold auctions",
-      "benchmarks": {}
+      "benchmarks": {
+        "llama3_8b_q4": {
+          "tok_s": 38,
+          "source": "localscore.ai",
+          "date": "2026-03",
+          "notes": "localscore community median; may include laptop variants"
+        }
+      }
     },
     "rtx-4060-ti-8gb": {
       "name": "NVIDIA RTX 4060 Ti 8GB",
@@ -374,7 +446,20 @@
       },
       "used_price_updated": "2026-03-02",
       "used_price_source": "ebay sold auctions",
-      "benchmarks": {}
+      "benchmarks": {
+        "llama3_8b_q4": {
+          "tok_s": 48,
+          "source": "localscore.ai",
+          "date": "2026-03",
+          "notes": "localscore community median; llama.cpp CUDA"
+        },
+        "llama2_7b_q4": {
+          "tok_s": 64,
+          "source": "github.com/ggml-org/llama.cpp/discussions/15013",
+          "date": "2024-12",
+          "notes": "llama.cpp CUDA tg128"
+        }
+      }
     },
     "rx-7600-8gb": {
       "name": "AMD Radeon RX 7600",
@@ -473,7 +558,20 @@
       },
       "used_price_updated": "2026-03-02",
       "used_price_source": "ebay sold auctions",
-      "benchmarks": {}
+      "benchmarks": {
+        "llama3_8b_q4": {
+          "tok_s": 39,
+          "source": "localscore.ai",
+          "date": "2026-03",
+          "notes": "localscore community median; ROCm backend"
+        },
+        "llama2_7b_q4": {
+          "tok_s": 96,
+          "source": "github.com/ggml-org/llama.cpp/discussions/15021",
+          "date": "2025-01",
+          "notes": "llama.cpp ROCm tg128"
+        }
+      }
     },
     "rx-7900-gre-16gb": {
       "name": "AMD Radeon RX 7900 GRE",
@@ -539,7 +637,20 @@
       },
       "used_price_updated": "2026-03-02",
       "used_price_source": "ebay sold auctions",
-      "benchmarks": {}
+      "benchmarks": {
+        "llama2_7b_q4": {
+          "tok_s": 116,
+          "source": "github.com/ggml-org/llama.cpp/discussions/15021",
+          "date": "2025-01",
+          "notes": "llama.cpp ROCm tg128"
+        },
+        "llama2_7b_q4_sustained": {
+          "tok_s": 97,
+          "source": "reddit.com/r/LocalLLaMA",
+          "date": "2024-01",
+          "notes": "llama.cpp ROCm longer context"
+        }
+      }
     },
     "rtx-5060": {
       "name": "NVIDIA RTX 5060",
@@ -828,10 +939,10 @@
   "rules": {
     "vram_model_fit": {
       "6gb": "7B Q4 max, tight",
-      "8gb": "7B Q4 comfortable, 13B Q2 possible",
-      "10gb": "7B Q6, 13B Q3 possible",
-      "12gb": "13B Q4, 7B Q8 or FP16",
-      "16gb": "30B Q3, 13B Q6",
+      "8gb": "8B Q4 comfortable, 14B Q2 possible",
+      "10gb": "8B Q6, 14B Q3 possible",
+      "12gb": "14B Q4, 8B Q8 or FP16",
+      "16gb": "30B Q3, 14B Q6",
       "20gb": "30B Q4, some 70B Q2",
       "24gb": "30B Q5, 70B Q2-Q3"
     },
