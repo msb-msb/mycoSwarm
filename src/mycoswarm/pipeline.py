@@ -567,6 +567,7 @@ def _clean_output(text: str) -> str:
 
 
 _URL_RE = re.compile(r'https?://\S+')
+_SOURCE_RE = re.compile(r'https?://\S+|\(Source:\s*\[[\d,\s]+\]\)|\[[\d]+\]')
 
 
 def _filter_unsourced_bullets(text: str, debug: bool = False) -> str:
@@ -579,8 +580,8 @@ def _filter_unsourced_bullets(text: str, debug: bool = False) -> str:
         if not line.strip().startswith("-"):
             filtered.append(line)
             continue
-        # Bullet must contain a URL
-        if _URL_RE.search(line):
+        # Bullet must contain a source citation (URL, bracket ref, or NOT FOUND marker)
+        if _SOURCE_RE.search(line) or "NOT FOUND" in line.upper():
             filtered.append(line)
         else:
             stripped += 1
