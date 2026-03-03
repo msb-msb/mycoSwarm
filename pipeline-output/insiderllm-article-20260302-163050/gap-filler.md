@@ -1,0 +1,15 @@
+- RTX 3090 TDP: 350W (Source: https://www.techpowerup.com/gpu-specs/...)  
+- RTX 3060 (12GB) new price: NOT FOUND IN SEARCH RESULTS  
+- RTX 3060 TDP: 170-180W (Source: https://www.ecoenergygeek.com/...)  
+- RTX 3060 CUDA cores: 3584 (Source: https://www.electronicshub.org/...)  
+- RTX 3060 benchmark data for LLM inference: NOT FOUND IN SEARCH RESULTS  
+- RTX 3090 benchmark data for different model sizes: NOT FOUND IN SEARCH RESULTS  
+- RTX 3060 benchmark data for different LLM sizes: NOT FOUND IN SEARCH RESULTS  
+- RTX 3090 CUDA cores: 10,572 (Source: https://www.electronicshub.org/...)  
+- RTX 3090 performance vs RTX 4090: 144.19 t/s vs 170.63 t/s (Source: https://jan.ai/...)  
+- RTX 3060 architecture: Ampere (Source: https://www.techpowerup.com/gpu-specs/...)  
+- RTX 3090 architecture: Ampere (Source: https://www.techpowerup.com/gpu-specs/...)  
+- Competitor coverage: NOT FOUND IN SEARCH RESULTS  
+- RTX 3060 power supply recommendation: 650W (Source: https://www.ecoenergygeek.com/...)  
+- RTX 3060 memory: 12GB GDDR6 (Source: https://www.techpowerup.com/gpu-specs/...)  
+- RTX 3090 memory: 24GB GDDR6 (Source: https://www.techpowerup.com/gpu-specs/...)

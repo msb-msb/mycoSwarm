@@ -1,0 +1,5 @@
+- **RTX 3060 VRAM Limitation**: The RTX 3060 has a 6GB VRAM limit, affecting models larger than 9B parameters. (Source: linkedin.com)
+- **RTX 3090 Power Impact**: Reducing power limit on RTX 3090 halves tokens per second from 99 to 49.5. (Source: reddit.com)
+- **RTX 3090 Benchmark**: Achieves 1700 tokens per second. (Source: blog.salad.com)
+- **RTX 3090 vs RTX 4090 Benchmark**: RTX 4090 at 170.63t/s vs RTX 3090 at 144.19t/s. (Source: jan.ai)
+- **RTX 3090 Expert Recommendation**: Used for local AI due to performance and cost-effectiveness. (Source: digitalspaceport.com)
