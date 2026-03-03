@@ -281,6 +281,66 @@ def _format_reference_context(ref: dict, topic: str) -> str:
     return "\n".join(lines)
 
 
+def _perplexity_search(query: str, debug: bool = False) -> list[dict]:
+    """Fallback search via Perplexity Sonar API.
+
+    Returns list of {"title": str, "url": str, "snippet": str}.
+    Requires PERPLEXITY_API_KEY env var.
+    """
+    api_key = os.environ.get("PERPLEXITY_API_KEY")
+    if not api_key:
+        if debug:
+            print("      ⚠️ No PERPLEXITY_API_KEY set, skipping fallback")
+        return []
+
+    try:
+        resp = httpx.post(
+            "https://api.perplexity.ai/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": "sonar",
+                "messages": [{"role": "user", "content": query}],
+                "web_search_options": {"search_context_size": "low"},
+            },
+            timeout=30,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+        # Extract citations and content
+        results = []
+        content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+        citations = data.get("citations", [])
+
+        # Build results from citations
+        for i, url in enumerate(citations):
+            results.append({
+                "title": f"Perplexity result {i + 1}",
+                "url": url,
+                "snippet": content if i == 0 else "",
+            })
+
+        # If no citations but got content, return as single result
+        if not results and content:
+            results.append({
+                "title": "Perplexity answer",
+                "url": "",
+                "snippet": content,
+            })
+
+        if debug:
+            print(f"      🔄 Perplexity fallback: {len(results)} results")
+        return results
+
+    except Exception as e:
+        if debug:
+            print(f"      ❌ Perplexity fallback failed: {e}")
+        return []
+
+
 def _do_web_search(
     topic: str, daemon_url: str | None, debug: bool = False,
     queries: list[str] | None = None,
@@ -297,9 +357,11 @@ def _do_web_search(
     pages: list[str] = []
     query_counts: list[tuple[str, int]] = []
     raw_count = 0
+    pplx_count = 0
     stats: dict = {
         "num_queries": 0, "raw_count": 0, "result_count": 0,
         "pages_fetched": 0, "top_sources": [], "query_counts": [],
+        "perplexity_queries": 0,
     }
 
     if daemon_url:
@@ -328,7 +390,15 @@ def _do_web_search(
             for future in as_completed(futures, timeout=60):
                 try:
                     variant_results = future.result()
-                    query_counts.append((futures[future], len(variant_results)))
+                    query_str = futures[future]
+                    count = len(variant_results)
+                    if count == 0:
+                        pplx_results = _perplexity_search(query_str, debug=debug)
+                        if pplx_results:
+                            variant_results = pplx_results
+                            count = len(pplx_results)
+                            pplx_count += 1
+                    query_counts.append((query_str, count))
                     results.extend(variant_results)
                 except Exception:
                     pass
@@ -397,7 +467,14 @@ def _do_web_search(
         stats["num_queries"] = len(variants)
         for v in variants:
             vr = web_search_solo(v, max_results=10)
-            query_counts.append((v, len(vr)))
+            count = len(vr)
+            if count == 0:
+                pplx_results = _perplexity_search(v, debug=debug)
+                if pplx_results:
+                    vr = pplx_results
+                    count = len(pplx_results)
+                    pplx_count += 1
+            query_counts.append((v, count))
             results.extend(vr)
 
         raw_count = len(results)
@@ -426,6 +503,7 @@ def _do_web_search(
     stats["pages_fetched"] = len(pages)
     stats["top_sources"] = top_sources
     stats["query_counts"] = query_counts
+    stats["perplexity_queries"] = pplx_count
 
     if not results and not pages:
         return "", stats
@@ -1277,6 +1355,9 @@ def run_pipeline(
             top_src = web_stats.get("top_sources", [])
             if top_src:
                 print(f"      Top sources: {', '.join(top_src)}")
+            pplx = web_stats.get("perplexity_queries", 0)
+            if pplx:
+                print(f"   🔄 Perplexity fallback: {pplx} queries")
             if debug:
                 for q, c in web_stats.get("query_counts", []):
                     print(f"      q: \"{q}\" → {c} results")
