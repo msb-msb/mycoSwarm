@@ -1,0 +1,12 @@
+- NVIDIA RTX 3060 (12GB VRAM) is the best option for entry-level AI due to its larger VRAM (Source: [4])
+- NVIDIA RTX 3060 (12GB VRAM) is a sweet spot in the used market for Plex transcoding and local AI (Source: [6])
+- NVIDIA RTX 3090 (24GB VRAM) release date: Mentioned in June 2025 (Source: [8])
+- NVIDIA RTX 3090 (24GB VRAM) price: $1,200 (new), $800 (used) (Source: [8])
+- NVIDIA RTX 3090 (24GB VRAM) VRAM: 24GB (Source: [8])
+- NVIDIA RTX 3090 (24GB VRAM) TDP: 350W (Source: [8])
+- NVIDIA RTX 3090 (24GB VRAM) architecture: Ampere (Source: [8])
+- NVIDIA RTX 3090 (24GB VRAM) benchmark data: 40 TFLOPS (Source: [8])
+- NVIDIA RTX 4090 benchmark data: 3-4x faster than DGX Spark in fine-tuning tasks (Source: [14])
+- NVIDIA RTX 4090 price: $1,500 (new) (Source: [13])
+- NVIDIA RTX 4090 performance: 75% faster than RTX 3090 in 5 VR games (Source: [16])
+- NVIDIA RTX 4090 TDP: 450W
