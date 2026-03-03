@@ -592,6 +592,7 @@ def _run_inference(
     model: str,
     daemon_url: str | None,
     timeout: int = 300,
+    think: bool | None = None,
 ) -> tuple[str, dict]:
     """Run a single inference call. Returns (output_text, metrics).
 
@@ -605,16 +606,19 @@ def _run_inference(
 
     if daemon_url:
         task_id = f"pipe-{uuid.uuid4().hex[:8]}"
-        payload = {
-            "task_id": task_id,
-            "task_type": "inference",
-            "payload": {
+        inference_payload = {
                 "model": model,
                 "messages": messages,
                 "temperature": 0.7,
                 "num_ctx": 16384,
                 "max_tokens": 4096,
-            },
+        }
+        if think is not None:
+            inference_payload["think"] = think
+        payload = {
+            "task_id": task_id,
+            "task_type": "inference",
+            "payload": inference_payload,
             "source_node": "pipeline",
             "priority": 5,
             "timeout_seconds": timeout,
@@ -1479,12 +1483,16 @@ def run_pipeline(
             print(f"   🐛 input: {input_words} words")
 
         # --- Run inference ---
+        # Disable thinking for extraction steps — deepseek-r1 burns 3x tokens
+        # on chain-of-thought that gets stripped anyway (35 tok/s → 4.9 effective)
+        step_think = False if step_name == "extractor" else None
         print(f"   🧠 Generating on {node_host} ({model})...", end="", flush=True)
         output_text, metrics = _run_inference(
             system_prompt=step["system_prompt"],
             user_content=user_content,
             model=model,
             daemon_url=daemon_url,
+            think=step_think,
         )
 
         # Clean garbage tokens
