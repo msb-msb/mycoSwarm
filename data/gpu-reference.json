@@ -128,6 +128,30 @@
           "source": "hardware-corner.net",
           "date": "2025-06",
           "notes": "llama.cpp Q4_0"
+        },
+        "qwen35_9b_think_off": {
+          "tok_s": 47.1,
+          "source": "self-tested rushuna",
+          "date": "2026-03-03",
+          "notes": "Ollama qwen3.5:9b think=false, RTX 3060 12GB"
+        },
+        "qwen35_9b_think_on": {
+          "tok_s": 46.6,
+          "source": "self-tested rushuna",
+          "date": "2026-03-03",
+          "notes": "Ollama qwen3.5:9b think=true, 4x token overhead (871\u21923404 tokens)"
+        },
+        "deepseek_r1_14b_think_off": {
+          "tok_s": 35.6,
+          "source": "self-tested rushuna",
+          "date": "2026-03-03",
+          "notes": "Ollama deepseek-r1:14b think=false, RTX 3060 12GB"
+        },
+        "deepseek_r1_14b_think_on": {
+          "tok_s": 35.1,
+          "source": "self-tested rushuna",
+          "date": "2026-03-03",
+          "notes": "Ollama deepseek-r1:14b think=true, 3x token overhead (380\u2192921 tokens)"
         }
       }
     },
