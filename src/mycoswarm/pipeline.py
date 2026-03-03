@@ -6,7 +6,9 @@ and rag_search tools to gather context before inference.
 """
 
 import json
+import logging
 import os
+import pathlib
 import re
 import sys
 import time
@@ -180,6 +182,94 @@ _FETCH_PRIORITY = {
     "reddit.com": 2, "overclock.net": 2,
 }
 _SKIP_FETCH = {"pinterest.com", "quora.com", "youtube.com", "facebook.com", "twitter.com", "x.com"}
+
+_REFERENCE_PATH = pathlib.Path(__file__).parent.parent.parent / "data" / "gpu-reference.json"
+
+logger = logging.getLogger(__name__)
+
+
+def _load_reference() -> dict | None:
+    """Load canonical GPU/RAM reference if available."""
+    try:
+        with open(_REFERENCE_PATH) as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError) as e:
+        logger.warning(f"GPU reference not loaded: {e}")
+        return None
+
+
+def _format_reference_context(ref: dict, topic: str) -> str:
+    """Format GPU reference data as ground-truth context block.
+
+    Includes all GPUs (they're all potentially relevant for
+    comparison) plus system RAM data and rules.
+    Returns empty string if reference is None.
+    """
+    if not ref:
+        return ""
+
+    lines = [
+        "--- VERIFIED REFERENCE DATA (ground truth — do NOT contradict these values) ---",
+        "Source: InsiderLLM canonical hardware database, manually verified.",
+        "Used prices are from eBay sold auctions (real hammer prices, not Buy It Now).",
+        "",
+    ]
+
+    # GPU entries
+    for key, gpu in ref.get("gpus", {}).items():
+        mem = gpu.get("memory", {})
+        pwr = gpu.get("power", {})
+        price = gpu.get("used_price_usd", {})
+
+        line = f"• {gpu['name']}"
+        line += f" | {mem.get('vram_gb', '?')}GB {mem.get('vram_type', '?')}"
+        line += f" | {mem.get('bandwidth_gbs', '?')} GB/s"
+        line += f" | TDP: {pwr.get('tdp_watts', '?')}W"
+        line += f" | Arch: {gpu.get('architecture', '?')}"
+
+        if price.get("mid"):
+            line += f" | Used: ${price['low']}-${price['mid']}-${price['high']}"
+            line += f" ({gpu.get('used_price_updated', '?')})"
+        elif gpu.get("msrp_usd"):
+            line += f" | MSRP: ${gpu['msrp_usd']}"
+
+        line += f" | {gpu.get('ai_notes', '')}"
+        lines.append(line)
+
+    lines.append("")
+
+    # RAM summary
+    for gen, ram in ref.get("system_ram", {}).items():
+        speeds = ram.get("speeds", {})
+        top_speed = max(speeds.keys()) if speeds else "?"
+        bw = speeds.get(str(top_speed), {}).get("bandwidth_gbs", "?") if speeds else "?"
+        price_info = ""
+        for k, v in ram.items():
+            if "price" in k and "updated" not in k and v:
+                price_info += f" {k}: ${v}"
+        lines.append(
+            f"• {gen.upper()} (up to {top_speed}MHz, {bw} GB/s dual-channel)"
+            f" | {ram.get('ai_notes', '')}{price_info}"
+        )
+
+    lines.append("")
+
+    # Rules
+    rules = ref.get("rules", {})
+    if rules.get("vram_model_fit"):
+        lines.append("VRAM → Model size guide:")
+        for vram, fits in rules["vram_model_fit"].items():
+            lines.append(f"  {vram}: {fits}")
+
+    if rules.get("bandwidth_impact"):
+        lines.append(f"\n{rules['bandwidth_impact']}")
+    if rules.get("offload_penalty"):
+        lines.append(rules["offload_penalty"])
+    if rules.get("rocm_caveat"):
+        lines.append(rules["rocm_caveat"])
+
+    lines.append("--- END VERIFIED REFERENCE DATA ---")
+    return "\n".join(lines)
 
 
 def _do_web_search(
@@ -1075,11 +1165,20 @@ def run_pipeline(
     total = len(steps)
     daemon_url = _get_daemon_url(port)
 
+    # Load canonical hardware reference
+    gpu_ref = _load_reference()
+
     mode = "swarm" if daemon_url else "solo"
     print(f"🍄 Pipeline: {pipeline['name']}")
     print(f"   Mode: {mode} | Steps: {total}")
     print(f"   Topic: {topic}")
     print(f"   Workspace: {workspace_dir}")
+    if gpu_ref:
+        ref_gpus = len(gpu_ref.get("gpus", {}))
+        ref_updated = gpu_ref.get("_meta", {}).get("last_updated", "?")
+        print(f"   📋 Reference: {ref_gpus} GPUs loaded (updated {ref_updated})")
+    else:
+        print(f"   ⚠️  No GPU reference found at {_REFERENCE_PATH}")
 
     # Resolve routing for all steps upfront via unified Router
     from mycoswarm.router import Router
@@ -1207,6 +1306,14 @@ def run_pipeline(
             words = context_parts[0].split()
             context_parts[0] = " ".join(words[:4000]) + "\n[context truncated]"
 
+        # Inject verified hardware reference as ground truth
+        if gpu_ref:
+            ref_context = _format_reference_context(gpu_ref, topic)
+            if ref_context:
+                context_parts.insert(0, ref_context)
+                if debug:
+                    print(f"   🐛 injected GPU reference ({len(ref_context)} chars)")
+
         # --- Build user input ---
         # depends_on: load multiple named step outputs
         if step.get("depends_on"):
@@ -1247,6 +1354,11 @@ def run_pipeline(
                     + research_text,
                     "## DRAFT ARTICLE (review this)\n" + writer_text,
                 ]
+                # Add reference data for editor fact-checking
+                if gpu_ref:
+                    ref_context = _format_reference_context(gpu_ref, topic)
+                    if ref_context:
+                        input_parts.insert(1, ref_context)
             else:
                 input_parts = [f"Topic: {topic}"]
                 if previous_output:
