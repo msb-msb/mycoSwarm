@@ -1,0 +1,843 @@
+{
+  "_meta": {
+    "version": "1.0.0",
+    "description": "Canonical GPU and system RAM reference for InsiderLLM pipeline. Verified specs are ground truth \u2014 models may add to but never contradict these values.",
+    "last_updated": "2026-03-02",
+    "maintainer": "mark@insiderllm.com",
+    "notes": [
+      "used_price_usd: manually updated from eBay sold listings",
+      "benchmarks: manually verified from trusted sources",
+      "specs: cross-referenced against techpowerup.com GPU database",
+      "bandwidth predicts tok/s for memory-bound LLM inference",
+      "VRAM is the primary constraint for model size that fits on GPU"
+    ]
+  },
+  "gpus": {
+    "gtx-1660-super": {
+      "name": "NVIDIA GTX 1660 Super",
+      "vendor": "nvidia",
+      "architecture": "Turing",
+      "gpu_chip": "TU116",
+      "release_date": "2019-10-29",
+      "status": "discontinued",
+      "msrp_usd": 229,
+      "memory": {
+        "vram_gb": 6,
+        "vram_type": "GDDR6",
+        "bus_width_bit": 192,
+        "bandwidth_gbs": 336
+      },
+      "compute": {
+        "cuda_cores": 1408,
+        "tensor_cores": 0,
+        "fp16_tflops": null
+      },
+      "power": {
+        "tdp_watts": 125,
+        "psu_recommended_watts": 450
+      },
+      "ai_notes": "6GB VRAM limits to 7B quantized models. No tensor cores. Fine for experimentation, not for daily use.",
+      "used_price_usd": {
+        "low": 90,
+        "mid": 105,
+        "high": 120
+      },
+      "used_price_updated": "2026-03-02",
+      "used_price_source": "ebay sold auctions",
+      "benchmarks": {}
+    },
+    "rtx-2060-12gb": {
+      "name": "NVIDIA RTX 2060 12GB",
+      "vendor": "nvidia",
+      "architecture": "Turing",
+      "gpu_chip": "TU106",
+      "release_date": "2021-12-07",
+      "status": "discontinued",
+      "msrp_usd": 349,
+      "memory": {
+        "vram_gb": 12,
+        "vram_type": "GDDR6",
+        "bus_width_bit": 192,
+        "bandwidth_gbs": 336
+      },
+      "compute": {
+        "cuda_cores": 2176,
+        "tensor_cores": 272,
+        "fp16_tflops": null
+      },
+      "power": {
+        "tdp_watts": 185,
+        "psu_recommended_watts": 550
+      },
+      "ai_notes": "12GB VRAM is great, but bandwidth matches GTX 1660 Super. Tensor cores help with some workloads. Decent budget option if found cheap.",
+      "used_price_usd": {
+        "low": 140,
+        "mid": 160,
+        "high": 180
+      },
+      "used_price_updated": "2026-03-02",
+      "used_price_source": "ebay sold auctions",
+      "benchmarks": {}
+    },
+    "rtx-3060-12gb": {
+      "name": "NVIDIA RTX 3060 12GB",
+      "vendor": "nvidia",
+      "architecture": "Ampere",
+      "gpu_chip": "GA106",
+      "release_date": "2021-02-25",
+      "status": "discontinued",
+      "msrp_usd": 329,
+      "memory": {
+        "vram_gb": 12,
+        "vram_type": "GDDR6",
+        "bus_width_bit": 192,
+        "bandwidth_gbs": 360
+      },
+      "compute": {
+        "cuda_cores": 3584,
+        "tensor_cores": 112,
+        "fp16_tflops": 12.7
+      },
+      "power": {
+        "tdp_watts": 170,
+        "psu_recommended_watts": 550
+      },
+      "ai_notes": "The entry-level workhorse. 12GB fits 13B Q4 models. Bandwidth is the bottleneck \u2014 half the 3080's speed. Best value under $200 used.",
+      "used_price_usd": {
+        "low": 170,
+        "mid": 275,
+        "high": 380
+      },
+      "used_price_updated": "2026-03-02",
+      "used_price_source": "ebay sold auctions",
+      "benchmarks": {}
+    },
+    "rtx-3070-8gb": {
+      "name": "NVIDIA RTX 3070",
+      "vendor": "nvidia",
+      "architecture": "Ampere",
+      "gpu_chip": "GA104",
+      "release_date": "2020-10-29",
+      "status": "discontinued",
+      "msrp_usd": 499,
+      "memory": {
+        "vram_gb": 8,
+        "vram_type": "GDDR6",
+        "bus_width_bit": 256,
+        "bandwidth_gbs": 448
+      },
+      "compute": {
+        "cuda_cores": 5888,
+        "tensor_cores": 184,
+        "fp16_tflops": 20.3
+      },
+      "power": {
+        "tdp_watts": 220,
+        "psu_recommended_watts": 650
+      },
+      "ai_notes": "Fast but 8GB VRAM is limiting. Only fits 7B Q4 comfortably. Higher bandwidth than 3060 but less VRAM makes it a tradeoff.",
+      "used_price_usd": {
+        "low": 210,
+        "mid": 255,
+        "high": 300
+      },
+      "used_price_updated": "2026-03-02",
+      "used_price_source": "ebay sold auctions",
+      "benchmarks": {}
+    },
+    "rtx-3070-ti-8gb": {
+      "name": "NVIDIA RTX 3070 Ti",
+      "vendor": "nvidia",
+      "architecture": "Ampere",
+      "gpu_chip": "GA104",
+      "release_date": "2021-06-10",
+      "status": "discontinued",
+      "msrp_usd": 599,
+      "memory": {
+        "vram_gb": 8,
+        "vram_type": "GDDR6X",
+        "bus_width_bit": 256,
+        "bandwidth_gbs": 608
+      },
+      "compute": {
+        "cuda_cores": 6144,
+        "tensor_cores": 192,
+        "fp16_tflops": 21.7
+      },
+      "power": {
+        "tdp_watts": 290,
+        "psu_recommended_watts": 750
+      },
+      "ai_notes": "GDDR6X gives much better bandwidth than 3070. Still 8GB VRAM limited. Power hungry for what you get.",
+      "used_price_usd": {
+        "low": 100,
+        "mid": 190,
+        "high": 280
+      },
+      "used_price_updated": "2026-03-02",
+      "used_price_source": "ebay sold auctions",
+      "benchmarks": {}
+    },
+    "rtx-3080-10gb": {
+      "name": "NVIDIA RTX 3080 10GB",
+      "vendor": "nvidia",
+      "architecture": "Ampere",
+      "gpu_chip": "GA102",
+      "release_date": "2020-09-17",
+      "status": "discontinued",
+      "msrp_usd": 699,
+      "memory": {
+        "vram_gb": 10,
+        "vram_type": "GDDR6X",
+        "bus_width_bit": 320,
+        "bandwidth_gbs": 760
+      },
+      "compute": {
+        "cuda_cores": 8704,
+        "tensor_cores": 272,
+        "fp16_tflops": 29.8
+      },
+      "power": {
+        "tdp_watts": 320,
+        "psu_recommended_watts": 750
+      },
+      "ai_notes": "2x the bandwidth of 3060. 10GB fits 7B Q4 and some 13B Q2. The speed upgrade is dramatic if models fit in VRAM.",
+      "used_price_usd": {
+        "low": 325,
+        "mid": 365,
+        "high": 400
+      },
+      "used_price_updated": "2026-03-02",
+      "used_price_source": "ebay sold auctions",
+      "benchmarks": {}
+    },
+    "rtx-3080-12gb": {
+      "name": "NVIDIA RTX 3080 12GB",
+      "vendor": "nvidia",
+      "architecture": "Ampere",
+      "gpu_chip": "GA102",
+      "release_date": "2022-01-11",
+      "status": "discontinued",
+      "msrp_usd": 799,
+      "memory": {
+        "vram_gb": 12,
+        "vram_type": "GDDR6X",
+        "bus_width_bit": 384,
+        "bandwidth_gbs": 912
+      },
+      "compute": {
+        "cuda_cores": 8960,
+        "tensor_cores": 280,
+        "fp16_tflops": 30.6
+      },
+      "power": {
+        "tdp_watts": 350,
+        "psu_recommended_watts": 750
+      },
+      "ai_notes": "The sleeper pick. 12GB VRAM + 912 GB/s bandwidth = 3060's model capacity at 2.5x the speed. Hard to find but excellent value.",
+      "used_price_usd": {
+        "low": 230,
+        "mid": 305,
+        "high": 380
+      },
+      "used_price_updated": "2026-03-02",
+      "used_price_source": "ebay sold auctions",
+      "benchmarks": {}
+    },
+    "rtx-3090-24gb": {
+      "name": "NVIDIA RTX 3090",
+      "vendor": "nvidia",
+      "architecture": "Ampere",
+      "gpu_chip": "GA102",
+      "release_date": "2020-09-24",
+      "status": "discontinued",
+      "msrp_usd": 1499,
+      "memory": {
+        "vram_gb": 24,
+        "vram_type": "GDDR6X",
+        "bus_width_bit": 384,
+        "bandwidth_gbs": 936
+      },
+      "compute": {
+        "cuda_cores": 10496,
+        "tensor_cores": 328,
+        "fp16_tflops": 35.6
+      },
+      "power": {
+        "tdp_watts": 350,
+        "psu_recommended_watts": 750
+      },
+      "ai_notes": "The budget local AI king. 24GB runs 30B Q4, even 70B Q2. 936 GB/s bandwidth means fast inference. Power hungry and runs hot. Dual-slot blower cooler cards run especially hot \u2014 look for triple-fan models.",
+      "used_price_usd": {
+        "low": 950,
+        "mid": 1040,
+        "high": 1125
+      },
+      "used_price_updated": "2026-03-02",
+      "used_price_source": "ebay sold auctions",
+      "benchmarks": {}
+    },
+    "rtx-4060-8gb": {
+      "name": "NVIDIA RTX 4060",
+      "vendor": "nvidia",
+      "architecture": "Ada Lovelace",
+      "gpu_chip": "AD107",
+      "release_date": "2023-06-29",
+      "status": "current",
+      "msrp_usd": 299,
+      "memory": {
+        "vram_gb": 8,
+        "vram_type": "GDDR6",
+        "bus_width_bit": 128,
+        "bandwidth_gbs": 272
+      },
+      "compute": {
+        "cuda_cores": 3072,
+        "tensor_cores": 96,
+        "fp16_tflops": 15.1
+      },
+      "power": {
+        "tdp_watts": 115,
+        "psu_recommended_watts": 450
+      },
+      "ai_notes": "Lowest bandwidth of any current card. 8GB VRAM and 128-bit bus make it worse than an RTX 3060 12GB for AI despite being newer. Avoid for local AI.",
+      "used_price_usd": {
+        "low": 230,
+        "mid": 270,
+        "high": 310
+      },
+      "used_price_updated": "2026-03-02",
+      "used_price_source": "ebay sold auctions",
+      "benchmarks": {}
+    },
+    "rtx-4060-ti-8gb": {
+      "name": "NVIDIA RTX 4060 Ti 8GB",
+      "vendor": "nvidia",
+      "architecture": "Ada Lovelace",
+      "gpu_chip": "AD106",
+      "release_date": "2023-05-24",
+      "status": "current",
+      "msrp_usd": 399,
+      "memory": {
+        "vram_gb": 8,
+        "vram_type": "GDDR6",
+        "bus_width_bit": 128,
+        "bandwidth_gbs": 288
+      },
+      "compute": {
+        "cuda_cores": 4352,
+        "tensor_cores": 136,
+        "fp16_tflops": 22.1
+      },
+      "power": {
+        "tdp_watts": 160,
+        "psu_recommended_watts": 550
+      },
+      "ai_notes": "Same 128-bit bus problem as 4060. More compute but still bandwidth-starved for LLM inference. The 16GB version is much better.",
+      "used_price_usd": {
+        "low": 240,
+        "mid": 270,
+        "high": 300
+      },
+      "used_price_updated": "2026-03-02",
+      "used_price_source": "ebay sold auctions",
+      "benchmarks": {}
+    },
+    "rtx-4060-ti-16gb": {
+      "name": "NVIDIA RTX 4060 Ti 16GB",
+      "vendor": "nvidia",
+      "architecture": "Ada Lovelace",
+      "gpu_chip": "AD106",
+      "release_date": "2023-07-18",
+      "status": "current",
+      "msrp_usd": 499,
+      "memory": {
+        "vram_gb": 16,
+        "vram_type": "GDDR6",
+        "bus_width_bit": 128,
+        "bandwidth_gbs": 288
+      },
+      "compute": {
+        "cuda_cores": 4352,
+        "tensor_cores": 136,
+        "fp16_tflops": 22.1
+      },
+      "power": {
+        "tdp_watts": 165,
+        "psu_recommended_watts": 550
+      },
+      "ai_notes": "16GB VRAM is great for model capacity but 128-bit bus caps bandwidth at 288 GB/s. Runs bigger models than 3060 but slower token generation. Trade VRAM for speed vs the 3080 12GB.",
+      "used_price_usd": {
+        "low": 380,
+        "mid": 430,
+        "high": 480
+      },
+      "used_price_updated": "2026-03-02",
+      "used_price_source": "ebay sold auctions",
+      "benchmarks": {}
+    },
+    "rx-7600-8gb": {
+      "name": "AMD Radeon RX 7600",
+      "vendor": "amd",
+      "architecture": "RDNA 3",
+      "gpu_chip": "Navi 33",
+      "release_date": "2023-05-25",
+      "status": "current",
+      "msrp_usd": 269,
+      "memory": {
+        "vram_gb": 8,
+        "vram_type": "GDDR6",
+        "bus_width_bit": 128,
+        "bandwidth_gbs": 288
+      },
+      "compute": {
+        "stream_processors": 2048,
+        "compute_units": 32,
+        "fp16_tflops": 21.5
+      },
+      "power": {
+        "tdp_watts": 165,
+        "psu_recommended_watts": 550
+      },
+      "ai_notes": "ROCm support improving but still behind CUDA. 8GB VRAM and 128-bit bus limit AI use. Only consider if you specifically want AMD and accept the software tradeoffs.",
+      "used_price_usd": {
+        "low": 170,
+        "mid": 200,
+        "high": 225
+      },
+      "used_price_updated": "2026-03-02",
+      "used_price_source": "ebay sold auctions",
+      "benchmarks": {}
+    },
+    "rx-7700-xt-12gb": {
+      "name": "AMD Radeon RX 7700 XT",
+      "vendor": "amd",
+      "architecture": "RDNA 3",
+      "gpu_chip": "Navi 32",
+      "release_date": "2023-09-06",
+      "status": "current",
+      "msrp_usd": 449,
+      "memory": {
+        "vram_gb": 12,
+        "vram_type": "GDDR6",
+        "bus_width_bit": 192,
+        "bandwidth_gbs": 432
+      },
+      "compute": {
+        "stream_processors": 3456,
+        "compute_units": 54,
+        "fp16_tflops": 35.2
+      },
+      "power": {
+        "tdp_watts": 245,
+        "psu_recommended_watts": 700
+      },
+      "ai_notes": "12GB VRAM with better bandwidth than RTX 3060. ROCm compatibility is the main risk. If AMD software works for your stack, this is competitive.",
+      "used_price_usd": {
+        "low": 300,
+        "mid": 325,
+        "high": 350
+      },
+      "used_price_updated": "2026-03-02",
+      "used_price_source": "ebay sold auctions",
+      "benchmarks": {}
+    },
+    "rx-7800-xt-16gb": {
+      "name": "AMD Radeon RX 7800 XT",
+      "vendor": "amd",
+      "architecture": "RDNA 3",
+      "gpu_chip": "Navi 32",
+      "release_date": "2023-09-06",
+      "status": "current",
+      "msrp_usd": 499,
+      "memory": {
+        "vram_gb": 16,
+        "vram_type": "GDDR6",
+        "bus_width_bit": 256,
+        "bandwidth_gbs": 624
+      },
+      "compute": {
+        "stream_processors": 3840,
+        "compute_units": 60,
+        "fp16_tflops": 37.3
+      },
+      "power": {
+        "tdp_watts": 263,
+        "psu_recommended_watts": 700
+      },
+      "ai_notes": "16GB VRAM + 624 GB/s bandwidth makes this AMD's best AI value if ROCm works for you. Competes with RTX 3080 12GB in bandwidth territory.",
+      "used_price_usd": {
+        "low": 380,
+        "mid": 465,
+        "high": 550
+      },
+      "used_price_updated": "2026-03-02",
+      "used_price_source": "ebay sold auctions",
+      "benchmarks": {}
+    },
+    "rx-7900-gre-16gb": {
+      "name": "AMD Radeon RX 7900 GRE",
+      "vendor": "amd",
+      "architecture": "RDNA 3",
+      "gpu_chip": "Navi 31",
+      "release_date": "2024-02-27",
+      "status": "current",
+      "msrp_usd": 549,
+      "memory": {
+        "vram_gb": 16,
+        "vram_type": "GDDR6",
+        "bus_width_bit": 256,
+        "bandwidth_gbs": 576
+      },
+      "compute": {
+        "stream_processors": 5120,
+        "compute_units": 80,
+        "fp16_tflops": 46.1
+      },
+      "power": {
+        "tdp_watts": 260,
+        "psu_recommended_watts": 700
+      },
+      "ai_notes": "Navi 31 chip means more compute units than 7800 XT but slightly lower bandwidth. 16GB VRAM. ROCm compatibility varies \u2014 test before committing.",
+      "used_price_usd": {
+        "low": 400,
+        "mid": 475,
+        "high": 550
+      },
+      "used_price_updated": "2026-03-02",
+      "used_price_source": "ebay sold auctions",
+      "benchmarks": {}
+    },
+    "rx-7900-xt-20gb": {
+      "name": "AMD Radeon RX 7900 XT",
+      "vendor": "amd",
+      "architecture": "RDNA 3",
+      "gpu_chip": "Navi 31",
+      "release_date": "2022-12-13",
+      "status": "current",
+      "msrp_usd": 899,
+      "memory": {
+        "vram_gb": 20,
+        "vram_type": "GDDR6",
+        "bus_width_bit": 320,
+        "bandwidth_gbs": 800
+      },
+      "compute": {
+        "stream_processors": 5376,
+        "compute_units": 84,
+        "fp16_tflops": 51.6
+      },
+      "power": {
+        "tdp_watts": 315,
+        "psu_recommended_watts": 750
+      },
+      "ai_notes": "20GB VRAM is between 3090 and 4060 Ti 16GB in capacity. 800 GB/s bandwidth is competitive. AMD's best current option for local AI if ROCm support works.",
+      "used_price_usd": {
+        "low": 500,
+        "mid": 600,
+        "high": 700
+      },
+      "used_price_updated": "2026-03-02",
+      "used_price_source": "ebay sold auctions",
+      "benchmarks": {}
+    },
+    "rtx-5060": {
+      "name": "NVIDIA RTX 5060",
+      "vendor": "nvidia",
+      "architecture": "Blackwell",
+      "gpu_chip": "GB206",
+      "release_date": null,
+      "status": "upcoming",
+      "msrp_usd": null,
+      "memory": {
+        "vram_gb": 8,
+        "vram_type": "GDDR7",
+        "bus_width_bit": 128,
+        "bandwidth_gbs": null
+      },
+      "compute": {
+        "cuda_cores": null,
+        "tensor_cores": null,
+        "fp16_tflops": null
+      },
+      "power": {
+        "tdp_watts": null,
+        "psu_recommended_watts": null
+      },
+      "ai_notes": "PRELIMINARY \u2014 specs not confirmed. Likely 8GB VRAM with 128-bit bus. If so, same VRAM limitation as RTX 4060.",
+      "used_price_usd": {
+        "low": null,
+        "mid": null,
+        "high": null
+      },
+      "used_price_updated": null,
+      "used_price_source": null,
+      "benchmarks": {}
+    },
+    "rtx-5060-ti": {
+      "name": "NVIDIA RTX 5060 Ti",
+      "vendor": "nvidia",
+      "architecture": "Blackwell",
+      "gpu_chip": "GB205",
+      "release_date": null,
+      "status": "upcoming",
+      "msrp_usd": null,
+      "memory": {
+        "vram_gb": 16,
+        "vram_type": "GDDR7",
+        "bus_width_bit": null,
+        "bandwidth_gbs": null
+      },
+      "compute": {
+        "cuda_cores": null,
+        "tensor_cores": null,
+        "fp16_tflops": null
+      },
+      "power": {
+        "tdp_watts": null,
+        "psu_recommended_watts": null
+      },
+      "ai_notes": "PRELIMINARY \u2014 specs not confirmed. 16GB GDDR7 rumored. If bandwidth improves over 4060 Ti 16GB, could be a solid mid-range AI card.",
+      "used_price_usd": {
+        "low": null,
+        "mid": null,
+        "high": null
+      },
+      "used_price_updated": null,
+      "used_price_source": null,
+      "benchmarks": {}
+    },
+    "rtx-5070": {
+      "name": "NVIDIA RTX 5070",
+      "vendor": "nvidia",
+      "architecture": "Blackwell",
+      "gpu_chip": "GB205",
+      "release_date": "2025-03-06",
+      "status": "current",
+      "msrp_usd": 549,
+      "memory": {
+        "vram_gb": 12,
+        "vram_type": "GDDR7",
+        "bus_width_bit": 192,
+        "bandwidth_gbs": 672
+      },
+      "compute": {
+        "cuda_cores": 6144,
+        "tensor_cores": 192,
+        "fp16_tflops": null
+      },
+      "power": {
+        "tdp_watts": 250,
+        "psu_recommended_watts": 650
+      },
+      "ai_notes": "GDDR7 gives 672 GB/s on a 192-bit bus \u2014 impressive. 12GB VRAM same as 3060 but nearly 2x bandwidth. Availability and actual pricing TBD.",
+      "used_price_usd": {
+        "low": null,
+        "mid": null,
+        "high": null
+      },
+      "used_price_updated": null,
+      "used_price_source": null,
+      "benchmarks": {}
+    },
+    "rx-9070": {
+      "name": "AMD Radeon RX 9070",
+      "vendor": "amd",
+      "architecture": "RDNA 4",
+      "gpu_chip": "Navi 48",
+      "release_date": "2025-01-23",
+      "status": "current",
+      "msrp_usd": 549,
+      "memory": {
+        "vram_gb": 16,
+        "vram_type": "GDDR6",
+        "bus_width_bit": 256,
+        "bandwidth_gbs": 608
+      },
+      "compute": {
+        "stream_processors": 3584,
+        "compute_units": 56,
+        "fp16_tflops": null
+      },
+      "power": {
+        "tdp_watts": 220,
+        "psu_recommended_watts": 650
+      },
+      "ai_notes": "PRELIMINARY \u2014 16GB VRAM with 256-bit bus. ROCm support status for RDNA 4 unknown. Wait for confirmed local AI benchmarks before recommending.",
+      "used_price_usd": {
+        "low": null,
+        "mid": null,
+        "high": null
+      },
+      "used_price_updated": null,
+      "used_price_source": null,
+      "benchmarks": {}
+    },
+    "rx-9070-xt": {
+      "name": "AMD Radeon RX 9070 XT",
+      "vendor": "amd",
+      "architecture": "RDNA 4",
+      "gpu_chip": "Navi 48",
+      "release_date": "2025-01-23",
+      "status": "current",
+      "msrp_usd": 599,
+      "memory": {
+        "vram_gb": 16,
+        "vram_type": "GDDR6",
+        "bus_width_bit": 256,
+        "bandwidth_gbs": 608
+      },
+      "compute": {
+        "stream_processors": 4096,
+        "compute_units": 64,
+        "fp16_tflops": null
+      },
+      "power": {
+        "tdp_watts": 250,
+        "psu_recommended_watts": 700
+      },
+      "ai_notes": "PRELIMINARY \u2014 same memory subsystem as RX 9070. More compute units. Same ROCm uncertainty as 9070.",
+      "used_price_usd": {
+        "low": null,
+        "mid": null,
+        "high": null
+      },
+      "used_price_updated": null,
+      "used_price_source": null,
+      "benchmarks": {}
+    }
+  },
+  "system_ram": {
+    "ddr3": {
+      "generation": "DDR3",
+      "speeds": {
+        "1333": {
+          "bandwidth_gbs": 10.6,
+          "label": "PC3-10600"
+        },
+        "1600": {
+          "bandwidth_gbs": 12.8,
+          "label": "PC3-12800"
+        },
+        "1866": {
+          "bandwidth_gbs": 14.9,
+          "label": "PC3-14900"
+        }
+      },
+      "max_capacity_typical_gb": 32,
+      "max_dimm_size_gb": 8,
+      "channels_typical": 2,
+      "platforms": [
+        "LGA 1150",
+        "LGA 1155",
+        "AM3+",
+        "Optiplex 7010",
+        "Optiplex 9020",
+        "Optiplex 3020"
+      ],
+      "voltage": 1.5,
+      "status": "legacy",
+      "used_price_per_16gb_usd": "15-30",
+      "used_price_updated": "2026-03-02",
+      "ai_notes": "12.8 GB/s dual-channel max. CPU offloading at 3-4x slower than DDR5. Fine for models that fit entirely in VRAM. Painful for offloaded layers."
+    },
+    "ddr4": {
+      "generation": "DDR4",
+      "speeds": {
+        "2133": {
+          "bandwidth_gbs": 17.0,
+          "label": "PC4-17000"
+        },
+        "2400": {
+          "bandwidth_gbs": 19.2,
+          "label": "PC4-19200"
+        },
+        "2666": {
+          "bandwidth_gbs": 21.3,
+          "label": "PC4-21300"
+        },
+        "3200": {
+          "bandwidth_gbs": 25.6,
+          "label": "PC4-25600"
+        },
+        "3600": {
+          "bandwidth_gbs": 28.8,
+          "label": "PC4-28800"
+        }
+      },
+      "max_capacity_typical_gb": 128,
+      "max_dimm_size_gb": 32,
+      "channels_typical": 2,
+      "platforms": [
+        "LGA 1200",
+        "LGA 1700",
+        "AM4",
+        "Optiplex 5060",
+        "Optiplex 7060",
+        "Optiplex 5070",
+        "Optiplex 7070"
+      ],
+      "voltage": 1.2,
+      "status": "current",
+      "used_price_per_16gb_usd": "50-80",
+      "used_price_updated": "2026-03-02",
+      "ai_notes": "25.6 GB/s at 3200MHz dual-channel. 2x DDR3 performance for offloading. Sweet spot for budget builds \u2014 Optiplex 5060/7060 are cheap and take DDR4.",
+      "used_price_per_32gb_usd": "100-170"
+    },
+    "ddr5": {
+      "generation": "DDR5",
+      "speeds": {
+        "4800": {
+          "bandwidth_gbs": 38.4,
+          "label": "PC5-38400"
+        },
+        "5200": {
+          "bandwidth_gbs": 41.6,
+          "label": "PC5-41600"
+        },
+        "5600": {
+          "bandwidth_gbs": 44.8,
+          "label": "PC5-44800"
+        },
+        "6000": {
+          "bandwidth_gbs": 48.0,
+          "label": "PC5-48000"
+        },
+        "6400": {
+          "bandwidth_gbs": 51.2,
+          "label": "PC5-51200"
+        }
+      },
+      "max_capacity_typical_gb": 256,
+      "max_dimm_size_gb": 64,
+      "channels_typical": 2,
+      "platforms": [
+        "LGA 1700",
+        "LGA 1851",
+        "AM5"
+      ],
+      "voltage": 1.1,
+      "status": "current",
+      "used_price_per_16gb_usd": null,
+      "used_price_updated": "2026-03-02",
+      "ai_notes": "48 GB/s at 6000MHz dual-channel. 4x DDR3 for offloading. Best for CPU-heavy workloads or large models that need lots of offloaded layers. Premium cost.",
+      "used_price_per_32gb_usd": "200-300",
+      "used_price_per_64gb_usd": "320-450"
+    }
+  },
+  "rules": {
+    "vram_model_fit": {
+      "6gb": "7B Q4 max, tight",
+      "8gb": "7B Q4 comfortable, 13B Q2 possible",
+      "10gb": "7B Q6, 13B Q3 possible",
+      "12gb": "13B Q4, 7B Q8 or FP16",
+      "16gb": "30B Q3, 13B Q6",
+      "20gb": "30B Q4, some 70B Q2",
+      "24gb": "30B Q5, 70B Q2-Q3"
+    },
+    "bandwidth_impact": "For models that fit entirely in VRAM, memory bandwidth is the primary predictor of tok/s. Double the bandwidth \u2248 double the tok/s for memory-bound inference.",
+    "offload_penalty": "Each layer offloaded to CPU RAM runs at system RAM bandwidth instead of VRAM bandwidth. DDR4-3200 (25.6 GB/s) vs GDDR6X (936 GB/s) = ~37x slower per offloaded layer.",
+    "power_budget": "Budget builds often reuse old PSUs. Cards over 250W TDP need PSU upgrade. Factor $40-80 for a used 750W PSU.",
+    "rocm_caveat": "AMD ROCm support is improving but not all models/frameworks work. Always verify ROCm compatibility for your specific use case before buying AMD for AI."
+  }
+}
