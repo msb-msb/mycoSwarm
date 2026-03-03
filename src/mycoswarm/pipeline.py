@@ -770,6 +770,7 @@ def _query_gen_via_swarm(
             "temperature": temperature,
             "max_tokens": max_tokens,
             "num_ctx": 4096,
+            "think": False,
         },
         "source_node": "pipeline",
         "priority": 7,

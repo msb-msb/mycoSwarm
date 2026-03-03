@@ -100,6 +100,10 @@ def _build_ollama_request(
         }
         is_chat = False
 
+    # Allow callers to disable thinking for non-reasoning tasks
+    if "think" in payload:
+        ollama_payload["think"] = payload["think"]
+
     # System prompt: prepend datetime to explicit system prompts
     existing_system = payload.get("system", "")
     if existing_system:
