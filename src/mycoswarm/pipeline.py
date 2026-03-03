@@ -16,8 +16,11 @@ import uuid
 
 import httpx
 import yaml
+from dotenv import load_dotenv
 
 from mycoswarm.hardware import detect_all
+
+load_dotenv()
 
 
 def load_pipeline(yaml_path: str) -> dict:
