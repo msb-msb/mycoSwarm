@@ -230,8 +230,11 @@ def _format_reference_context(ref: dict, topic: str) -> str:
         line += f" | TDP: {pwr.get('tdp_watts', '?')}W"
         line += f" | Arch: {gpu.get('architecture', '?')}"
 
-        if price.get("mid"):
-            line += f" | Used: ${price['low']}-${price['mid']}-${price['high']}"
+        if price.get("low") and price.get("high"):
+            if price.get("mid"):
+                line += f" | Used: ${price['low']}\u2013${price['high']} (typical ~${price['mid']})"
+            else:
+                line += f" | Used: ${price['low']}\u2013${price['high']}"
             line += f" ({gpu.get('used_price_updated', '?')})"
         elif gpu.get("msrp_usd"):
             line += f" | MSRP: ${gpu['msrp_usd']}"
