@@ -1,6 +1,0 @@
-- NVIDIA RTX 4060 Ti 16GB (Source: https://techtactician.com/best-budget-gpus-for-local-ai-workflows/)
-- NVIDIA RTX 3050, RTX 3060, RX 6600 compared for AI performance (Source: https://boundbyflame.com/best-budget-graphics-cards-gpus-for-ai/)
-- Most AI frameworks optimized for NVIDIA hardware (Source: https://www.geeky-gadgets.com/best-gpus-local-ai/)
-- RTX 4090, RTX 4080, RTX 3090 recommended for local AI model workloads (Source: https://gist.github.com/MuhammadQuran17/1b8a2aecb9645d5c4ec9b9c3f2ad29bb)
-- NVIDIA GPUs with large VRAM ideal for local AI tasks (Source: https://www.reddit.com/r/LocalLLaMA/comments/1jmg7td/best_models_to_run_with_8gb_vram_16gb_ram/)
-- Dedicated GPUs, especially from NVIDIA, significantly accelerate LLM performance (Source: https://thegabmeister.com/p/run-open-llm-local/)

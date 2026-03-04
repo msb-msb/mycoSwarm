@@ -1,0 +1,1 @@
+The context provided includes information about GPU benchmarks and pricing in 2026, focusing on Nvidia, AMD, and Intel graphics cards. It mentions the impact of the AI data center boom on GPU prices and provides a ranking of GPUs based on performance. The article also highlights the best deals and lowest prices for various graphics cards during the AI-driven pricing crisis.

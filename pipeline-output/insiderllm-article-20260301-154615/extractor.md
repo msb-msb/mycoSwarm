@@ -1,5 +1,0 @@
-- NVIDIA RTX 4060 Ti 16GB listed as an option under $1000 (Source: [3])
-- NVIDIA RTX 5060 Ti 16GB tested for AI performance, showing significant improvements over previous models (Source: [19])
-- Procyon AI tests indicate RTX 5060 Ti 16GB outperforms AMD's RX 9070 in AI Vision (Source: [19])
-- MLPerf Client 0.5 test suite shows RTX 5060 Ti 16GB delivers 40% higher tokens per second compared to RTX 4060 Ti 16GB (Source: [19])
-- SPECworkstation 4.0 GPU inference test results highlight RTX 5060 Ti 16GB's performance edge over older models (Source: [19])

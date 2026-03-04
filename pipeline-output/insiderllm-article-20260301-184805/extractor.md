@@ -1,2 +1,0 @@
-- NVIDIA RTX 5060 Ti 16GB is mentioned as a budget option (Source: [digitalupbeat.com](https://digitalupbeat.com/best-graphics-card-for-gaming/))
-- AMD RX 9070 (16GB) is noted as an alternative in the budget segment (Source: [dockuniverse.com](https:// dockuniverse.com/best-budget-4k-gpu/))

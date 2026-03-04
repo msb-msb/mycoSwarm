@@ -1,8 +1,0 @@
-- Best budget GPU for Ryzen 5 5500: Gigabyte Windforce RTX 4060 OC (Source: https://bestmotherboardzone.com/best-gpus-for-ryzen-5-5500/)
-- VRAM: 8GB (Source: https://bestmotherboardzone.com/best-gpus-for-ryzen-5-5500/)
-- TDP: 115W (Source: https://bestmotherboardzone.com/best-gpus-for-ryzen-5-5500/)
-- RTX 2060 with 12GB VRAM, clock speed 1365 MHz – 1680 MHz, TDP 160W (Source: https://gamersdiscussionhub.com/best-budget-gpu-for-stable-diffusion/)
-- RX 6600 XT with 8GB VRAM, clock speed 1968 MHz – 2359 MHz, TDP 160W (Source: https://gamersdiscussionhub.com/best-budget-gpu-for-stable-diffusion/)
-- RX 6650 XT with 8GB VRAM, clock speed 2055 MHz – 2410 MHz, TDP 176W (Source: https://gamersdiscussionhub.com/best-budget-gpu-for-stable-diffusion/)
-- RTX 3060 with 12GB VRAM, clock speed 1320 MHz – 1777 MHz, TDP 170W (Source: https://gamersdiscussionhub.com/best-budget-gpu-for-stable-diffusion/)
-- RTX 3060 Ti with 8GB VRAM, clock speed 1410 MHz – 1665 MHz, TDP 200W (Source: https://gamersdiscussionhub.com/best-budget-gpu-for-stable-diffusion/)
