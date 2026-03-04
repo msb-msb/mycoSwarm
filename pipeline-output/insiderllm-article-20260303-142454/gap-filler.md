@@ -1,0 +1,4 @@
+- **Performance benchmarks across models and quantization levels**: Not found in search results. (Source: N/A)
+- **Power consumption during LLM inference**: Not found in search results. (Source: N/A)
+- **Competitive analysis for budget local AI GPUs**: Not found in search results. (Source: N/A)
+- **CPU offloading performance with different RAM configurations**: Not found in search results. (Source: N/A)

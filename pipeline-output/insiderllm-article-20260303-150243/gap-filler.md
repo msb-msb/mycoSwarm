@@ -1,0 +1,9 @@
+- **RTX 5060 Ti bandwidth:** 448 GB/s (Source: https://www.techpowerup.com/gpu-specs/geforce-rtx-5060-ti-8-gb.c4246)
+- **RTX 5060 Ti benchmarks:** NOT FOUND IN SEARCH RESULTS
+- **RX 9070 benchmarks:** NOT FOUND IN SEARCH RESULTS
+- **AMD ROCm performance data:** NOT FOUND IN SEARCH RESULTS
+- **Power consumption details:** ASUS recommends 850W-1200W PSUs for high-end builds (Source: https://www.tomshardware.com/news/asus-rx-7900-xtx-psu-requirements-same-as-rtx-4090)
+- **Cooling requirements:** Custom RTX 3090 Ti uses a quad-slot cooler (Source: https://www.tomshardware.com/news/custom-geforce-rtx-3090-ti-features-quad-slot-cooler)
+- **Pricing data:** Average GPU prices tracked over 18 months (Source: https://pcpartpicker.com/trends/price/video-card/)
+- **Motherboard/RAM compatibility:** NOT FOUND IN SEARCH RESULTS
+- **Quantization methods comparison:** NOT FOUND IN SEARCH RESULTS

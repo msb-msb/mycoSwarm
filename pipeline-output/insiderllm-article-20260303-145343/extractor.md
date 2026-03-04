@@ -1,0 +1,10 @@
+- NVIDIA RTX 3090 (Used): $900-$1125 (Source: InsiderLLM)
+- NVIDIA RTX 3060 (Used): $170-$380 (Source: InsiderLLM)
+- NVIDIA RTX 5060 Ti 16GB (Used): $380-$480 (Source: InsiderLLM)
+- NVIDIA RTX 4060 Ti 16GB (Used): $430-$550 (Source: InsiderLLM)
+- AMD RX 9070 (Used): $400-$550 (Source: InsiderLLM)
+- NVIDIA RTX 3090 (VRAM): 24GB (Source: InsiderLLM)
+- NVIDIA RTX 3060 (VRAM): 12GB (Source: InsiderLLM)
+- NVIDIA RTX 5060 Ti 16GB (VRAM): 16GB (Source: InsiderLLM)
+- NVIDIA RTX 4060 Ti 16GB (VRAM): 16GB (Source: InsiderLLM)
+- AMD RX 9070 (VRAM): 16GB

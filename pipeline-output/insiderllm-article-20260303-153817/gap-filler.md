@@ -1,0 +1,6 @@
+- **RTX 5060 Ti 16GB Bandwidth**: 672 GB/s (Source: https://www.tomshardware.com/pc-components/gpus/amd-radeon-rx-7700-xt-rx-6750-xt-and-rx-6700-xt-gpu-faceoff-battle-of-the-current-and-previous-gen-12gb-graphics-cards)
+- **RTX 5060 TDP**: 145W (Source: https://www.techpowerup.com/gpu-specs/geforce-rtx-5060.c4219)
+- **AMD Radeon RX 7700 XT benchmarks vs RTX 4060 Ti**: RX 7700 XT leads by 20% at 1080p in rasterized games, 33% in ray tracing (Source: https://www.tomshardware.com/pc-components/gpus/amd-radeon-rx-7700-xt-rx-6750-xt-and-rx-6700-xt-gpu-faceoff-battle-of-the-current-and-previous-gen-12gb-graphics-cards)
+- **AMD Radeon RX 7900 GRE benchmarks**: NOT FOUND IN SEARCH RESULTS
+- **Comparative pricing data**: RTX 4060 Ti (used: $380-$480), RX 7700 XT (used: $300-$350) (Source: https://www.tomshardware.com/pc-components/gpus/amd-radeon-rx-7700-xt-rx-6750-xt-and-rx-6700-xt-gpu-faceoff-battle-of-the-current-and-previous-gen-12gb-graphics-cards)
+- **Power consumption data**: RTX 5060 Ti (250W), RX 7700 XT (260W) (Source: https://www.tomshardware.com/pc-components/gpus/amd-radeon-rx-7700-xt-rx-6750-xt-and-rx-6700-xt-gpu-faceoff-battle-of-the-current-and-previous-gen-12gb-graphics-cards)
