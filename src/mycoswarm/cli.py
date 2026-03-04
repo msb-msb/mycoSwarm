@@ -3426,17 +3426,142 @@ def cmd_sleep(args):
     print(f"  📋 Wake journal written to ~/.config/mycoswarm/sleep-logs/")
 
 
+_DRAFTS_DIR = os.path.join("pipeline-output", "drafts")
+_PUBLISHED_DIR = os.path.join("pipeline-output", "published")
+
+
+def _pipeline_list():
+    """List draft pipeline outputs with score and word count."""
+    import re as _re
+
+    if not os.path.isdir(_DRAFTS_DIR):
+        print("No drafts found.")
+        return
+
+    entries = []
+    for name in sorted(os.listdir(_DRAFTS_DIR), reverse=True):
+        ws = os.path.join(_DRAFTS_DIR, name)
+        if not os.path.isdir(ws):
+            continue
+
+        # Read final output (prefer seo-optimizer, fall back to editor)
+        final = None
+        for candidate in ("seo-optimizer.md", "editor.md", "writer.md"):
+            p = os.path.join(ws, candidate)
+            if os.path.isfile(p):
+                with open(p) as f:
+                    final = f.read()
+                break
+
+        # Extract score from editor.md (may differ from final output file)
+        score = "—"
+        editor_path = os.path.join(ws, "editor.md")
+        if os.path.isfile(editor_path):
+            with open(editor_path) as f:
+                editor_text = f.read()
+            m = _re.search(r"Overall:\s*(\d+/\d+)", editor_text)
+            if m:
+                score = m.group(1)
+
+        # Word count of final output
+        words = len(final.split()) if final else 0
+
+        # Extract topic from frontmatter or filename
+        topic = "—"
+        if final:
+            m = _re.search(r"^title:\s*(.+)", final, _re.MULTILINE)
+            if m:
+                topic = m.group(1).strip().strip('"\'')
+        if topic == "—":
+            topic = name
+
+        entries.append((name, topic, score, words))
+
+    if not entries:
+        print("No drafts found.")
+        return
+
+    print(f"📋 Drafts ({len(entries)}):\n")
+    for name, topic, score, words in entries:
+        print(f"  {name}")
+        if topic != name:
+            print(f"    {topic}")
+        print(f"    Score: {score} | {words} words")
+        print()
+
+
+def _pipeline_approve(workspace_name: str):
+    """Move a draft to published."""
+    src = os.path.join(_DRAFTS_DIR, workspace_name)
+    if not os.path.isdir(src):
+        print(f"❌ Draft not found: {src}")
+        sys.exit(1)
+
+    os.makedirs(_PUBLISHED_DIR, exist_ok=True)
+    dst = os.path.join(_PUBLISHED_DIR, workspace_name)
+    os.rename(src, dst)
+    print(f"✅ Approved: {workspace_name}")
+    print(f"   Moved to: {dst}")
+
+
+def _pipeline_reject(workspace_name: str):
+    """Delete a draft after confirmation."""
+    import shutil
+
+    src = os.path.join(_DRAFTS_DIR, workspace_name)
+    if not os.path.isdir(src):
+        print(f"❌ Draft not found: {src}")
+        sys.exit(1)
+
+    files = os.listdir(src)
+    print(f"⚠️  About to delete: {src} ({len(files)} files)")
+    confirm = input("   Type 'yes' to confirm: ").strip()
+    if confirm != "yes":
+        print("   Cancelled.")
+        return
+
+    shutil.rmtree(src)
+    print(f"🗑️  Deleted: {workspace_name}")
+
+
 def cmd_pipeline(args):
     """Run a multi-step pipeline from a YAML definition."""
     from datetime import datetime
     from mycoswarm.pipeline import load_pipeline, run_pipeline
 
     action = args.pipeline_action
+
+    if action == "list":
+        _pipeline_list()
+        return
+
+    if action == "approve":
+        name = args.yaml_path
+        if not name:
+            print("❌ Usage: mycoswarm pipeline approve <workspace-name>")
+            sys.exit(1)
+        _pipeline_approve(name)
+        return
+
+    if action == "reject":
+        name = args.yaml_path
+        if not name:
+            print("❌ Usage: mycoswarm pipeline reject <workspace-name>")
+            sys.exit(1)
+        _pipeline_reject(name)
+        return
+
     if action != "run":
         print(f"❌ Unknown pipeline action: {action}")
         sys.exit(1)
 
     yaml_path = args.yaml_path
+    if not yaml_path:
+        print("❌ 'run' requires a pipeline YAML path")
+        sys.exit(1)
+    if not args.topic:
+        print("❌ 'run' requires --topic")
+        sys.exit(1)
     if not os.path.isfile(yaml_path):
         print(f"❌ Pipeline file not found: {yaml_path}")
         sys.exit(1)
@@ -3449,7 +3574,7 @@ def cmd_pipeline(args):
     else:
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         workspace = os.path.join(
-            "pipeline-output", f"{pipeline['name']}-{timestamp}"
+            "pipeline-output", "drafts", f"{pipeline['name']}-{timestamp}"
         )
 
     result = run_pipeline(
@@ -3671,20 +3796,22 @@ def main():
 
     # pipeline
     pipeline_parser = subparsers.add_parser(
-        "pipeline", help="Run a multi-step pipeline from YAML"
+        "pipeline", help="Run, list, approve, or reject pipeline outputs"
     )
     pipeline_parser.add_argument(
-        "pipeline_action", choices=["run"], help="Pipeline action"
+        "pipeline_action", choices=["run", "list", "approve", "reject"],
+        help="Pipeline action"
     )
     pipeline_parser.add_argument(
-        "yaml_path", help="Path to pipeline YAML file"
+        "yaml_path", nargs="?", default=None,
+        help="Path to pipeline YAML (for run) or workspace name (for approve/reject)"
     )
     pipeline_parser.add_argument(
-        "--topic", nargs="+", required=True, help="Topic string for the pipeline"
+        "--topic", nargs="+", default=None, help="Topic string for the pipeline"
     )
     pipeline_parser.add_argument(
         "--workspace", type=str, default=None,
-        help="Output directory (default: ./pipeline-output/<name>-<timestamp>/)"
+        help="Output directory (default: ./pipeline-output/drafts/<name>-<timestamp>/)"
     )
     pipeline_parser.add_argument(
         "--port", type=int, default=7890, help="Local daemon port"
