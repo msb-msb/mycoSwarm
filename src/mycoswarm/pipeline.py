@@ -1488,7 +1488,7 @@ def run_pipeline(
         # --- Run inference ---
         # Disable thinking for extraction steps — deepseek-r1 burns 3x tokens
         # on chain-of-thought that gets stripped anyway (35 tok/s → 4.9 effective)
-        step_think = False if step_name == "extractor" else None
+        step_think = False if step_name in ("extractor", "gap-filler") else None
         print(f"   🧠 Generating on {node_host} ({model})...", end="", flush=True)
         output_text, metrics = _run_inference(
             system_prompt=step["system_prompt"],
