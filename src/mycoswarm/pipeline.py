@@ -596,6 +596,7 @@ def _run_inference(
     daemon_url: str | None,
     timeout: int = 300,
     think: bool | None = None,
+    num_ctx: int = 8192,
 ) -> tuple[str, dict]:
     """Run a single inference call. Returns (output_text, metrics).
 
@@ -613,7 +614,7 @@ def _run_inference(
                 "model": model,
                 "messages": messages,
                 "temperature": 0.7,
-                "num_ctx": 16384,
+                "num_ctx": num_ctx,
                 "max_tokens": 4096,
         }
         if think is not None:
@@ -1489,6 +1490,8 @@ def run_pipeline(
         # Disable thinking for extraction steps — deepseek-r1 burns 3x tokens
         # on chain-of-thought that gets stripped anyway (35 tok/s → 4.9 effective)
         step_think = False if step_name in ("extractor", "gap-filler") else None
+        # Extraction steps use 8192 ctx to fit in 12GB VRAM; writing/editing get 16384
+        step_ctx = 8192 if step_name in ("extractor", "gap-filler") else 16384
         print(f"   🧠 Generating on {node_host} ({model})...", end="", flush=True)
         output_text, metrics = _run_inference(
             system_prompt=step["system_prompt"],
@@ -1496,6 +1499,7 @@ def run_pipeline(
             model=model,
             daemon_url=daemon_url,
             think=step_think,
+            num_ctx=step_ctx,
         )
 
         # Clean garbage tokens
