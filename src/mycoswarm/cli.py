@@ -3583,6 +3583,7 @@ def cmd_pipeline(args):
         workspace_dir=workspace,
         port=args.port,
         debug=args.debug,
+        context=args.context,
     )
     if result is None:
         sys.exit(1)
@@ -3819,6 +3820,10 @@ def main():
     pipeline_parser.add_argument(
         "--debug", action="store_true", default=False,
         help="Show debug output"
+    )
+    pipeline_parser.add_argument(
+        "--context", type=str, default="",
+        help="Insider context to inject into writer/editor prompts"
     )
     pipeline_parser.set_defaults(func=cmd_pipeline)
 

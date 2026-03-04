@@ -1,5 +1,6 @@
 name: insiderllm-article
 description: Research, write, edit, and optimize an InsiderLLM article
+context: ""
 
 steps:
   - name: extractor

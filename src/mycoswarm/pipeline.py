@@ -1249,6 +1249,7 @@ def run_pipeline(
     workspace_dir: str,
     port: int = 7890,
     debug: bool = False,
+    context: str = "",
 ) -> str | None:
     """Execute a pipeline sequentially. Returns path to final output file.
 
@@ -1258,6 +1259,10 @@ def run_pipeline(
     to workspace_dir/{step_name}.md.
     """
     os.makedirs(workspace_dir, exist_ok=True)
+
+    # Resolve context: CLI override > YAML value > empty
+    if not context:
+        context = pipeline.get("context", "")
 
     steps = pipeline["steps"]
     total = len(steps)
@@ -1270,6 +1275,8 @@ def run_pipeline(
     print(f"🍄 Pipeline: {pipeline['name']}")
     print(f"   Mode: {mode} | Steps: {total}")
     print(f"   Topic: {topic}")
+    if context:
+        print(f"   Context: {len(context)} chars injected")
     print(f"   Workspace: {workspace_dir}")
     if gpu_ref:
         ref_gpus = len(gpu_ref.get("gpus", {}))
@@ -1486,6 +1493,18 @@ def run_pipeline(
         if debug:
             print(f"   🐛 input: {input_words} words")
 
+        # --- Inject author context into writer/editor system prompts ---
+        system_prompt = step["system_prompt"]
+        if context and step_name in ("writer", "editor"):
+            system_prompt += (
+                "\n\n## Insider Context (from the author)\n"
+                + context
+                + "\n\nUse this first-person context to add depth and authority. "
+                "Weave it into the narrative naturally — don't just quote it."
+            )
+            if debug:
+                print(f"   🐛 injected author context into {step_name} prompt")
+
         # --- Run inference ---
         # Disable thinking for extraction steps — deepseek-r1 burns 3x tokens
         # on chain-of-thought that gets stripped anyway (35 tok/s → 4.9 effective)
@@ -1494,7 +1513,7 @@ def run_pipeline(
         step_ctx = 8192 if step_name in ("extractor", "gap-filler") else 16384
         print(f"   🧠 Generating on {node_host} ({model})...", end="", flush=True)
         output_text, metrics = _run_inference(
-            system_prompt=step["system_prompt"],
+            system_prompt=system_prompt,
             user_content=user_content,
             model=model,
             daemon_url=daemon_url,
