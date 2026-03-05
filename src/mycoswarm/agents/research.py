@@ -308,7 +308,9 @@ class ResearchAgent:
                             "web_search tool NOW to find current data about "
                             f"'{topic}'. Search for specific facts, benchmarks, "
                             "compatibility details, and recent developments. "
-                            "Do not write from memory — use the tools."
+                            "Do not write from memory — use the tools. "
+                            "After searching, use web_fetch to read the most "
+                            "relevant pages for detailed data."
                         ),
                     })
                     continue
@@ -358,14 +360,16 @@ class ResearchAgent:
                 messages.append({
                     "role": "user",
                     "content": (
-                        "Stop and assess your research progress. Call evaluate_depth now. "
-                        "Rate depth 1-10 where:\n"
-                        "1-3: Surface level, could find on any blog\n"
-                        "4-6: Good facts but missing why/analysis\n"
-                        "7-8: Deep, has specifics others don't cover\n"
-                        "9-10: Expert level, original synthesis\n\n"
-                        "Set stop=true if depth >= 7 or you believe further "
-                        "searching won't improve quality."
+                        "Call evaluate_depth now to assess your research.\n\n"
+                        "Based on what you've found so far:\n"
+                        "- Did you find specific version numbers? (ROCm version, driver version, etc.)\n"
+                        "- Did you find benchmark numbers from real tests?\n"
+                        "- Did you find compatibility lists or known issues?\n"
+                        "- Did you find information that ISN'T in the reference data?\n\n"
+                        "If you found 3+ of these: depth=7, set stop=true\n"
+                        "If you found 2: depth=5, set stop=false\n"
+                        "If you found 0-1: depth=3, set stop=false\n\n"
+                        "Call evaluate_depth now with your assessment."
                     ),
                 })
                 try:
@@ -373,6 +377,11 @@ class ResearchAgent:
                     eval_msg = eval_response.get("message", {})
                     eval_content = eval_msg.get("content", "")
                     eval_tool_calls = eval_msg.get("tool_calls", [])
+
+                    if debug:
+                        has_calls = "yes" if eval_tool_calls else "no"
+                        text_len = len(eval_content) if eval_content else 0
+                        self._log(f"forced eval response: tool_calls={has_calls}, text={text_len} chars")
 
                     # Append assistant message
                     eval_assistant = {"role": eval_msg.get("role", "assistant")}
@@ -404,6 +413,9 @@ class ResearchAgent:
                     else:
                         # Model refused to call tool — assume surface level
                         self._log("⚠️ forced eval produced no tool call — defaulting depth=3")
+                        if debug and eval_content:
+                            preview = eval_content[:200].replace("\n", " ")
+                            self._log(f"  eval text: {preview}")
                         last_depth = 3
                 except Exception as e:
                     self._log(f"⚠️ forced eval failed: {e} — defaulting depth=3")
@@ -479,16 +491,21 @@ class ResearchAgent:
         """Build the system prompt for the research agent."""
         return f"""You are a research analyst for InsiderLLM.com, a site focused on local AI hardware and inference.
 
-Your task is to research a topic thoroughly using web search and page fetching tools. You work in rounds:
+Your task is to research a topic thoroughly using web search and page fetching tools.
 
-1. **Plan**: Identify what data you need (prices, benchmarks, specs, expert opinions)
-2. **Search**: Use web_search to find relevant sources
-3. **Fetch**: Use web_fetch on the most promising URLs to get full content
-4. **Evaluate**: Use evaluate_depth to assess your research completeness
+## WORKFLOW for each round (follow this EXACTLY):
+1. Call web_search with 1-3 targeted queries
+2. Review the search results (titles, URLs, snippets)
+3. Call web_fetch on the 2-3 most promising URLs to read the full page content
+4. After fetching, call evaluate_depth to assess completeness
+
+You MUST call web_fetch after searching. Search results only give you snippets —
+you need full page content to find specific data, version numbers, compatibility
+lists, and benchmarks that aren't in snippets.
 
 ## Tools Available
 - `web_search(query)` — search the web, returns titles + URLs + snippets
-- `web_fetch(url)` — fetch full page text from a URL
+- `web_fetch(url)` — fetch full page text from a URL (MUST use after searching)
 - `evaluate_depth(depth, strong_claims, weak_areas, stop)` — self-evaluate and decide whether to continue
 
 ## Depth Rubric
@@ -502,6 +519,8 @@ Your task is to research a topic thoroughly using web search and page fetching t
 - IMPORTANT: You MUST use web_search on your very first turn. Do NOT write from memory.
   Your job is to find NEW information from the web. Start by searching for the most
   important aspects of the topic.
+- IMPORTANT: After EVERY web_search, you MUST call web_fetch on at least 2 result URLs.
+  Snippets are not enough — fetch the full pages.
 - Use /think before planning your search strategy
 - Call evaluate_depth after each search round
 - Aim for depth >= 7 before stopping
@@ -509,7 +528,6 @@ Your task is to research a topic thoroughly using web search and page fetching t
 - Search for CURRENT data (2025-2026 prices, latest benchmarks)
 - Do NOT make up data — only report what you find in search results
 - If a search returns no results, try different query terms
-- Fetch pages that look like they have detailed specs, benchmarks, or pricing
 
 ## Mandatory Coverage
 For any GPU/hardware topic, you MUST search for:

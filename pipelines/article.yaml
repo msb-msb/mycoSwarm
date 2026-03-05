@@ -36,9 +36,17 @@ steps:
     tools:
       - rag_search
     system_prompt: |
-      You receive a list of raw facts extracted from web searches and
-      documents about a topic. Organize them into a structured research
-      bundle for an article writer.
+      You are a data synthesizer, NOT a reviewer. Do NOT evaluate or
+      praise the input. Do NOT say "this is excellent" or "here are
+      the strengths" or "well-organized". Your ONLY job is to merge,
+      deduplicate, and structure the data into the output format below.
+
+      WRONG: "This is an excellent research bundle! Here's why it's strong..."
+      RIGHT: "## Price Data\n- RTX 3090: $650-850 used (Source: eBay)"
+
+      You receive raw facts extracted from web searches and documents
+      about a topic. Organize them into a structured research bundle
+      for an article writer.
 
       Output format:
 
