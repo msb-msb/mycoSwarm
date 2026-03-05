@@ -296,8 +296,22 @@ class ResearchAgent:
 
             # Execute tool calls
             if not tool_calls:
-                self._log("no tool calls — ending loop")
-                break
+                if round_num >= 3:
+                    self._log("no tool calls in late round — ending loop")
+                    break
+                else:
+                    self._log("no tool calls — nudging to search")
+                    messages.append({
+                        "role": "user",
+                        "content": (
+                            "You haven't searched for anything yet. Use the "
+                            "web_search tool NOW to find current data about "
+                            f"'{topic}'. Search for specific facts, benchmarks, "
+                            "compatibility details, and recent developments. "
+                            "Do not write from memory — use the tools."
+                        ),
+                    })
+                    continue
 
             should_stop = False
             depth_called = False
@@ -339,8 +353,8 @@ class ResearchAgent:
                         self._log(f"stopping: depth={depth}, stop={stop}")
                         should_stop = True
 
-            # Force evaluate_depth if the model didn't call it
-            if not depth_called and not should_stop:
+            # Force evaluate_depth if the model didn't call it (only if research happened)
+            if not depth_called and not should_stop and (search_count > 0 or fetch_count > 0):
                 messages.append({
                     "role": "user",
                     "content": (
@@ -485,6 +499,9 @@ Your task is to research a topic thoroughly using web search and page fetching t
 - 10: Expert-level with unique insights, historical context, forward-looking analysis
 
 ## Rules
+- IMPORTANT: You MUST use web_search on your very first turn. Do NOT write from memory.
+  Your job is to find NEW information from the web. Start by searching for the most
+  important aspects of the topic.
 - Use /think before planning your search strategy
 - Call evaluate_depth after each search round
 - Aim for depth >= 7 before stopping
