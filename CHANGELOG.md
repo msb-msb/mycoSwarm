@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.3.5 — Agentic Research Agent (2026-03-04)
+* ResearchAgent class with multi-turn Ollama native tool calling (qwen3.5:9b)
+* Three agent tools: web_search (DDG + Perplexity fallback), web_fetch (full page extraction), evaluate_depth (self-assessment)
+* Forced fetch after searches — model can't interleave search→fetch in one turn, so agent injects a second inference with only web_fetch available
+* Forced evaluate_depth after each round with concrete depth criteria
+* Early-round nudging — if model plans/thinks without searching, nudged to use tools instead of exiting
+* Context safety valve — summarizes accumulated findings when messages exceed ~20k words
+* Pipeline reduced from 7 steps to 6: research replaces extractor + gap-filler
+* Synthesizer anti-review guardrail (gentle version — "output data directly, no commentary")
+* Context injection for writer and editor system prompts (author context)
+* 6-axis editor scoring (/60) with depth hard cap (depth < 5 caps overall at 35)
+* Draft/published staging for pipeline output
+* Research task type prefers qwen3.5:9b for native tool calling support
+* fetch_page() extracted to module-level in pipeline.py for reuse
+* Debug output: per-round search/fetch counts, depth progression, forced eval diagnostics
+* 578 tests passing
+
 ## v0.3.2 — Parallel Retrieval Pipeline & Web Grounding (2026-02-27)
 * Phase 37b: Fan-out web search — generate_search_variants() produces keyword + recency variants, _do_search_fanout() dispatches in parallel across light nodes with URL dedup and top-3 page fetch
 * Phase 37c: Parallel retrieval pipeline — ThreadPoolExecutor runs web/RAG/procedure searches concurrently when daemon is up, single "⚡ Gathering context..." progress line
