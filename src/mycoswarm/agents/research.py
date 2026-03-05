@@ -108,6 +108,9 @@ MAX_ROUNDS = 5
 MIN_DEPTH = 7
 CONTEXT_WORD_LIMIT = 20000
 
+# evaluate_depth tool only — used to force evaluation when model skips it
+EVALUATE_DEPTH_TOOL = [TOOLS[2]]
+
 
 def _word_count(text: str) -> int:
     return len(text.split())
@@ -253,7 +256,6 @@ class ResearchAgent:
 
         for round_num in range(1, MAX_ROUNDS + 1):
             rounds = round_num
-            self._log(f"round {round_num}/{MAX_ROUNDS}")
 
             # Context safety valve
             if self._total_words(messages) > CONTEXT_WORD_LIMIT:
@@ -298,6 +300,10 @@ class ResearchAgent:
                 break
 
             should_stop = False
+            depth_called = False
+            search_count = 0
+            fetch_count = 0
+
             for tc in tool_calls:
                 func = tc.get("function", {})
                 name = func.get("name", "")
@@ -317,14 +323,83 @@ class ResearchAgent:
                     "content": result,
                 })
 
+                # Track per-round stats
+                if name == "web_search":
+                    search_count += 1
+                elif name == "web_fetch":
+                    fetch_count += 1
+
                 # Check if evaluate_depth says stop
                 if name == "evaluate_depth":
+                    depth_called = True
                     depth = args.get("depth", 0)
                     last_depth = depth
                     stop = args.get("stop", False)
                     if depth >= MIN_DEPTH or stop:
                         self._log(f"stopping: depth={depth}, stop={stop}")
                         should_stop = True
+
+            # Force evaluate_depth if the model didn't call it
+            if not depth_called and not should_stop:
+                messages.append({
+                    "role": "user",
+                    "content": (
+                        "Stop and assess your research progress. Call evaluate_depth now. "
+                        "Rate depth 1-10 where:\n"
+                        "1-3: Surface level, could find on any blog\n"
+                        "4-6: Good facts but missing why/analysis\n"
+                        "7-8: Deep, has specifics others don't cover\n"
+                        "9-10: Expert level, original synthesis\n\n"
+                        "Set stop=true if depth >= 7 or you believe further "
+                        "searching won't improve quality."
+                    ),
+                })
+                try:
+                    eval_response = self._chat(messages, tools=EVALUATE_DEPTH_TOOL)
+                    eval_msg = eval_response.get("message", {})
+                    eval_content = eval_msg.get("content", "")
+                    eval_tool_calls = eval_msg.get("tool_calls", [])
+
+                    # Append assistant message
+                    eval_assistant = {"role": eval_msg.get("role", "assistant")}
+                    if eval_content:
+                        eval_assistant["content"] = eval_content
+                    if eval_tool_calls:
+                        eval_assistant["tool_calls"] = eval_tool_calls
+                    messages.append(eval_assistant)
+
+                    if eval_tool_calls:
+                        for etc in eval_tool_calls:
+                            efunc = etc.get("function", {})
+                            ename = efunc.get("name", "")
+                            eargs = efunc.get("arguments", {})
+                            if isinstance(eargs, str):
+                                try:
+                                    eargs = json.loads(eargs)
+                                except json.JSONDecodeError:
+                                    eargs = {}
+                            if ename == "evaluate_depth":
+                                result = self._execute_tool(ename, eargs, debug=debug)
+                                messages.append({"role": "tool", "content": result})
+                                depth = eargs.get("depth", 0)
+                                last_depth = depth
+                                stop = eargs.get("stop", False)
+                                if depth >= MIN_DEPTH or stop:
+                                    self._log(f"stopping: depth={depth}, stop={stop}")
+                                    should_stop = True
+                    else:
+                        # Model refused to call tool — assume surface level
+                        self._log("⚠️ forced eval produced no tool call — defaulting depth=3")
+                        last_depth = 3
+                except Exception as e:
+                    self._log(f"⚠️ forced eval failed: {e} — defaulting depth=3")
+                    last_depth = 3
+
+            self._log(
+                f"round {round_num}/{MAX_ROUNDS} → "
+                f"searched {search_count}, fetched {fetch_count} → "
+                f"depth: {last_depth}/10"
+            )
 
             if should_stop:
                 break
