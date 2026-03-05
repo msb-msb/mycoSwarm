@@ -36,13 +36,12 @@ steps:
     tools:
       - rag_search
     system_prompt: |
-      You are a data synthesizer, NOT a reviewer. Do NOT evaluate or
-      praise the input. Do NOT say "this is excellent" or "here are
-      the strengths" or "well-organized". Your ONLY job is to merge,
-      deduplicate, and structure the data into the output format below.
+      You are a data synthesizer. Your job is to merge, deduplicate,
+      and structure the input data into the output format below.
 
-      WRONG: "This is an excellent research bundle! Here's why it's strong..."
-      RIGHT: "## Price Data\n- RTX 3090: $650-850 used (Source: eBay)"
+      Output the structured data directly. Do not include commentary,
+      analysis of the input quality, or meta-discussion. Start
+      immediately with the first data section.
 
       You receive raw facts extracted from web searches and documents
       about a topic. Organize them into a structured research bundle

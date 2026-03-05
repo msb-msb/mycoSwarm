@@ -108,8 +108,9 @@ MAX_ROUNDS = 5
 MIN_DEPTH = 7
 CONTEXT_WORD_LIMIT = 20000
 
-# evaluate_depth tool only — used to force evaluation when model skips it
-EVALUATE_DEPTH_TOOL = [TOOLS[2]]
+# Single-tool subsets — used to force specific tool calls
+WEB_FETCH_TOOL = [TOOLS[1]]    # just web_fetch
+EVALUATE_DEPTH_TOOL = [TOOLS[2]]  # just evaluate_depth
 
 
 def _word_count(text: str) -> int:
@@ -210,6 +211,19 @@ class ResearchAgent:
             })
 
         return f"Unknown tool: {name}"
+
+    def _extract_urls_from_messages(self, messages: list[dict], last_n: int = 3) -> list[str]:
+        """Extract URLs from the last N tool response messages."""
+        urls = []
+        tool_msgs = [m for m in messages if m.get("role") == "tool"]
+        for msg in tool_msgs[-last_n:]:
+            content = msg.get("content", "")
+            for line in content.split("\n"):
+                if "URL: " in line:
+                    url = line.split("URL: ", 1)[1].strip()
+                    if url.startswith("http"):
+                        urls.append(url)
+        return urls[:5]
 
     def _total_words(self, messages: list[dict]) -> int:
         """Count total words across all messages."""
@@ -354,6 +368,52 @@ class ResearchAgent:
                     if depth >= MIN_DEPTH or stop:
                         self._log(f"stopping: depth={depth}, stop={stop}")
                         should_stop = True
+
+            # Force web_fetch if we searched but didn't fetch
+            if search_count > 0 and fetch_count == 0:
+                urls_found = self._extract_urls_from_messages(messages, last_n=search_count)
+                if urls_found:
+                    self._log(f"forcing fetch — {len(urls_found)} URLs from search")
+                    messages.append({
+                        "role": "user",
+                        "content": (
+                            "You searched but didn't read any pages. "
+                            "Call web_fetch on these promising URLs to "
+                            "get detailed data:\n"
+                            + "\n".join(f"- {url}" for url in urls_found[:3])
+                        ),
+                    })
+                    try:
+                        fetch_response = self._chat(messages, tools=WEB_FETCH_TOOL)
+                        fetch_msg = fetch_response.get("message", {})
+                        fetch_content = fetch_msg.get("content", "")
+                        fetch_calls = fetch_msg.get("tool_calls", [])
+
+                        # Append assistant message
+                        fetch_assistant = {"role": fetch_msg.get("role", "assistant")}
+                        if fetch_content:
+                            fetch_assistant["content"] = fetch_content
+                        if fetch_calls:
+                            fetch_assistant["tool_calls"] = fetch_calls
+                        messages.append(fetch_assistant)
+
+                        for fc in fetch_calls:
+                            func = fc.get("function", {})
+                            fname = func.get("name", "")
+                            fargs = func.get("arguments", {})
+                            if isinstance(fargs, str):
+                                try:
+                                    fargs = json.loads(fargs)
+                                except json.JSONDecodeError:
+                                    fargs = {}
+                            result = self._execute_tool(fname, fargs, debug=debug)
+                            messages.append({"role": "tool", "content": result})
+                            fetch_count += 1
+
+                        if not fetch_calls:
+                            self._log("⚠️ forced fetch produced no tool calls")
+                    except Exception as e:
+                        self._log(f"⚠️ forced fetch failed: {e}")
 
             # Force evaluate_depth if the model didn't call it (only if research happened)
             if not depth_called and not should_stop and (search_count > 0 or fetch_count > 0):
