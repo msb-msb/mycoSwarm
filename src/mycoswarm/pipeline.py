@@ -347,6 +347,31 @@ def _perplexity_search(query: str, debug: bool = False) -> list[dict]:
         return []
 
 
+def fetch_page(url: str) -> str | None:
+    """Fetch a URL and extract text content (up to 2000 words).
+
+    Strips scripts, styles, and HTML tags. Returns formatted string
+    with source URL prefix, or None on failure.
+    """
+    try:
+        with httpx.Client(timeout=10, follow_redirects=True) as client:
+            resp = client.get(url)
+            if resp.status_code != 200:
+                return None
+            if "text/html" not in resp.headers.get("content-type", ""):
+                return None
+            text = re.sub(r'<script[^>]*>.*?</script>', '', resp.text, flags=re.DOTALL)
+            text = re.sub(r'<style[^>]*>.*?</style>', '', text, flags=re.DOTALL)
+            text = re.sub(r'<[^>]+>', ' ', text)
+            text = re.sub(r'\s+', ' ', text).strip()
+            words = text.split()
+            if len(words) > 2000:
+                text = " ".join(words[:2000]) + " [truncated]"
+            return f"[FULL PAGE: {url}]\n{text}"
+    except Exception:
+        return None
+
+
 def _do_web_search(
     topic: str, daemon_url: str | None, debug: bool = False,
     queries: list[str] | None = None,
@@ -437,29 +462,10 @@ def _do_web_search(
         scored.sort(key=lambda x: -x[1])
         candidates = [url for url, _ in scored[:8]]
 
-        def _fetch(page_url: str) -> str | None:
-            try:
-                with httpx.Client(timeout=10, follow_redirects=True) as client:
-                    resp = client.get(page_url)
-                    if resp.status_code != 200:
-                        return None
-                    if "text/html" not in resp.headers.get("content-type", ""):
-                        return None
-                    text = re.sub(r'<script[^>]*>.*?</script>', '', resp.text, flags=re.DOTALL)
-                    text = re.sub(r'<style[^>]*>.*?</style>', '', text, flags=re.DOTALL)
-                    text = re.sub(r'<[^>]+>', ' ', text)
-                    text = re.sub(r'\s+', ' ', text).strip()
-                    words = text.split()
-                    if len(words) > 2000:
-                        text = " ".join(words[:2000]) + " [truncated]"
-                    return f"[FULL PAGE: {page_url}]\n{text}"
-            except Exception:
-                return None
-
         if candidates:
             with ThreadPoolExecutor(max_workers=min(len(candidates), 6)) as pool:
                 for future in as_completed(
-                    [pool.submit(_fetch, u) for u in candidates], timeout=20
+                    [pool.submit(fetch_page, u) for u in candidates], timeout=20
                 ):
                     try:
                         text = future.result()
@@ -1505,37 +1511,55 @@ def run_pipeline(
             if debug:
                 print(f"   🐛 injected author context into {step_name} prompt")
 
-        # --- Run inference ---
-        # Disable thinking for extraction steps — deepseek-r1 burns 3x tokens
-        # on chain-of-thought that gets stripped anyway (35 tok/s → 4.9 effective)
-        step_think = False if step_name in ("extractor", "gap-filler") else None
-        # Extraction steps use 8192 ctx to fit in 12GB VRAM; writing/editing get 16384
-        step_ctx = 8192 if step_name in ("extractor", "gap-filler") else 16384
-        print(f"   🧠 Generating on {node_host} ({model})...", end="", flush=True)
-        output_text, metrics = _run_inference(
-            system_prompt=system_prompt,
-            user_content=user_content,
-            model=model,
-            daemon_url=daemon_url,
-            think=step_think,
-            num_ctx=step_ctx,
-        )
+        # --- Research agent dispatch ---
+        if step.get("task_type") == "research":
+            from mycoswarm.agents.research import ResearchAgent
 
-        # Clean garbage tokens
-        output_text = _clean_output(output_text)
+            ollama_url = f"http://{route_results[i].node_ip}:11434"
+            agent = ResearchAgent(ollama_url=ollama_url, model=model)
+            ref_context = _format_reference_context(gpu_ref, topic) if gpu_ref else ""
+            print(f"   🔬 Research agent on {node_host} ({model})...")
+            output_text = agent.run(
+                topic=topic,
+                reference_data=ref_context,
+                context=context,
+                workspace_dir=workspace_dir,
+                step_name=step_name,
+                debug=debug,
+            )
+            metrics = {"model": model, "tokens_per_second": 0, "node_name": node_host}
+        else:
+            # --- Run inference ---
+            # Disable thinking for extraction steps — deepseek-r1 burns 3x tokens
+            # on chain-of-thought that gets stripped anyway (35 tok/s → 4.9 effective)
+            step_think = False if step_name in ("extractor", "gap-filler") else None
+            # Extraction steps use 8192 ctx to fit in 12GB VRAM; writing/editing get 16384
+            step_ctx = 8192 if step_name in ("extractor", "gap-filler") else 16384
+            print(f"   🧠 Generating on {node_host} ({model})...", end="", flush=True)
+            output_text, metrics = _run_inference(
+                system_prompt=system_prompt,
+                user_content=user_content,
+                model=model,
+                daemon_url=daemon_url,
+                think=step_think,
+                num_ctx=step_ctx,
+            )
 
-        # Strip <think>...</think> blocks (deepseek-r1 chain-of-thought)
-        think_contents = re.findall(r'<think>(.*?)</think>', output_text, flags=re.DOTALL)
-        if think_contents:
-            think_words = sum(_word_count(t) for t in think_contents)
-            if debug:
-                print(f"   🐛 reasoning: {think_words} words (stripped from output)")
-        output_text = _strip_think_tags(output_text)
+            # Clean garbage tokens
+            output_text = _clean_output(output_text)
 
-        # --- Post-generation filters ---
-        # Source enforcement: strip unsourced bullets from gap-filler
-        if step_name == "gap-filler":
-            output_text = _filter_unsourced_bullets(output_text, debug=debug)
+            # Strip <think>...</think> blocks (deepseek-r1 chain-of-thought)
+            think_contents = re.findall(r'<think>(.*?)</think>', output_text, flags=re.DOTALL)
+            if think_contents:
+                think_words = sum(_word_count(t) for t in think_contents)
+                if debug:
+                    print(f"   🐛 reasoning: {think_words} words (stripped from output)")
+            output_text = _strip_think_tags(output_text)
+
+            # --- Post-generation filters ---
+            # Source enforcement: strip unsourced bullets from gap-filler
+            if step_name == "gap-filler":
+                output_text = _filter_unsourced_bullets(output_text, debug=debug)
 
         # Hard output cap: truncate at last complete bullet before limit
         max_words = step.get("max_output_words")

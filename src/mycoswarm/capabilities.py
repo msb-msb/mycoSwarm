@@ -226,7 +226,7 @@ TASK_MODEL_MAP: dict[str, dict] = {
     "writing": {"model_class": "large", "prefer_models": ["gemma3:27b"]},
     "editing": {"model_class": "large", "prefer_models": ["gemma3:27b"]},
     "seo": {"model_class": "medium", "prefer_models": ["qwen3.5:9b", "gemma3:12b", "gemma3:27b"]},
-    "research": {"model_class": "small", "prefer_models": ["gemma3:12b"]},
+    "research": {"model_class": "small", "prefer_models": ["qwen3.5:9b", "gemma3:12b"]},
     "general": {"model_class": "large", "prefer_models": ["gemma3:27b"]},
     "query_gen": {"model_class": "small", "prefer_models": ["qwen3.5:9b", "gemma3:4b", "gemma3:1b"]},
 }
