@@ -3527,9 +3527,21 @@ def _pipeline_reject(workspace_name: str):
 def cmd_pipeline(args):
     """Run a multi-step pipeline from a YAML definition."""
     from datetime import datetime
+    from mycoswarm.categories import get_category, list_categories
     from mycoswarm.pipeline import load_pipeline, run_pipeline
 
     action = args.pipeline_action
+
+    if getattr(args, "list_categories", False):
+        for name in list_categories():
+            profile = get_category(name)
+            req = " (context required)" if profile["context_required"] else ""
+            print(f"  {name:20s} rounds={profile['max_rounds']} depth={profile['min_depth']}{req}")
+        return
+
+    if not action:
+        print("❌ pipeline requires an action: run, list, approve, reject")
+        sys.exit(1)
 
     if action == "list":
         _pipeline_list()
@@ -3555,16 +3567,25 @@ def cmd_pipeline(args):
         print(f"❌ Unknown pipeline action: {action}")
         sys.exit(1)
 
+    # Load category profile
+    category_name = getattr(args, "category", "research-driven")
+    category = get_category(category_name)
+
+    # Resolve yaml_path: explicit arg wins, otherwise use category default
     yaml_path = args.yaml_path
     if not yaml_path:
-        print("❌ 'run' requires a pipeline YAML path")
-        sys.exit(1)
+        yaml_path = category["yaml"]
     if not args.topic:
         print("❌ 'run' requires --topic")
         sys.exit(1)
     if not os.path.isfile(yaml_path):
         print(f"❌ Pipeline file not found: {yaml_path}")
         sys.exit(1)
+
+    # Warn if category needs context and none provided
+    if category["context_required"] and not args.context:
+        print(f"⚠️  Warning: category '{category_name}' works best with --context "
+              "(personal experience/insider knowledge)")
 
     pipeline = load_pipeline(yaml_path)
     topic = " ".join(args.topic)
@@ -3584,6 +3605,7 @@ def cmd_pipeline(args):
         port=args.port,
         debug=args.debug,
         context=args.context,
+        category=category,
     )
     if result is None:
         sys.exit(1)
@@ -3800,8 +3822,8 @@ def main():
         "pipeline", help="Run, list, approve, or reject pipeline outputs"
     )
     pipeline_parser.add_argument(
-        "pipeline_action", choices=["run", "list", "approve", "reject"],
-        help="Pipeline action"
+        "pipeline_action", nargs="?", choices=["run", "list", "approve", "reject"],
+        default=None, help="Pipeline action"
     )
     pipeline_parser.add_argument(
         "yaml_path", nargs="?", default=None,
@@ -3824,6 +3846,14 @@ def main():
     pipeline_parser.add_argument(
         "--context", type=str, default="",
         help="Insider context to inject into writer/editor prompts"
+    )
+    pipeline_parser.add_argument(
+        "--category", type=str, default="research-driven",
+        help="Article category (default: research-driven). Use --list-categories to see options"
+    )
+    pipeline_parser.add_argument(
+        "--list-categories", action="store_true", default=False,
+        help="List available article categories and exit"
     )
     pipeline_parser.set_defaults(func=cmd_pipeline)
 

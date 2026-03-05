@@ -1256,6 +1256,7 @@ def run_pipeline(
     port: int = 7890,
     debug: bool = False,
     context: str = "",
+    category: dict | None = None,
 ) -> str | None:
     """Execute a pipeline sequentially. Returns path to final output file.
 
@@ -1499,8 +1500,17 @@ def run_pipeline(
         if debug:
             print(f"   🐛 input: {input_words} words")
 
-        # --- Inject author context into writer/editor system prompts ---
+        # --- Inject category writer_tone ---
         system_prompt = step["system_prompt"]
+        if category and step_name == "writer":
+            writer_tone = category.get("writer_tone", "")
+            if writer_tone:
+                system_prompt += (
+                    f"\n\n## Tone Directive\n"
+                    f"Write in this tone: {writer_tone}"
+                )
+
+        # --- Inject author context into writer/editor system prompts ---
         if context and step_name in ("writer", "editor"):
             system_prompt += (
                 "\n\n## Insider Context (from the author)\n"
@@ -1519,7 +1529,7 @@ def run_pipeline(
             agent = ResearchAgent(ollama_url=ollama_url, model=model)
             ref_context = _format_reference_context(gpu_ref, topic) if gpu_ref else ""
             print(f"   🔬 Research agent on {node_host} ({model})...")
-            output_text = agent.run(
+            run_kwargs = dict(
                 topic=topic,
                 reference_data=ref_context,
                 context=context,
@@ -1527,6 +1537,10 @@ def run_pipeline(
                 step_name=step_name,
                 debug=debug,
             )
+            if category:
+                run_kwargs["max_rounds"] = category.get("max_rounds", 5)
+                run_kwargs["min_depth"] = category.get("min_depth", 7)
+            output_text = agent.run(**run_kwargs)
             metrics = {"model": model, "tokens_per_second": 0, "node_name": node_host}
         else:
             # --- Run inference ---

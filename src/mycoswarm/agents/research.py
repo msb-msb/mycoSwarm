@@ -242,6 +242,8 @@ class ResearchAgent:
         workspace_dir: str = ".",
         step_name: str = "research",
         debug: bool = False,
+        max_rounds: int = MAX_ROUNDS,
+        min_depth: int = MIN_DEPTH,
     ) -> str:
         """Run the research loop. Returns the final research bundle text."""
         start = time.time()
@@ -268,7 +270,7 @@ class ResearchAgent:
         last_depth = 0
         rounds = 0
 
-        for round_num in range(1, MAX_ROUNDS + 1):
+        for round_num in range(1, max_rounds + 1):
             rounds = round_num
 
             # Context safety valve
@@ -310,7 +312,7 @@ class ResearchAgent:
 
             # Execute tool calls
             if not tool_calls:
-                if round_num >= 3:
+                if round_num >= 4:
                     self._log("no tool calls in late round — ending loop")
                     break
                 else:
@@ -365,7 +367,7 @@ class ResearchAgent:
                     depth = args.get("depth", 0)
                     last_depth = depth
                     stop = args.get("stop", False)
-                    if depth >= MIN_DEPTH or stop:
+                    if depth >= min_depth or stop:
                         self._log(f"stopping: depth={depth}, stop={stop}")
                         should_stop = True
 
@@ -426,9 +428,9 @@ class ResearchAgent:
                         "- Did you find benchmark numbers from real tests?\n"
                         "- Did you find compatibility lists or known issues?\n"
                         "- Did you find information that ISN'T in the reference data?\n\n"
-                        "If you found 3+ of these: depth=7, set stop=true\n"
-                        "If you found 2: depth=5, set stop=false\n"
-                        "If you found 0-1: depth=3, set stop=false\n\n"
+                        "If you found 2+ of these: depth=7, set stop=true\n"
+                        "If you found 1: depth=5, set stop=false\n"
+                        "If you found 0: depth=3, set stop=false\n\n"
                         "Call evaluate_depth now with your assessment."
                     ),
                 })
@@ -467,7 +469,7 @@ class ResearchAgent:
                                 depth = eargs.get("depth", 0)
                                 last_depth = depth
                                 stop = eargs.get("stop", False)
-                                if depth >= MIN_DEPTH or stop:
+                                if depth >= min_depth or stop:
                                     self._log(f"stopping: depth={depth}, stop={stop}")
                                     should_stop = True
                     else:
@@ -482,7 +484,7 @@ class ResearchAgent:
                     last_depth = 3
 
             self._log(
-                f"round {round_num}/{MAX_ROUNDS} → "
+                f"round {round_num}/{max_rounds} → "
                 f"searched {search_count}, fetched {fetch_count} → "
                 f"depth: {last_depth}/10"
             )
@@ -536,7 +538,7 @@ class ResearchAgent:
                 f.write(f"- Topic: {topic}\n")
                 f.write(f"- Model: {self.model}\n")
                 f.write(f"- Ollama URL: {self.ollama_url}\n")
-                f.write(f"- Rounds: {rounds}/{MAX_ROUNDS}\n")
+                f.write(f"- Rounds: {rounds}/{max_rounds}\n")
                 f.write(f"- Final depth: {last_depth}/10\n")
                 f.write(f"- Duration: {duration:.0f}s\n")
                 f.write(f"- Output words: {words}\n\n")
