@@ -381,6 +381,7 @@ def chat_stream(
         "messages": msgs,
         "options": {"temperature": 0.7, "num_predict": 2048},
         "stream": True,
+        "think": False,
     }
 
     start = time.time()

@@ -1078,6 +1078,7 @@ def _llm_generate_queries(
                     "messages": [{"role": "user", "content": prompt}],
                     "options": {"temperature": 0.8, "num_predict": 600},
                     "stream": False,
+                    "think": False,
                 },
             )
             resp.raise_for_status()
@@ -1216,6 +1217,7 @@ def _generate_gap_queries(
                     "messages": [{"role": "user", "content": prompt}],
                     "options": {"temperature": 0.7, "num_predict": 400},
                     "stream": False,
+                    "think": False,
                 },
             )
             resp.raise_for_status()
@@ -1323,6 +1325,15 @@ def run_pipeline(
                     httpx.get(f"{addr}/health", timeout=3)
                 except Exception:
                     pass
+
+    # Override model for writer-class steps if category specifies writer_model
+    _WRITER_STEPS = {"synthesizer", "synthesizer-v2", "writer", "editor"}
+    if category:
+        writer_model = category.get("writer_model")
+        if writer_model:
+            for idx, step in enumerate(steps):
+                if step["name"] in _WRITER_STEPS:
+                    route_results[idx].model = writer_model
 
     # Print routing table
     max_name = max(len(s["name"]) for s in steps)
@@ -1544,9 +1555,9 @@ def run_pipeline(
             metrics = {"model": model, "tokens_per_second": 0, "node_name": node_host}
         else:
             # --- Run inference ---
-            # Disable thinking for extraction steps — deepseek-r1 burns 3x tokens
-            # on chain-of-thought that gets stripped anyway (35 tok/s → 4.9 effective)
-            step_think = False if step_name in ("extractor", "gap-filler") else None
+            # Disable thinking for all pipeline steps — qwen3.5 burns tokens on
+            # hidden "budget thinking" that gets stripped, producing empty output
+            step_think = False
             # Extraction steps use 8192 ctx to fit in 12GB VRAM; writing/editing get 16384
             step_ctx = 8192 if step_name in ("extractor", "gap-filler") else 16384
             print(f"   🧠 Generating on {node_host} ({model})...", end="", flush=True)

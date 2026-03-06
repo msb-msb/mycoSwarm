@@ -3536,7 +3536,8 @@ def cmd_pipeline(args):
         for name in list_categories():
             profile = get_category(name)
             req = " (context required)" if profile["context_required"] else ""
-            print(f"  {name:20s} rounds={profile['max_rounds']} depth={profile['min_depth']}{req}")
+            model = profile.get("writer_model", "default")
+            print(f"  {name:20s} rounds={profile['max_rounds']} depth={profile['min_depth']} model={model}{req}")
         return
 
     if not action:

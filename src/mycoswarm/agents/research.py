@@ -153,6 +153,7 @@ class ResearchAgent:
             "messages": messages,
             "options": OLLAMA_CONFIG,
             "stream": False,
+            "think": False,
         }
         if tools:
             payload["tools"] = tools
