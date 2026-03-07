@@ -1,6 +1,5 @@
-name: insiderllm-article
-description: Research, write, edit, and optimize an InsiderLLM article
-context: ""
+name: insiderllm-article-v2
+description: Research, write, edit, and optimize an InsiderLLM article (v2 — merged synthesizer)
 
 steps:
   - name: research
@@ -30,43 +29,43 @@ steps:
     tools: []
     min_output_words: 100
 
-  # legacy: use synthesizer-merged in article-full-v2.yaml for new pipelines
-  - name: synthesizer
+  - name: synthesizer-merged
     task_type: synthesis
-    description: Organize extracted facts into a research bundle
+    description: Structure research into bundle, merge with RAG context, fill gaps
+    depends_on:
+      - research
     tools:
       - rag_search
     system_prompt: |
-      You are a data synthesizer. Your job is to merge, deduplicate,
-      and structure the input data into the output format below.
+      You are a data synthesizer for InsiderLLM.com. You receive raw
+      research findings (from web searches and page fetches) plus any
+      internal context from our document library.
 
-      Output the structured data directly. Do not include commentary,
-      analysis of the input quality, or meta-discussion. Start
-      immediately with the first data section.
-
-      You receive raw facts extracted from web searches and documents
-      about a topic. Organize them into a structured research bundle
-      for an article writer.
+      Your job is to merge, deduplicate, and structure ALL data into
+      a single comprehensive research bundle.
 
       Output format:
 
       ## Price Data
-      (all prices found, grouped by GPU, note new vs used)
+      (all prices found, grouped by GPU, note new vs used, with source URLs)
 
       ## Benchmark Data
-      (all performance numbers, grouped by GPU and model size)
+      (all performance numbers, grouped by GPU and model size, with source URLs)
 
       ## Key Specs
-      (VRAM, TDP, architecture for each GPU mentioned)
+      (VRAM, TDP, architecture, memory bandwidth for each GPU mentioned)
 
       ## Competitor Coverage
       (what other sites are recommending and why)
 
       ## Internal Context
-      (relevant info from our own docs/sessions)
+      (relevant info from our own docs/sessions via RAG)
+
+      ## New Data
+      (data points found that fill gaps or add depth beyond the initial research)
 
       ## Gaps
-      (what data is missing that the writer will need — be specific)
+      (what data is STILL missing that the writer will need — be specific)
 
       ## Suggested Angle
       (how should InsiderLLM's take differ from competitors)
@@ -81,35 +80,12 @@ steps:
       A research bundle missing either of these GPUs is incomplete.
 
       Rules:
-      - Only use facts from the input list
+      - Only use facts from the inputs (research data + RAG context)
       - Preserve source attributions
       - Flag any contradictory data points
       - If a section has no data, write "NO DATA FOUND"
-    min_output_words: 100
-
-  # legacy: use synthesizer-merged in article-full-v2.yaml for new pipelines
-  - name: synthesizer-v2
-    task_type: synthesis
-    description: Re-synthesize with research agent data
-    depends_on:
-      - synthesizer
-      - research
-    tools:
-      - rag_search
-    system_prompt: |
-      You receive an original research bundle and NEW FACTS found
-      to fill gaps. Merge them into an updated research bundle.
-
-      Keep the same format (Price Data, Benchmark Data, Key Specs, etc.)
-      Update sections that now have data.
-      Keep ## Gaps but remove any that are now filled.
-      Add a ## New Data section listing what was found in the gap-fill.
-
-      Rules:
-      - Only use facts from the inputs
-      - Preserve source attributions
-      - Flag any contradictory data points
-      - If a section has no data, write "NO DATA FOUND"
+      - Remove any gaps that are filled by the combined data
+      - Deduplicate overlapping facts across sources
     min_output_words: 100
 
   - name: writer

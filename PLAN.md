@@ -1293,6 +1293,117 @@ focuses on YAML-configured agents/pipelines/hooks. A full Python extension
 API (register tools, widgets, hooks programmatically) is a future phase
 once the declarative layer proves out.
 
+### Phase 40: RLM Research Agent
+
+Reference: "Recursive Language Models" (Zhang, Kraska, Khattab — MIT CSAIL, arXiv:2512.24601)
+Ingested into document library: 2026-03-05
+
+The thesis: the current research agent uses a fixed 5-round loop where the model follows
+a hardcoded scaffold (search → fetch → evaluate → repeat). An RLM-style agent treats the
+topic as an external environment object, lets the model dynamically decompose it into
+subtopics, and executes targeted recursive sub-calls per subtopic — potentially in parallel.
+This is especially valuable for hard-to-find data like pricing, availability, and
+niche benchmarks where a single undifferentiated search loop misses coverage.
+
+**Validated (2026-03-05):**
+- qwen3.5:9b on rushuna produces clean parseable Python query lists at 47 tok/s
+- No markdown fences, no prose — direct ast.literal_eval() compatible
+- 228 tokens for 10-query decomposition — extremely cheap
+- Hallucinated model names in queries are harmless (search still returns relevant results)
+
+**Hardware mapping:**
+- Miu / gemma3:27b or qwen3.5:35b-a3b — root orchestrator, decomposes topic,
+  synthesizes final bundle
+- rushuna / qwen3.5:9b — recursive worker, executes per-subtopic research loops,
+  returns structured findings
+
+#### 40a: RLM Decomposition Layer
+- [ ] **Decomposition prompt:** Given topic, qwen3.5:9b outputs structured subtopic list
+      with suggested query count per subtopic (1-3) based on complexity signal
+- [ ] **Subtopic count heuristic:** simple topics → 3-4 subtopics, complex → 5-7,
+      cap at 8 to bound total searches. Let model decide, enforce cap in code.
+- [ ] **Query deduplication:** strip duplicate or near-duplicate queries across subtopics
+      before dispatching
+- [ ] **Structured output schema:**
+      ```python
+      [
+        {"subtopic": "pricing", "queries": ["RTX 3060 eBay sold 2026", "RTX 3060 new retail price"]},
+        {"subtopic": "benchmarks", "queries": ["RTX 3060 LLM inference tok/s", "budget GPU benchmark 2026"]},
+        ...
+      ]
+      ```
+- [ ] **Fallback:** if decomposition fails or returns unparseable output, fall back to
+      current single-loop research agent
+
+#### 40b: Parallel Recursive Execution
+- [ ] **Per-subtopic research loop:** each subtopic runs its own search → fetch → evaluate
+      mini-loop (2-3 rounds max, shallower than root loop)
+- [ ] **Parallel dispatch:** asyncio.gather across subtopics — rushuna handles multiple
+      concurrent Ollama calls (verify concurrency limit on RTX 3060 12GB first)
+- [ ] **Per-subtopic depth target:** pricing subtopics need higher depth (hard to find),
+      spec subtopics can be shallower (easier to verify). Decomposition prompt should
+      include depth_hint per subtopic.
+- [ ] **Structured findings return:** each subtopic loop returns
+      {subtopic, queries_run, pages_fetched, key_facts, sources, depth}
+- [ ] **Context budget:** total findings across all subtopics capped at CONTEXT_WORD_LIMIT
+      before synthesis — truncate lowest-depth subtopics first
+
+#### 40c: Root Synthesis
+- [ ] **Findings aggregation:** root model (Miu) receives structured per-subtopic findings,
+      deduplicates facts, resolves conflicts between subtopics
+- [ ] **Source consolidation:** merge source lists, flag sources cited by multiple subtopics
+      as higher confidence
+- [ ] **Gap detection:** identify subtopics where depth was low or findings were thin —
+      optionally trigger a follow-up round on gaps only
+- [ ] **Final bundle format:** same structure as current research agent output for
+      downstream pipeline compatibility (synthesizer step unchanged)
+
+#### 40d: CLI Integration
+- [ ] **--research-mode flag:** `rlm` or `standard` (default: standard until benchmarked)
+      ```
+      mycoswarm pipeline run --topic "..." --category research-driven --research-mode rlm
+      ```
+- [ ] **Debug output:** show decomposition tree in debug log
+      ```
+      🔬 RLM decomposition: 5 subtopics, 12 queries
+      🔬 subtopic 1/5: pricing (2 queries, parallel)
+      🔬 subtopic 2/5: benchmarks (3 queries, parallel)
+      ...
+      ```
+- [ ] **research-debug.md extension:** add decomposition tree + per-subtopic findings
+      to debug log for inspection
+
+#### 40e: Benchmark vs Standard Agent
+- [ ] **Same topic, both modes:** run identical article topic through standard and RLM agent
+- [ ] **Metrics to compare:**
+  - Total searches and fetches
+  - Final research bundle word count
+  - Source diversity (unique domains)
+  - Editor depth score (/10)
+  - Total research step time
+  - Pricing data found (yes/no + accuracy)
+- [ ] **Target:** RLM mode finds pricing data on ≥80% of GPU topics where standard agent fails
+- [ ] **Promote to default** when RLM wins on depth score without exceeding 2x standard time
+
+#### Architecture Notes
+
+**Why dynamic decomposition beats fixed rounds:**
+The current agent's 5-round loop is topic-agnostic. "Best budget GPU" and "RTX 3090 vs 4090"
+get the same structure despite needing different coverage. RLM lets the model decide:
+pricing needs eBay + retail + price-history queries; benchmarks need tok/s + VRAM + model-specific
+queries. Each subtopic gets the right tool, not a generic loop.
+
+**Why parallel matters for pricing:**
+Pricing requires hitting multiple sources (eBay, Newegg, Amazon, used markets) simultaneously.
+Sequential search misses price variance. Parallel subtopic execution on rushuna gets 3-4
+pricing sources in the same time the current agent gets 1.
+
+**Concurrency note:**
+qwen3.5:9b is 6.6GB on rushuna's 12GB card. Two simultaneous Ollama inference calls would
+require ~13.2GB — likely overflow. Test single vs dual concurrent calls before enabling
+full asyncio.gather parallelism. May need to serialize rushuna calls while parallelizing
+the search/fetch tool calls instead.
+
 ## Backlog
 
 ### Phase 5b: Cross-Node Inference (remaining)

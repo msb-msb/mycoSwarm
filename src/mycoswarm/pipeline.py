@@ -10,6 +10,7 @@ import logging
 import os
 import pathlib
 import re
+import shutil
 import sys
 import time
 import uuid
@@ -603,6 +604,7 @@ def _run_inference(
     timeout: int = 300,
     think: bool | None = None,
     num_ctx: int = 8192,
+    max_tokens: int = 4096,
 ) -> tuple[str, dict]:
     """Run a single inference call. Returns (output_text, metrics).
 
@@ -621,7 +623,7 @@ def _run_inference(
                 "messages": messages,
                 "temperature": 0.7,
                 "num_ctx": num_ctx,
-                "max_tokens": 4096,
+                "max_tokens": max_tokens,
         }
         if think is not None:
             inference_payload["think"] = think
@@ -1259,6 +1261,7 @@ def run_pipeline(
     debug: bool = False,
     context: str = "",
     category: dict | None = None,
+    research_mode: str = "standard",
 ) -> str | None:
     """Execute a pipeline sequentially. Returns path to final output file.
 
@@ -1354,6 +1357,21 @@ def run_pipeline(
         model = route_results[i].model
         node_host = route_results[i].node_hostname
         print(f"\n📝 Step {step_num}/{total}: {step_name}")
+
+        # Skip synthesizer in RLM mode — research bundle is already structured
+        if step_name == "synthesizer" and research_mode == "rlm":
+            research_path = os.path.join(workspace_dir, "research.md")
+            synth_path = os.path.join(workspace_dir, "synthesizer.md")
+            if os.path.isfile(research_path):
+                shutil.copy(research_path, synth_path)
+                with open(research_path) as f:
+                    previous_output = f.read()
+                last_output_path = synth_path
+                print(f"   ⏭️  skipped (RLM mode — research already structured)")
+                if debug:
+                    words = _word_count(previous_output)
+                    print(f"   🐛 copied research.md → synthesizer.md ({words} words)")
+                continue
 
         start = time.time()
 
@@ -1459,8 +1477,10 @@ def run_pipeline(
                 )
         # Special case: editor gets research bundle + draft
         elif step_name == "editor":
-            # Prefer synthesizer-v2 (gap-filled), fall back to synthesizer
+            # Prefer synthesizer-v2, fall back to synthesizer-merged, then synthesizer
             research_path = os.path.join(workspace_dir, "synthesizer-v2.md")
+            if not os.path.isfile(research_path):
+                research_path = os.path.join(workspace_dir, "synthesizer-merged.md")
             if not os.path.isfile(research_path):
                 research_path = os.path.join(workspace_dir, "synthesizer.md")
             writer_path = os.path.join(workspace_dir, "writer.md")
@@ -1534,12 +1554,8 @@ def run_pipeline(
 
         # --- Research agent dispatch ---
         if step.get("task_type") == "research":
-            from mycoswarm.agents.research import ResearchAgent
-
             ollama_url = f"http://{route_results[i].node_ip}:11434"
-            agent = ResearchAgent(ollama_url=ollama_url, model=model)
             ref_context = _format_reference_context(gpu_ref, topic) if gpu_ref else ""
-            print(f"   🔬 Research agent on {node_host} ({model})...")
             run_kwargs = dict(
                 topic=topic,
                 reference_data=ref_context,
@@ -1551,7 +1567,68 @@ def run_pipeline(
             if category:
                 run_kwargs["max_rounds"] = category.get("max_rounds", 5)
                 run_kwargs["min_depth"] = category.get("min_depth", 7)
-            output_text = agent.run(**run_kwargs)
+
+            # RLM mode: try decomposition-based agent first
+            if research_mode == "rlm":
+                from mycoswarm.agents.rlm_research import RLMResearchAgent
+
+                # Resolve decomposition node — needs qwen3.5:9b, may differ
+                # from the research step's routed node
+                decompose_model = "qwen3.5:9b"
+                decompose_url = ollama_url  # default: same node
+                if route_results is not None:
+                    # Check local node first
+                    local_models = [
+                        m if isinstance(m, str) else m.get("name", "")
+                        for m in (router.identity.available_models or [])
+                    ]
+                    if decompose_model in local_models:
+                        decompose_url = "http://127.0.0.1:11434"
+                    else:
+                        # Scan peers for the model
+                        for peer in router._peers:
+                            if decompose_model in (peer.available_models or []):
+                                decompose_url = f"http://{peer.ip}:11434"
+                                if debug:
+                                    print(f"   🐛 decompose node: {peer.hostname} ({decompose_url})")
+                                break
+
+                # Resolve synthesis node — prefer the big model on Miu
+                # Look for synthesizer step's route to find root model + URL
+                synthesis_url = None
+                root_model = None
+                for si, ss in enumerate(steps):
+                    if ss["name"] in ("synthesizer", "synthesizer-v2", "writer"):
+                        rr = route_results[si]
+                        root_model = rr.model
+                        if rr.is_local:
+                            synthesis_url = "http://127.0.0.1:11434"
+                        else:
+                            synthesis_url = f"http://{rr.node_ip}:11434"
+                        if debug:
+                            print(f"   🐛 synthesis node: {rr.node_hostname} ({root_model}) → {synthesis_url}")
+                        break
+
+                print(f"   🧬 RLM mode on {node_host} ({model})...")
+                rlm_agent = RLMResearchAgent(
+                    ollama_url=ollama_url,
+                    model=model,
+                    root_model=root_model,
+                    decompose_url=decompose_url,
+                    decompose_model=decompose_model,
+                    synthesis_url=synthesis_url,
+                )
+                output_text = rlm_agent.run(**run_kwargs)
+                if not output_text:
+                    print(f"   🔬 RLM fallback → standard agent")
+                    research_mode = "standard"  # fall through below
+
+            if research_mode != "rlm" or not output_text:
+                from mycoswarm.agents.research import ResearchAgent
+
+                print(f"   🔬 Standard research agent on {node_host} ({model})...")
+                agent = ResearchAgent(ollama_url=ollama_url, model=model)
+                output_text = agent.run(**run_kwargs)
             metrics = {"model": model, "tokens_per_second": 0, "node_name": node_host}
         else:
             # --- Run inference ---
@@ -1560,6 +1637,8 @@ def run_pipeline(
             step_think = False
             # Extraction steps use 8192 ctx to fit in 12GB VRAM; writing/editing get 16384
             step_ctx = 8192 if step_name in ("extractor", "gap-filler") else 16384
+            # Editor outputs full article + verification log + score — needs more tokens
+            step_max_tokens = 8192 if step_name == "editor" else 4096
             print(f"   🧠 Generating on {node_host} ({model})...", end="", flush=True)
             output_text, metrics = _run_inference(
                 system_prompt=system_prompt,
@@ -1568,6 +1647,7 @@ def run_pipeline(
                 daemon_url=daemon_url,
                 think=step_think,
                 num_ctx=step_ctx,
+                max_tokens=step_max_tokens,
             )
 
             # Clean garbage tokens

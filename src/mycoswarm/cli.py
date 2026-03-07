@@ -3607,6 +3607,7 @@ def cmd_pipeline(args):
         debug=args.debug,
         context=args.context,
         category=category,
+        research_mode=getattr(args, "research_mode", "standard"),
     )
     if result is None:
         sys.exit(1)
@@ -3855,6 +3856,11 @@ def main():
     pipeline_parser.add_argument(
         "--list-categories", action="store_true", default=False,
         help="List available article categories and exit"
+    )
+    pipeline_parser.add_argument(
+        "--research-mode", type=str, default="standard",
+        choices=["standard", "rlm"],
+        help="Research strategy: standard (single agent) or rlm (decompose+execute)"
     )
     pipeline_parser.set_defaults(func=cmd_pipeline)
 

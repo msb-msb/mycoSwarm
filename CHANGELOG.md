@@ -1,5 +1,25 @@
 # Changelog
 
+## v0.3.9 — RLM Pipeline Optimizations (2026-03-06)
+* Synthesizer step skipped in RLM mode — research bundle already structured, saves ~152s
+* Subtopic cap lowered 8 to 6, prompt prefers 4-5 subtopics for better depth per subtopic
+* Writer prompt enforces 1,600 word strict limit to prevent editor truncation
+* Writer prompt requires using data from ALL subtopics (data coverage is graded)
+* Editor max_tokens bumped 6144 to 8192 for full score output
+* article-full-v2.yaml with synthesizer-merged step (ready for benchmarking)
+* Editor bundle fallback chain: synthesizer-v2 > synthesizer-merged > synthesizer
+
+## v0.3.8 — RLM Research Agent (2026-03-06)
+* RLM research agent — decompose-then-execute strategy inspired by Zhang, Kraska, Khattab (MIT CSAIL)
+* `--research-mode` flag: `standard` (default) or `rlm`
+* Dynamic topic decomposition via qwen3.5:9b — produces subtopics with targeted queries and depth_hints
+* Per-subtopic research loops — dedicated searches + page fetches per subtopic
+* Root model synthesis — qwen3.5:35b-a3b compiles subtopic findings into structured research bundle
+* Graceful fallback — decomposition failure automatically falls back to standard ResearchAgent
+* Fix: RLM synthesis uses 127.0.0.1 for local node (Ollama binds to loopback, not LAN interface)
+* Fix: Editor max_tokens bumped to 6144 — prevents score truncation on long articles
+* Benchmark: RLM mode scores 58/60 vs standard 52-54/60 (25 pages fetched vs ~13)
+
 ## v0.3.5 — Agentic Research Agent (2026-03-04)
 * ResearchAgent class with multi-turn Ollama native tool calling (qwen3.5:9b)
 * Three agent tools: web_search (DDG + Perplexity fallback), web_fetch (full page extraction), evaluate_depth (self-assessment)
