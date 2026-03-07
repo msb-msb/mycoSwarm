@@ -27,6 +27,9 @@ a JSON array of subtopics. Each subtopic has:
 - "depth_hint": integer 1-3 (3=hard to find, like pricing; 1=easy, like specs)
 
 Rules:
+- Your subtopics must directly address the TOPIC. If the topic is about models,
+  decompose into model-related subtopics. If about hardware, decompose into
+  hardware subtopics. Do not drift into adjacent domains.
 - Output ONLY valid JSON. No markdown, no explanation, no prose.
 - Prefer 4-5 subtopics for most topics. Only use 6 if the topic has
   truly distinct domains that cannot be combined. Fewer subtopics with
@@ -60,7 +63,7 @@ def decompose_topic(
                 "model": model,
                 "messages": [
                     {"role": "system", "content": _DECOMPOSE_SYSTEM},
-                    {"role": "user", "content": f"Research topic: {topic}"},
+                    {"role": "user", "content": f"TOPIC: {topic}\n\nResearch topic: {topic}\n\nRemember: all subtopics must directly address the TOPIC above: {topic}"},
                 ],
                 "stream": False,
                 "options": {"temperature": 0.3, "num_ctx": 4096},

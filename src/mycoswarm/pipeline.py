@@ -1639,6 +1639,7 @@ def run_pipeline(
             step_ctx = 8192 if step_name in ("extractor", "gap-filler") else 16384
             # Editor outputs full article + verification log + score — needs more tokens
             step_max_tokens = 8192 if step_name == "editor" else 4096
+            step_timeout = 600 if step_name == "editor" else 300
             print(f"   🧠 Generating on {node_host} ({model})...", end="", flush=True)
             output_text, metrics = _run_inference(
                 system_prompt=system_prompt,
@@ -1648,6 +1649,7 @@ def run_pipeline(
                 think=step_think,
                 num_ctx=step_ctx,
                 max_tokens=step_max_tokens,
+                timeout=step_timeout,
             )
 
             # Clean garbage tokens
@@ -1684,6 +1686,9 @@ def run_pipeline(
 
         print(f" done — {words} words, {duration:.0f}s")
 
+        if duration > 300:
+            print(f"   ⚠️  Step {step_name} exceeded 300s ({duration:.0f}s)")
+
         if debug:
             print(f"   🐛 node: {actual_node}")
             print(f"   🐛 input: {input_words} words → output: {words} words")
@@ -1692,6 +1697,26 @@ def run_pipeline(
             preview = output_text[:200].replace("\n", "\\n")
             print(f"   🐛 output preview: \"{preview}...\"")
 
+        # --- Word-count hard gate (writer + seo-optimizer) ---
+        if step_name in ("writer", "seo-optimizer") and words > 1700:
+            original_words = words
+            # Truncate to ~1600 words at nearest paragraph break
+            paragraphs = output_text.split("\n\n")
+            truncated_parts = []
+            count = 0
+            for para in paragraphs:
+                para_words = len(para.split())
+                if count + para_words > 1600 and truncated_parts:
+                    break
+                truncated_parts.append(para)
+                count += para_words
+            output_text = "\n\n".join(truncated_parts)
+            words = _word_count(output_text)
+            # Re-save truncated output
+            with open(output_path, "w") as f:
+                f.write(output_text)
+            print(f"   ⚠️  {step_name.title()} output truncated: {original_words} → {words} words")
+
         # --- Minimum output gate ---
         min_words = step.get("min_output_words", 50)
         if words < min_words:
@@ -1699,6 +1724,20 @@ def run_pipeline(
             print(f"   💡 Check the step's system prompt or increase context")
             print(f"   📄 Partial output saved to: {output_path}")
             return None  # halt pipeline
+
+        # Strip editor verification/scoring log before passing to next step
+        if step_name == "editor":
+            for marker in ("### EDITOR REPORT", "### Verification Log", "---\n\n### Verification",
+                           "---\n\n### Score", "---\n\n### Structural Issues"):
+                idx = output_text.find(marker)
+                if idx > 0:
+                    # Also strip trailing separator before the marker
+                    clean_end = output_text[:idx].rstrip().rstrip("-").rstrip()
+                    output_text = clean_end
+                    if debug:
+                        stripped_words = _word_count(clean_end)
+                        print(f"   🐛 stripped editor log at '{marker[:30]}…' → {stripped_words} words for next step")
+                    break
 
         previous_output = output_text
 
