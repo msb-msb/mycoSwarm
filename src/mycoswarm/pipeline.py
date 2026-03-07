@@ -1697,16 +1697,19 @@ def run_pipeline(
             preview = output_text[:200].replace("\n", "\\n")
             print(f"   🐛 output preview: \"{preview}...\"")
 
-        # --- Word-count hard gate (writer + seo-optimizer) ---
-        if step_name in ("writer", "seo-optimizer") and words > 1700:
+        # --- Word-count hard gate ---
+        # Writer gate is lenient (1900) — let editor see complete sections.
+        # SEO gate (1700) enforces the final published word count.
+        _wc_threshold = 1900 if step_name == "writer" else 1700
+        _wc_target = 1800 if step_name == "writer" else 1600
+        if step_name in ("writer", "seo-optimizer") and words > _wc_threshold:
             original_words = words
-            # Truncate to ~1600 words at nearest paragraph break
             paragraphs = output_text.split("\n\n")
             truncated_parts = []
             count = 0
             for para in paragraphs:
                 para_words = len(para.split())
-                if count + para_words > 1600 and truncated_parts:
+                if count + para_words > _wc_target and truncated_parts:
                     break
                 truncated_parts.append(para)
                 count += para_words
