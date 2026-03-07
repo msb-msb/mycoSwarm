@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.4.0 — RLM Pipeline + Quality Gates (2026-03-06)
+* RLM research agent with topic-anchored decomposition (prevents subtopic drift)
+* Editor timeout 300s → 600s (prevents mid-generation cutoff)
+* Writer + SEO post-step word-count truncation gates (>1700 → ~1600 at paragraph break)
+* Editor verification log stripped before passing to SEO optimizer
+* 9 article category profiles with per-category model selection
+* article-full-v2.yaml (5-step merged synthesizer pipeline)
+* 300s duration warning for any step exceeding threshold
+
 ## v0.3.9 — RLM Pipeline Optimizations (2026-03-06)
 * Synthesizer step skipped in RLM mode — research bundle already structured, saves ~152s
 * Subtopic cap lowered 8 to 6, prompt prefers 4-5 subtopics for better depth per subtopic
