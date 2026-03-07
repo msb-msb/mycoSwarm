@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.4.1 — Parallel Subtopic Search (2026-03-06)
+* Phase 40b: parallel subtopic search via ThreadPoolExecutor (all search+fetch concurrent)
+* Serial LLM inference preserved (rushuna 12GB VRAM can't handle concurrent inference)
+* Writer truncation gate raised 1700→1900 to prevent section loss before editor
+* SEO gate unchanged at 1700 as final word count enforcer
+* Phase timing logs: "phase 1 (parallel search)" and "phase 2 (serial inference)"
+
 ## v0.4.0 — RLM Pipeline + Quality Gates (2026-03-06)
 * RLM research agent with topic-anchored decomposition (prevents subtopic drift)
 * Editor timeout 300s → 600s (prevents mid-generation cutoff)
