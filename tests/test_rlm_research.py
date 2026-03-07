@@ -369,10 +369,57 @@ class TestRLMRun:
 
         log_text = "\n".join(agent.debug_log)
         assert "decomposed" in log_text
-        assert "subtopic 1/2" in log_text
-        assert "subtopic 2/2" in log_text
+        assert "parallel search: 2 subtopics dispatched" in log_text
+        assert "phase 1 (parallel search)" in log_text
         assert "compiling final bundle" in log_text
+        assert "phase 2 (serial inference)" in log_text
         assert "done:" in log_text
+
+    @patch("mycoswarm.agents.rlm_research.RLMResearchAgent._synthesize")
+    @patch("mycoswarm.agents.rlm_research._execute_fetch")
+    @patch("mycoswarm.agents.rlm_research._execute_search")
+    @patch("mycoswarm.agents.rlm_research.decompose_topic")
+    def test_parallel_search_all_subtopics_get_results(
+        self, mock_decompose, mock_search, mock_fetch, mock_synth
+    ):
+        """Phase 40b: parallel search dispatches all subtopics and collects results."""
+        mock_decompose.return_value = [
+            {"subtopic": "pricing", "queries": ["price q1"], "depth_hint": 3},
+            {"subtopic": "specs", "queries": ["spec q1"], "depth_hint": 1},
+            {"subtopic": "benchmarks", "queries": ["bench q1"], "depth_hint": 2},
+        ]
+        mock_search.return_value = SAMPLE_SEARCH_RESULTS
+        mock_fetch.return_value = "page content for testing"
+        mock_synth.return_value = "bundle output " * 50
+
+        agent = RLMResearchAgent(
+            ollama_url="http://localhost:11434",
+            model="qwen3.5:9b",
+            root_model="gemma3:27b",
+            synthesis_url="http://miu:11434",
+        )
+        result = agent.run(topic="Best budget GPU")
+
+        assert result != ""
+        # All 3 subtopics should have been searched
+        assert mock_search.call_count == 3  # 1 query per subtopic
+        # Each query fetches 2 URLs
+        assert mock_fetch.call_count == 6  # 2 URLs * 3 subtopics
+        # Synthesis called once with all findings
+        mock_synth.assert_called_once()
+        # Verify findings were passed in order
+        call_args = mock_synth.call_args
+        findings = call_args[0][1]  # second positional arg
+        assert len(findings) == 3
+        assert findings[0]["subtopic"] == "pricing"
+        assert findings[1]["subtopic"] == "specs"
+        assert findings[2]["subtopic"] == "benchmarks"
+
+        # Verify parallel search log messages
+        log_text = "\n".join(agent.debug_log)
+        assert "parallel search: 3 subtopics dispatched" in log_text
+        assert "phase 1 (parallel search)" in log_text
+        assert "phase 2 (serial inference)" in log_text
 
     @patch("mycoswarm.agents.rlm_research.RLMResearchAgent._synthesize")
     @patch("mycoswarm.agents.rlm_research.RLMResearchAgent._research_subtopic")

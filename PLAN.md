@@ -1336,16 +1336,16 @@ niche benchmarks where a single undifferentiated search loop misses coverage.
       current single-loop research agent
 
 #### 40b: Parallel Recursive Execution
-- [ ] **Per-subtopic research loop:** each subtopic runs its own search → fetch → evaluate
+- [x] **Parallel search+fetch:** ThreadPoolExecutor dispatches all subtopics concurrently
+      for network I/O (search + page fetch). Serial LLM inference preserved. (2026-03-06)
+- [x] **Per-subtopic research loop:** each subtopic runs its own search → fetch → evaluate
       mini-loop (2-3 rounds max, shallower than root loop)
-- [ ] **Parallel dispatch:** asyncio.gather across subtopics — rushuna handles multiple
-      concurrent Ollama calls (verify concurrency limit on RTX 3060 12GB first)
-- [ ] **Per-subtopic depth target:** pricing subtopics need higher depth (hard to find),
-      spec subtopics can be shallower (easier to verify). Decomposition prompt should
-      include depth_hint per subtopic.
-- [ ] **Structured findings return:** each subtopic loop returns
+- [x] **Per-subtopic depth target:** pricing subtopics need higher depth (hard to find),
+      spec subtopics can be shallower (easier to verify). Decomposition prompt includes
+      depth_hint per subtopic.
+- [x] **Structured findings return:** each subtopic loop returns
       {subtopic, queries_run, pages_fetched, key_facts, sources, depth}
-- [ ] **Context budget:** total findings across all subtopics capped at CONTEXT_WORD_LIMIT
+- [x] **Context budget:** total findings across all subtopics capped at CONTEXT_WORD_LIMIT
       before synthesis — truncate lowest-depth subtopics first
 
 #### 40c: Root Synthesis

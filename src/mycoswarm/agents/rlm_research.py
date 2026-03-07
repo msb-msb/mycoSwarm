@@ -1,8 +1,7 @@
 """RLM-style research agent — decompose-then-execute research strategy.
 
 Phase 40a: Decomposition — LLM breaks topic into structured subtopics.
-Phase 40b: Sequential per-subtopic research + root-model synthesis.
-Phase 40c (future): Parallel subtopic execution.
+Phase 40b: Parallel network I/O (search+fetch), serial LLM inference.
 """
 
 import ast
@@ -11,6 +10,7 @@ import logging
 import os
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import httpx
 
@@ -357,38 +357,64 @@ class RLMResearchAgent:
         """Run the full RLM research loop: decompose -> research -> synthesize."""
         start = time.time()
 
-        # Phase 1: Decompose
+        # Decompose topic into subtopics
         subtopics = self.decompose(topic)
         if not subtopics:
             return ""  # caller falls back to ResearchAgent
 
-        # Phase 2: Research each subtopic sequentially
-        findings: list[dict] = []
         total = len(subtopics)
-        total_searches = 0
-        total_fetches = 0
 
-        for idx, st in enumerate(subtopics, 1):
-            self._log(
-                f"subtopic {idx}/{total}: {st['subtopic']} — "
-                f"{len(st['queries'])} queries, depth_hint={st['depth_hint']}"
-            )
-            result = self._research_subtopic(st, debug=debug)
-            findings.append(result)
-            total_searches += result["searches"]
-            total_fetches += result["pages_fetched"]
-            self._log(
-                f"  done — {result['searches']} searches, "
-                f"{result['pages_fetched']} pages fetched, "
-                f"{len(result['sources'])} sources"
-            )
+        # --- Phase 1: Parallel network I/O (search + fetch) ---
+        phase1_start = time.time()
+        self._log(f"parallel search: {total} subtopics dispatched")
+
+        def _search_worker(st: dict) -> dict:
+            return self._research_subtopic(st, debug=debug)
+
+        findings: list[dict] = [{}] * total  # pre-allocate to preserve order
+        with ThreadPoolExecutor(max_workers=total) as pool:
+            future_to_idx = {
+                pool.submit(_search_worker, st): idx
+                for idx, st in enumerate(subtopics)
+            }
+            for future in as_completed(future_to_idx, timeout=120):
+                idx = future_to_idx[future]
+                try:
+                    result = future.result()
+                    findings[idx] = result
+                    self._log(
+                        f"  ✓ {result['subtopic']} — "
+                        f"{result['searches']} searches, "
+                        f"{result['pages_fetched']} pages"
+                    )
+                except Exception as e:
+                    name = subtopics[idx]["subtopic"]
+                    self._log(f"  ✗ {name} — failed: {e}")
+                    findings[idx] = {
+                        "subtopic": name,
+                        "depth_hint": subtopics[idx].get("depth_hint", 2),
+                        "queries_run": subtopics[idx]["queries"],
+                        "searches": 0,
+                        "pages_fetched": 0,
+                        "sources": [],
+                        "raw_content": "",
+                    }
+
+        # Drop empty placeholder entries (shouldn't happen but be safe)
+        findings = [f for f in findings if f]
+
+        total_searches = sum(f["searches"] for f in findings)
+        total_fetches = sum(f["pages_fetched"] for f in findings)
+        phase1_time = time.time() - phase1_start
 
         self._log(
             f"all subtopics complete: {total_searches} searches, "
             f"{total_fetches} pages fetched"
         )
+        self._log(f"phase 1 (parallel search): {phase1_time:.0f}s")
 
-        # Phase 3: Synthesize with root model
+        # --- Phase 2: Serial LLM inference (synthesis) ---
+        phase2_start = time.time()
         synth_model = self.root_model or self.model
         self._log(f"compiling final bundle ({synth_model} synthesis)")
         output = self._synthesize(
@@ -397,9 +423,13 @@ class RLMResearchAgent:
             context=context,
         )
 
+        phase2_time = time.time() - phase2_start
+
         if not output:
             self._log("synthesis returned empty — falling back")
             return ""
+
+        self._log(f"phase 2 (serial inference): {phase2_time:.0f}s")
 
         duration = time.time() - start
         words = _word_count(output)
@@ -419,6 +449,8 @@ class RLMResearchAgent:
                 f.write(f"- Subtopics: {total}\n")
                 f.write(f"- Total searches: {total_searches}\n")
                 f.write(f"- Total pages fetched: {total_fetches}\n")
+                f.write(f"- Phase 1 (parallel search): {phase1_time:.0f}s\n")
+                f.write(f"- Phase 2 (serial inference): {phase2_time:.0f}s\n")
                 f.write(f"- Duration: {duration:.0f}s\n")
                 f.write(f"- Output words: {words}\n\n")
                 f.write("## Subtopic Findings\n\n")
