@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.4.2 — Per-Category Research Modes (2026-03-07)
+* RLM now default research mode for research-driven, buying-guide, vs, how-to categories
+* Standard default for news, model-release, explainer, opinion, experience-driven
+* article-full-v2.yaml validated: 57/60 editor score, 844s pipeline time (merged synthesizer)
+* `--research-mode` CLI flag overrides category default when passed explicitly
+* `--list-categories` now shows research mode per category
+* 9 category tests added (defaults, overrides, fallback)
+
 ## v0.4.1 — Parallel Subtopic Search (2026-03-06)
 * Phase 40b: parallel subtopic search via ThreadPoolExecutor (all search+fetch concurrent)
 * Serial LLM inference preserved (rushuna 12GB VRAM can't handle concurrent inference)
