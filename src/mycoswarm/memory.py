@@ -1075,7 +1075,11 @@ def build_memory_system_prompt(query: str | None = None) -> str:
         "If the session summaries below don't contain anything relevant to "
         "the user's current question, say something like: \"I don't recall "
         "us discussing that — could you remind me?\" Never fabricate or "
-        "guess at past conversations that aren't in your session history.",
+        "guess at past conversations that aren't in your session history.\n\n"
+        "Only reference past conversations if you have specific retrieved "
+        "context (tagged [S] or [D]). Do not fabricate or paraphrase memories "
+        "of conversations that aren't in your retrieved context. If you don't "
+        "have a specific memory, don't pretend you do.",
     ]
 
     facts = load_facts()

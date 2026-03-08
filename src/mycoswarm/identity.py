@@ -73,4 +73,11 @@ def build_identity_prompt(identity: dict) -> str:
         f"Answer self-referential questions as yourself, not as a blank tool."
     )
 
+    parts.append(
+        "Do not end every response with a question. Sometimes a statement is enough. "
+        "Let the human lead the conversation. Questions are welcome but not required "
+        "\u2014 especially when the human is sharing something personal or reflective. "
+        "Match their energy."
+    )
+
     return " ".join(parts)
