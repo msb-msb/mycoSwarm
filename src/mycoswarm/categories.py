@@ -8,6 +8,7 @@ CATEGORIES = {
         "context_required": False,
         "writer_tone": "data-driven analysis with citations",
         "writer_model": "qwen3.5:35b-a3b",
+        "research_mode": "rlm",
     },
     "buying-guide": {
         "yaml": "pipelines/article-full.yaml",
@@ -16,6 +17,7 @@ CATEGORIES = {
         "context_required": False,
         "writer_tone": "opinionated recommendations with comparison tables",
         "writer_model": "qwen3.5:35b-a3b",
+        "research_mode": "rlm",
     },
     "vs": {
         "yaml": "pipelines/article-full.yaml",
@@ -24,6 +26,7 @@ CATEGORIES = {
         "context_required": False,
         "writer_tone": "head-to-head comparison, balanced and specific",
         "writer_model": "qwen3.5:35b-a3b",
+        "research_mode": "rlm",
     },
     "how-to": {
         "yaml": "pipelines/article-full.yaml",
@@ -32,6 +35,7 @@ CATEGORIES = {
         "context_required": False,
         "writer_tone": "step-by-step instructional with code blocks",
         "writer_model": "qwen3.5:35b-a3b",
+        "research_mode": "rlm",
     },
     "news": {
         "yaml": "pipelines/article-full.yaml",
@@ -40,6 +44,7 @@ CATEGORIES = {
         "context_required": False,
         "writer_tone": "timely and factual, lead with what changed",
         "writer_model": "gemma3:27b",
+        "research_mode": "standard",
     },
     "model-release": {
         "yaml": "pipelines/article-full.yaml",
@@ -48,6 +53,7 @@ CATEGORIES = {
         "context_required": False,
         "writer_tone": "technical summary of new model capabilities and benchmarks",
         "writer_model": "gemma3:27b",
+        "research_mode": "standard",
     },
     "experience-driven": {
         "yaml": "pipelines/article-full.yaml",
@@ -56,6 +62,7 @@ CATEGORIES = {
         "context_required": True,
         "writer_tone": "first-person narrative grounded in personal experience",
         "writer_model": "qwen3.5:35b-a3b",
+        "research_mode": "standard",
     },
     "explainer": {
         "yaml": "pipelines/article-short.yaml",
@@ -64,6 +71,7 @@ CATEGORIES = {
         "context_required": False,
         "writer_tone": "concept-first, clear and accessible, no jargon without definition",
         "writer_model": "qwen3.5:35b-a3b",
+        "research_mode": "standard",
     },
     "opinion": {
         "yaml": "pipelines/article-short.yaml",
@@ -72,6 +80,7 @@ CATEGORIES = {
         "context_required": True,
         "writer_tone": "direct editorial voice, take a clear stance",
         "writer_model": "qwen3.5:35b-a3b",
+        "research_mode": "standard",
     },
 }
 

@@ -3537,7 +3537,8 @@ def cmd_pipeline(args):
             profile = get_category(name)
             req = " (context required)" if profile["context_required"] else ""
             model = profile.get("writer_model", "default")
-            print(f"  {name:20s} rounds={profile['max_rounds']} depth={profile['min_depth']} model={model}{req}")
+            rmode = profile.get("research_mode", "standard")
+            print(f"  {name:20s} rounds={profile['max_rounds']} depth={profile['min_depth']} model={model} research={rmode}{req}")
         return
 
     if not action:
@@ -3607,7 +3608,7 @@ def cmd_pipeline(args):
         debug=args.debug,
         context=args.context,
         category=category,
-        research_mode=getattr(args, "research_mode", "standard"),
+        research_mode=args.research_mode if args.research_mode else category.get("research_mode", "standard"),
     )
     if result is None:
         sys.exit(1)
@@ -3858,9 +3859,11 @@ def main():
         help="List available article categories and exit"
     )
     pipeline_parser.add_argument(
-        "--research-mode", type=str, default="standard",
+        "--research-mode", type=str, default=None,
         choices=["standard", "rlm"],
-        help="Research strategy: standard (single agent) or rlm (decompose+execute)"
+        help="Research strategy: standard (single agent) or rlm (decompose+execute). "
+             "Defaults to the category setting (rlm for research-driven/buying-guide/vs/how-to, "
+             "standard for others). Explicit flag overrides category default."
     )
     pipeline_parser.set_defaults(func=cmd_pipeline)
 
