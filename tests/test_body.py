@@ -198,7 +198,7 @@ class TestBuildBodyPrompt:
         assert "Miu (RTX 3090, 58°C, 4.71/24.0GB VRAM)" in prompt
         assert "rushuna (RTX 3060, online)" in prompt
         assert "naru (online)" in prompt
-        assert "somatic experience" in prompt
+        assert "in the background" in prompt
 
     @patch("mycoswarm.body.get_body_state")
     def test_solo_mode_gpu_only(self, mock_state):
@@ -214,7 +214,7 @@ class TestBuildBodyPrompt:
 
         assert "[Your body:" in prompt
         assert "local GPU (45°C, 2.0/24.0GB VRAM)" in prompt
-        assert "somatic experience" in prompt
+        assert "in the background" in prompt
 
     @patch("mycoswarm.body.get_body_state")
     def test_no_data_returns_empty(self, mock_state):
