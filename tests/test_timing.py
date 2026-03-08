@@ -163,3 +163,87 @@ def test_status_indicator_icons():
     assert proceed.status_indicator() == "▶"
     assert gentle.status_indicator() == "🌙"
     assert deep.status_indicator() == "🌊"
+
+
+# ── Hardware body signals (Phase 31c) ────────────────────────────────────
+
+
+# 16. GPU temp > 85°C biases GENTLE
+def test_hot_gpu_biases_gentle():
+    result = evaluate_timing(
+        current_time=datetime(2026, 2, 17, 10, 0),
+        user_message_length=50,
+        session_turn_count=5,
+        body_state={"gpu_temp": 90.0, "vram_percent": 40.0, "nodes": []},
+    )
+    assert any("GPU running hot" in r for r in result.reasons)
+    # With gentle_score: chat(0.1) + hot_gpu(0.3) + mid_session = 0.4-0.5
+    # May or may not tip to GENTLE alone, but the signal is present
+
+
+# 17. GPU temp exactly 85 does NOT trigger
+def test_gpu_temp_85_no_trigger():
+    result = evaluate_timing(
+        current_time=datetime(2026, 2, 17, 10, 0),
+        user_message_length=50,
+        body_state={"gpu_temp": 85.0, "vram_percent": 40.0, "nodes": []},
+    )
+    assert not any("GPU running hot" in r for r in result.reasons)
+
+
+# 18. VRAM > 90% biases GENTLE
+def test_high_vram_biases_gentle():
+    result = evaluate_timing(
+        current_time=datetime(2026, 2, 17, 10, 0),
+        user_message_length=50,
+        body_state={"gpu_temp": 50.0, "vram_percent": 95.0, "nodes": []},
+    )
+    assert any("VRAM pressure" in r for r in result.reasons)
+
+
+# 19. VRAM exactly 90 does NOT trigger
+def test_vram_90_no_trigger():
+    result = evaluate_timing(
+        current_time=datetime(2026, 2, 17, 10, 0),
+        user_message_length=50,
+        body_state={"gpu_temp": 50.0, "vram_percent": 90.0, "nodes": []},
+    )
+    assert not any("VRAM pressure" in r for r in result.reasons)
+
+
+# 20. Both hot GPU + high VRAM → definitely GENTLE
+def test_hot_gpu_and_high_vram_gentle():
+    result = evaluate_timing(
+        current_time=datetime(2026, 2, 17, 10, 0),
+        user_message_length=50,
+        body_state={"gpu_temp": 92.0, "vram_percent": 95.0, "nodes": []},
+    )
+    assert result.mode == TimingMode.GENTLE
+    assert any("GPU running hot" in r for r in result.reasons)
+    assert any("VRAM pressure" in r for r in result.reasons)
+
+
+# 21. None body_state is no-op
+def test_none_body_state_no_change():
+    r1 = evaluate_timing(
+        current_time=datetime(2026, 2, 17, 10, 0),
+        user_message_length=50,
+    )
+    r2 = evaluate_timing(
+        current_time=datetime(2026, 2, 17, 10, 0),
+        user_message_length=50,
+        body_state=None,
+    )
+    assert r1.mode == r2.mode
+    assert len(r1.reasons) == len(r2.reasons)
+
+
+# 22. Normal body state doesn't add signals
+def test_normal_body_no_signals():
+    result = evaluate_timing(
+        current_time=datetime(2026, 2, 17, 10, 0),
+        user_message_length=50,
+        body_state={"gpu_temp": 55.0, "vram_percent": 40.0, "nodes": []},
+    )
+    assert not any("GPU" in r for r in result.reasons)
+    assert not any("VRAM" in r for r in result.reasons)

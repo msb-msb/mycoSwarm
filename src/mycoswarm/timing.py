@@ -47,6 +47,7 @@ def evaluate_timing(
     vitals_compassion: float | None = None,
     vitals_clarity: float | None = None,
     frustration_detected: bool = False,
+    body_state: dict | None = None,
 ) -> TimingDecision:
     """
     Evaluate timing signals and return a calibration decision.
@@ -131,6 +132,18 @@ def evaluate_timing(
     if session_turn_count == 0:
         reasons.append("first message — warm greeting energy")
         # Don't push either direction, just note it
+
+    # HARDWARE BODY SIGNALS (Phase 31c)
+    if body_state:
+        gpu_temp = body_state.get("gpu_temp")
+        if gpu_temp is not None and gpu_temp > 85:
+            gentle_score += 0.3
+            reasons.append(f"GPU running hot ({gpu_temp:.0f}°C) — keep it brief")
+
+        vram_pct = body_state.get("vram_percent")
+        if vram_pct is not None and vram_pct > 90:
+            gentle_score += 0.2
+            reasons.append(f"VRAM pressure ({vram_pct:.0f}%) — concise responses")
 
     # --- Decision ---
     if gentle_score >= 0.5 and gentle_score > deep_score:

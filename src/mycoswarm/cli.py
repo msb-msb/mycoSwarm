@@ -2813,6 +2813,8 @@ def cmd_chat(args):
         _seconds_since_last = None
         if _last_turn_time is not None:
             _seconds_since_last = (_dt_timing.now() - _last_turn_time).total_seconds()
+        from mycoswarm.body import get_body_state as _get_body_timing
+        _timing_body = _get_body_timing(url if daemon_up else None)
         _timing = evaluate_timing(
             current_time=_dt_timing.now(),
             session_turn_count=_turn_count,
@@ -2822,6 +2824,7 @@ def cmd_chat(args):
             frustration_detected=(
                 _last_vitals is not None and _last_vitals.compassion < 0.4
             ),
+            body_state=_timing_body,
         )
         _last_timing = _timing
 
