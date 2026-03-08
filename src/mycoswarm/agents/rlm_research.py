@@ -202,13 +202,13 @@ class RLMResearchAgent:
             self._log("decomposition failed — will fall back to standard agent")
         return subtopics
 
-    def _search_subtopic(
+    def _research_subtopic(
         self, subtopic: dict, debug: bool = False
     ) -> dict:
-        """Search and fetch pages for a single subtopic (network I/O only, no LLM).
+        """Research a single subtopic by running its queries and fetching pages.
 
         Returns dict with keys: subtopic, depth_hint, queries_run,
-        searches, pages_fetched, sources, raw_content.
+        pages_fetched, sources, raw_content.
         """
         name = subtopic["subtopic"]
         queries = subtopic["queries"]
@@ -254,62 +254,6 @@ class RLMResearchAgent:
             "sources": sources,
             "raw_content": combined,
         }
-
-    def _research_subtopic(self, subtopic: dict, debug: bool = False) -> dict:
-        """Backward-compatible alias for _search_subtopic."""
-        return self._search_subtopic(subtopic, debug=debug)
-
-    def _summarize_subtopic(self, search_result: dict) -> dict:
-        """Summarize raw search results for a single subtopic via LLM.
-
-        Takes a search_result dict from _search_subtopic, calls the research
-        model to distill raw content into structured findings. Returns the
-        same dict with raw_content replaced by LLM summary.
-        """
-        name = search_result["subtopic"]
-        raw = search_result["raw_content"]
-
-        # Skip LLM call if no content to summarize
-        if not raw.strip():
-            return search_result
-
-        prompt = (
-            f"You are a research analyst. Summarize the following raw search "
-            f"results about '{name}' into structured findings.\n\n"
-            f"Extract: key facts, data points, prices, benchmarks, and source URLs.\n"
-            f"Be comprehensive — include ALL data points found.\n"
-            f"Output structured text with bullet points, not prose.\n"
-            f"Preserve source URLs for every claim."
-        )
-
-        try:
-            resp = httpx.post(
-                f"{self.ollama_url}/api/chat",
-                json={
-                    "model": self.model,
-                    "messages": [
-                        {"role": "system", "content": prompt},
-                        {"role": "user", "content": f"Raw search results for '{name}':\n\n{raw}"},
-                    ],
-                    "stream": False,
-                    "options": {"temperature": 0.3, "num_ctx": 8192, "num_predict": 2048},
-                    "think": False,
-                },
-                timeout=120.0,
-            )
-            resp.raise_for_status()
-            summary = resp.json().get("message", {}).get("content", "").strip()
-            # Strip think tags if present
-            summary = re.sub(r'<think>.*?</think>', '', summary, flags=re.DOTALL).strip()
-            if summary:
-                result = dict(search_result)
-                result["raw_content"] = summary
-                return result
-        except Exception as e:
-            self._log(f"  ⚠ summarize failed for {name}: {e}")
-
-        # Fall back to raw content on failure
-        return search_result
 
     def _synthesize(
         self, topic: str, findings: list[dict], reference_data: str = "",
@@ -425,9 +369,9 @@ class RLMResearchAgent:
         self._log(f"parallel search: {total} subtopics dispatched")
 
         def _search_worker(st: dict) -> dict:
-            return self._search_subtopic(st, debug=debug)
+            return self._research_subtopic(st, debug=debug)
 
-        raw_findings: list[dict] = [{}] * total  # pre-allocate to preserve order
+        findings: list[dict] = [{}] * total  # pre-allocate to preserve order
         with ThreadPoolExecutor(max_workers=total) as pool:
             future_to_idx = {
                 pool.submit(_search_worker, st): idx
@@ -437,7 +381,7 @@ class RLMResearchAgent:
                 idx = future_to_idx[future]
                 try:
                     result = future.result()
-                    raw_findings[idx] = result
+                    findings[idx] = result
                     self._log(
                         f"  ✓ {result['subtopic']} — "
                         f"{result['searches']} searches, "
@@ -446,7 +390,7 @@ class RLMResearchAgent:
                 except Exception as e:
                     name = subtopics[idx]["subtopic"]
                     self._log(f"  ✗ {name} — failed: {e}")
-                    raw_findings[idx] = {
+                    findings[idx] = {
                         "subtopic": name,
                         "depth_hint": subtopics[idx].get("depth_hint", 2),
                         "queries_run": subtopics[idx]["queries"],
@@ -457,10 +401,10 @@ class RLMResearchAgent:
                     }
 
         # Drop empty placeholder entries (shouldn't happen but be safe)
-        raw_findings = [f for f in raw_findings if f]
+        findings = [f for f in findings if f]
 
-        total_searches = sum(f["searches"] for f in raw_findings)
-        total_fetches = sum(f["pages_fetched"] for f in raw_findings)
+        total_searches = sum(f["searches"] for f in findings)
+        total_fetches = sum(f["pages_fetched"] for f in findings)
         phase1_time = time.time() - phase1_start
 
         self._log(
@@ -469,22 +413,8 @@ class RLMResearchAgent:
         )
         self._log(f"phase 1 (parallel search): {phase1_time:.0f}s")
 
-        # --- Phase 2: Serial LLM summarize (per-subtopic) ---
+        # --- Phase 2: Serial LLM inference (synthesis) ---
         phase2_start = time.time()
-        self._log(f"serial summarize: {len(raw_findings)} subtopics ({self.model})")
-
-        findings: list[dict] = []
-        for rf in raw_findings:
-            summarized = self._summarize_subtopic(rf)
-            findings.append(summarized)
-            summary_words = _word_count(summarized["raw_content"])
-            self._log(f"  ✓ {rf['subtopic']} → {summary_words} words")
-
-        phase2_time = time.time() - phase2_start
-        self._log(f"phase 2 (serial summarize): {phase2_time:.0f}s")
-
-        # --- Phase 3: Root model synthesis ---
-        phase3_start = time.time()
         synth_model = self.root_model or self.model
         self._log(f"compiling final bundle ({synth_model} synthesis)")
         output = self._synthesize(
@@ -493,13 +423,13 @@ class RLMResearchAgent:
             context=context,
         )
 
-        phase3_time = time.time() - phase3_start
+        phase2_time = time.time() - phase2_start
 
         if not output:
             self._log("synthesis returned empty — falling back")
             return ""
 
-        self._log(f"phase 3 (synthesis): {phase3_time:.0f}s")
+        self._log(f"phase 2 (serial inference): {phase2_time:.0f}s")
 
         duration = time.time() - start
         words = _word_count(output)
@@ -520,8 +450,7 @@ class RLMResearchAgent:
                 f.write(f"- Total searches: {total_searches}\n")
                 f.write(f"- Total pages fetched: {total_fetches}\n")
                 f.write(f"- Phase 1 (parallel search): {phase1_time:.0f}s\n")
-                f.write(f"- Phase 2 (serial summarize): {phase2_time:.0f}s\n")
-                f.write(f"- Phase 3 (synthesis): {phase3_time:.0f}s\n")
+                f.write(f"- Phase 2 (serial inference): {phase2_time:.0f}s\n")
                 f.write(f"- Duration: {duration:.0f}s\n")
                 f.write(f"- Output words: {words}\n\n")
                 f.write("## Subtopic Findings\n\n")

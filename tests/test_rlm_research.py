@@ -187,10 +187,10 @@ class TestHelpers:
         assert urls == ["https://c.com"]
 
 
-# ── _search_subtopic tests ───────────────────────────────────────────────
+# ── _research_subtopic tests ─────────────────────────────────────────────
 
 
-class TestSearchSubtopic:
+class TestResearchSubtopic:
     @patch("mycoswarm.agents.rlm_research._execute_fetch")
     @patch("mycoswarm.agents.rlm_research._execute_search")
     def test_returns_findings_dict(self, mock_search, mock_fetch):
@@ -205,7 +205,7 @@ class TestSearchSubtopic:
             "queries": ["RTX 5090 price"],
             "depth_hint": 3,
         }
-        result = agent._search_subtopic(subtopic)
+        result = agent._research_subtopic(subtopic)
 
         assert result["subtopic"] == "pricing"
         assert result["depth_hint"] == 3
@@ -230,7 +230,7 @@ class TestSearchSubtopic:
             "queries": ["q1"],
             "depth_hint": 3,
         }
-        result = agent._search_subtopic(subtopic)
+        result = agent._research_subtopic(subtopic)
 
         assert result["subtopic"] == "pricing"
         assert result["searches"] == 1
@@ -250,101 +250,34 @@ class TestSearchSubtopic:
             "queries": ["q1", "q2", "q3"],
             "depth_hint": 2,
         }
-        result = agent._search_subtopic(subtopic)
+        result = agent._research_subtopic(subtopic)
 
         assert result["searches"] == 3
         # 2 URLs fetched per query * 3 queries = 6
         assert result["pages_fetched"] == 6
 
 
-# ── _summarize_subtopic tests ────────────────────────────────────────────
-
-
-class TestSummarizeSubtopic:
-    @patch("mycoswarm.agents.rlm_research.httpx.post")
-    def test_summarizes_raw_content(self, mock_post):
-        mock_post.return_value = _mock_ollama_response("- Price: $299\n- Source: example.com")
-
-        agent = RLMResearchAgent(
-            ollama_url="http://localhost:11434", model="qwen3.5:9b"
-        )
-        search_result = {
-            "subtopic": "pricing",
-            "depth_hint": 3,
-            "queries_run": ["price q"],
-            "searches": 1,
-            "pages_fetched": 2,
-            "sources": ["https://example.com"],
-            "raw_content": "Raw page content about pricing " * 50,
-        }
-        result = agent._summarize_subtopic(search_result)
-
-        assert result["subtopic"] == "pricing"
-        assert "Price: $299" in result["raw_content"]
-        mock_post.assert_called_once()
-
-    def test_skips_empty_content(self):
-        agent = RLMResearchAgent(
-            ollama_url="http://localhost:11434", model="qwen3.5:9b"
-        )
-        search_result = {
-            "subtopic": "pricing",
-            "depth_hint": 3,
-            "queries_run": ["q1"],
-            "searches": 1,
-            "pages_fetched": 0,
-            "sources": [],
-            "raw_content": "",
-        }
-        result = agent._summarize_subtopic(search_result)
-        assert result is search_result  # unchanged
-
-    @patch("mycoswarm.agents.rlm_research.httpx.post")
-    def test_falls_back_on_llm_failure(self, mock_post):
-        mock_post.side_effect = Exception("connection refused")
-
-        agent = RLMResearchAgent(
-            ollama_url="http://localhost:11434", model="qwen3.5:9b"
-        )
-        search_result = {
-            "subtopic": "pricing",
-            "depth_hint": 3,
-            "queries_run": ["q1"],
-            "searches": 1,
-            "pages_fetched": 1,
-            "sources": ["https://example.com"],
-            "raw_content": "original raw content",
-        }
-        result = agent._summarize_subtopic(search_result)
-        assert result["raw_content"] == "original raw content"
-
-
 # ── Full run() tests ─────────────────────────────────────────────────────
-
-
-_MOCK_SEARCH_RESULT = {
-    "subtopic": "test",
-    "depth_hint": 2,
-    "queries_run": ["q1"],
-    "searches": 1,
-    "pages_fetched": 2,
-    "sources": ["https://example.com"],
-    "raw_content": "Some research findings " * 50,
-}
 
 
 class TestRLMRun:
     @patch("mycoswarm.agents.rlm_research.RLMResearchAgent._synthesize")
-    @patch("mycoswarm.agents.rlm_research.RLMResearchAgent._summarize_subtopic")
-    @patch("mycoswarm.agents.rlm_research.RLMResearchAgent._search_subtopic")
+    @patch("mycoswarm.agents.rlm_research.RLMResearchAgent._research_subtopic")
     @patch("mycoswarm.agents.rlm_research.decompose_topic")
-    def test_run_full_pipeline(self, mock_decompose, mock_search, mock_summarize, mock_synth):
+    def test_run_full_pipeline(self, mock_decompose, mock_research, mock_synth):
         mock_decompose.return_value = [
             {"subtopic": "pricing", "queries": ["price q"], "depth_hint": 3},
             {"subtopic": "specs", "queries": ["spec q"], "depth_hint": 1},
         ]
-        mock_search.return_value = _MOCK_SEARCH_RESULT
-        mock_summarize.return_value = dict(_MOCK_SEARCH_RESULT, raw_content="summarized findings")
+        mock_research.return_value = {
+            "subtopic": "test",
+            "depth_hint": 2,
+            "queries_run": ["q1"],
+            "searches": 1,
+            "pages_fetched": 2,
+            "sources": ["https://example.com"],
+            "raw_content": "Some research findings " * 50,
+        }
         mock_synth.return_value = (
             "## Key Facts & Data Points\n- Fact 1\n\n"
             "## Price Data\n- $299\n\n"
@@ -366,9 +299,11 @@ class TestRLMRun:
         assert "Key Facts" in result
         assert "Price Data" in result
         assert result != ""
+        # Verify decompose was called
         mock_decompose.assert_called_once()
-        assert mock_search.call_count == 2
-        assert mock_summarize.call_count == 2
+        # Verify research was called for each subtopic
+        assert mock_research.call_count == 2
+        # Verify synthesis was called
         mock_synth.assert_called_once()
 
     @patch("mycoswarm.agents.rlm_research.decompose_topic")
@@ -381,17 +316,23 @@ class TestRLMRun:
         assert result == ""
 
     @patch("mycoswarm.agents.rlm_research.RLMResearchAgent._synthesize")
-    @patch("mycoswarm.agents.rlm_research.RLMResearchAgent._summarize_subtopic")
-    @patch("mycoswarm.agents.rlm_research.RLMResearchAgent._search_subtopic")
+    @patch("mycoswarm.agents.rlm_research.RLMResearchAgent._research_subtopic")
     @patch("mycoswarm.agents.rlm_research.decompose_topic")
     def test_run_returns_empty_on_synthesis_failure(
-        self, mock_decompose, mock_search, mock_summarize, mock_synth
+        self, mock_decompose, mock_research, mock_synth
     ):
         mock_decompose.return_value = [
             {"subtopic": "test", "queries": ["q1"], "depth_hint": 1},
         ]
-        mock_search.return_value = _MOCK_SEARCH_RESULT
-        mock_summarize.return_value = _MOCK_SEARCH_RESULT
+        mock_research.return_value = {
+            "subtopic": "test",
+            "depth_hint": 1,
+            "queries_run": ["q1"],
+            "searches": 1,
+            "pages_fetched": 1,
+            "sources": ["https://example.com"],
+            "raw_content": "content",
+        }
         mock_synth.return_value = ""
 
         agent = RLMResearchAgent(
@@ -401,18 +342,24 @@ class TestRLMRun:
         assert result == ""
 
     @patch("mycoswarm.agents.rlm_research.RLMResearchAgent._synthesize")
-    @patch("mycoswarm.agents.rlm_research.RLMResearchAgent._summarize_subtopic")
-    @patch("mycoswarm.agents.rlm_research.RLMResearchAgent._search_subtopic")
+    @patch("mycoswarm.agents.rlm_research.RLMResearchAgent._research_subtopic")
     @patch("mycoswarm.agents.rlm_research.decompose_topic")
-    def test_debug_log_tracks_three_phases(
-        self, mock_decompose, mock_search, mock_summarize, mock_synth
+    def test_debug_log_tracks_subtopics(
+        self, mock_decompose, mock_research, mock_synth
     ):
         mock_decompose.return_value = [
             {"subtopic": "a", "queries": ["q1"], "depth_hint": 1},
             {"subtopic": "b", "queries": ["q2"], "depth_hint": 2},
         ]
-        mock_search.return_value = _MOCK_SEARCH_RESULT
-        mock_summarize.return_value = dict(_MOCK_SEARCH_RESULT, raw_content="summary " * 50)
+        mock_research.return_value = {
+            "subtopic": "test",
+            "depth_hint": 1,
+            "queries_run": ["q1"],
+            "searches": 1,
+            "pages_fetched": 1,
+            "sources": ["https://example.com"],
+            "raw_content": "content " * 100,
+        }
         mock_synth.return_value = "bundle output " * 50
 
         agent = RLMResearchAgent(
@@ -424,21 +371,18 @@ class TestRLMRun:
         assert "decomposed" in log_text
         assert "parallel search: 2 subtopics dispatched" in log_text
         assert "phase 1 (parallel search)" in log_text
-        assert "serial summarize: 2 subtopics" in log_text
-        assert "phase 2 (serial summarize)" in log_text
         assert "compiling final bundle" in log_text
-        assert "phase 3 (synthesis)" in log_text
+        assert "phase 2 (serial inference)" in log_text
         assert "done:" in log_text
 
     @patch("mycoswarm.agents.rlm_research.RLMResearchAgent._synthesize")
-    @patch("mycoswarm.agents.rlm_research.RLMResearchAgent._summarize_subtopic")
     @patch("mycoswarm.agents.rlm_research._execute_fetch")
     @patch("mycoswarm.agents.rlm_research._execute_search")
     @patch("mycoswarm.agents.rlm_research.decompose_topic")
-    def test_parallel_search_serial_summarize(
-        self, mock_decompose, mock_search, mock_fetch, mock_summarize, mock_synth
+    def test_parallel_search_all_subtopics_get_results(
+        self, mock_decompose, mock_search, mock_fetch, mock_synth
     ):
-        """Phase 40b: parallel search, then serial summarize, then synthesis."""
+        """Phase 40b: parallel search dispatches all subtopics and collects results."""
         mock_decompose.return_value = [
             {"subtopic": "pricing", "queries": ["price q1"], "depth_hint": 3},
             {"subtopic": "specs", "queries": ["spec q1"], "depth_hint": 1},
@@ -446,10 +390,6 @@ class TestRLMRun:
         ]
         mock_search.return_value = SAMPLE_SEARCH_RESULTS
         mock_fetch.return_value = "page content for testing"
-
-        def _passthrough_summarize(search_result):
-            return dict(search_result, raw_content="summarized: " + search_result["subtopic"])
-        mock_summarize.side_effect = _passthrough_summarize
         mock_synth.return_value = "bundle output " * 50
 
         agent = RLMResearchAgent(
@@ -461,39 +401,44 @@ class TestRLMRun:
         result = agent.run(topic="Best budget GPU")
 
         assert result != ""
-        # All 3 subtopics searched in parallel
-        assert mock_search.call_count == 3
+        # All 3 subtopics should have been searched
+        assert mock_search.call_count == 3  # 1 query per subtopic
+        # Each query fetches 2 URLs
         assert mock_fetch.call_count == 6  # 2 URLs * 3 subtopics
-        # All 3 subtopics summarized serially
-        assert mock_summarize.call_count == 3
-        # Synthesis called once
+        # Synthesis called once with all findings
         mock_synth.assert_called_once()
-        # Findings passed in order with summarized content
-        findings = mock_synth.call_args[0][1]
+        # Verify findings were passed in order
+        call_args = mock_synth.call_args
+        findings = call_args[0][1]  # second positional arg
         assert len(findings) == 3
         assert findings[0]["subtopic"] == "pricing"
         assert findings[1]["subtopic"] == "specs"
         assert findings[2]["subtopic"] == "benchmarks"
 
+        # Verify parallel search log messages
         log_text = "\n".join(agent.debug_log)
         assert "parallel search: 3 subtopics dispatched" in log_text
         assert "phase 1 (parallel search)" in log_text
-        assert "serial summarize: 3 subtopics" in log_text
-        assert "phase 2 (serial summarize)" in log_text
-        assert "phase 3 (synthesis)" in log_text
+        assert "phase 2 (serial inference)" in log_text
 
     @patch("mycoswarm.agents.rlm_research.RLMResearchAgent._synthesize")
-    @patch("mycoswarm.agents.rlm_research.RLMResearchAgent._summarize_subtopic")
-    @patch("mycoswarm.agents.rlm_research.RLMResearchAgent._search_subtopic")
+    @patch("mycoswarm.agents.rlm_research.RLMResearchAgent._research_subtopic")
     @patch("mycoswarm.agents.rlm_research.decompose_topic")
     def test_synthesis_uses_root_model(
-        self, mock_decompose, mock_search, mock_summarize, mock_synth
+        self, mock_decompose, mock_research, mock_synth
     ):
         mock_decompose.return_value = [
             {"subtopic": "a", "queries": ["q1"], "depth_hint": 1},
         ]
-        mock_search.return_value = _MOCK_SEARCH_RESULT
-        mock_summarize.return_value = _MOCK_SEARCH_RESULT
+        mock_research.return_value = {
+            "subtopic": "a",
+            "depth_hint": 1,
+            "queries_run": ["q1"],
+            "searches": 1,
+            "pages_fetched": 1,
+            "sources": [],
+            "raw_content": "data " * 100,
+        }
         mock_synth.return_value = "bundle " * 100
 
         agent = RLMResearchAgent(
