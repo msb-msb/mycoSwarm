@@ -118,6 +118,7 @@ def compute_vitals(
     retrieval_candidates: int = 0,
     tool_used: str | None = None,
     said_dont_know: bool = False,
+    body_state: dict | None = None,
 ) -> Vitals:
     """Derive 8 C's from existing pipeline signals.
 
@@ -213,6 +214,36 @@ def compute_vitals(
     else:
         confidence = 0.3
     confidence = max(0.0, min(1.0, confidence))
+
+    # --- Hardware body floor modifiers (Phase 31c) ---
+    if body_state:
+        # GPU temp → Calm floor
+        gpu_temp = body_state.get("gpu_temp")
+        if gpu_temp is not None:
+            if gpu_temp > 85:
+                calm = min(calm, 0.3)
+            elif gpu_temp >= 75:
+                calm = min(calm, 0.6)
+
+        # VRAM usage → Clarity floor
+        vram_pct = body_state.get("vram_percent")
+        if vram_pct is not None:
+            if vram_pct > 90:
+                clarity = min(clarity, 0.4)
+            elif vram_pct >= 70:
+                clarity = min(clarity, 0.7)
+
+        # Online node ratio → Connectedness floor
+        nodes = body_state.get("nodes", [])
+        if nodes:
+            offline_count = sum(1 for n in nodes if not n.get("online", True))
+            if len(nodes) == 1 and not nodes[0].get("online", True):
+                # Only node and it's offline — shouldn't happen but handle it
+                connectedness = min(connectedness, 0.3)
+            elif offline_count >= 2:
+                connectedness = min(connectedness, 0.5)
+            elif offline_count == 1:
+                connectedness = min(connectedness, 0.7)
 
     return Vitals(
         calm=calm,

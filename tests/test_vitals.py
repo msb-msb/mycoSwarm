@@ -145,3 +145,133 @@ class TestDetailedDisplay:
         assert "Connectedness:" in display
         assert "Confidence:" in display
         assert "Overall:" in display
+
+
+# ── Hardware body floor modifier tests (Phase 31c) ───────────────────────
+
+
+class TestBodyFloorModifiers:
+    """Verify hardware state applies floor modifiers to vitals."""
+
+    def _base_body(self, **overrides):
+        body = {
+            "gpu_temp": 50.0,
+            "vram_used_gb": 5.0,
+            "vram_total_gb": 24.0,
+            "vram_percent": 20.0,
+            "nodes": [
+                {"name": "Miu", "online": True, "gpu": "RTX 3090", "tier": "executive"},
+                {"name": "naru", "online": True, "gpu": None, "tier": "light"},
+            ],
+        }
+        body.update(overrides)
+        return body
+
+    # --- GPU temp → Calm ---
+
+    def test_gpu_temp_above_85_floors_calm(self):
+        v = compute_vitals(body_state=self._base_body(gpu_temp=90.0))
+        assert v.calm <= 0.3
+
+    def test_gpu_temp_75_to_85_floors_calm(self):
+        v = compute_vitals(body_state=self._base_body(gpu_temp=80.0))
+        assert v.calm <= 0.6
+
+    def test_gpu_temp_exactly_75_floors_calm(self):
+        v = compute_vitals(body_state=self._base_body(gpu_temp=75.0))
+        assert v.calm <= 0.6
+
+    def test_gpu_temp_below_75_no_change(self):
+        v_no_body = compute_vitals()
+        v_with_body = compute_vitals(body_state=self._base_body(gpu_temp=60.0))
+        assert v_with_body.calm == v_no_body.calm
+
+    def test_gpu_temp_none_no_change(self):
+        v_no_body = compute_vitals()
+        v_with_body = compute_vitals(body_state=self._base_body(gpu_temp=None))
+        assert v_with_body.calm == v_no_body.calm
+
+    # --- VRAM usage → Clarity ---
+
+    def test_vram_above_90_floors_clarity(self):
+        v = compute_vitals(body_state=self._base_body(vram_percent=95.0))
+        assert v.clarity <= 0.4
+
+    def test_vram_70_to_90_floors_clarity(self):
+        v = compute_vitals(body_state=self._base_body(vram_percent=80.0))
+        assert v.clarity <= 0.7
+
+    def test_vram_exactly_70_floors_clarity(self):
+        v = compute_vitals(body_state=self._base_body(vram_percent=70.0))
+        assert v.clarity <= 0.7
+
+    def test_vram_below_70_no_change(self):
+        v_no_body = compute_vitals()
+        v_with_body = compute_vitals(body_state=self._base_body(vram_percent=50.0))
+        assert v_with_body.clarity == v_no_body.clarity
+
+    def test_vram_none_no_change(self):
+        v_no_body = compute_vitals()
+        v_with_body = compute_vitals(body_state=self._base_body(vram_percent=None))
+        assert v_with_body.clarity == v_no_body.clarity
+
+    # --- Node ratio → Connectedness ---
+
+    def test_all_online_no_change(self):
+        v_no_body = compute_vitals()
+        body = self._base_body()
+        v_with_body = compute_vitals(body_state=body)
+        assert v_with_body.connectedness == v_no_body.connectedness
+
+    def test_one_offline_floors_connectedness(self):
+        body = self._base_body(nodes=[
+            {"name": "Miu", "online": True},
+            {"name": "naru", "online": False},
+            {"name": "boa", "online": True},
+        ])
+        v = compute_vitals(body_state=body)
+        assert v.connectedness <= 0.7
+
+    def test_two_offline_floors_connectedness(self):
+        body = self._base_body(nodes=[
+            {"name": "Miu", "online": True},
+            {"name": "naru", "online": False},
+            {"name": "boa", "online": False},
+        ])
+        v = compute_vitals(body_state=body)
+        assert v.connectedness <= 0.5
+
+    def test_empty_nodes_no_change(self):
+        v_no_body = compute_vitals()
+        v_with_body = compute_vitals(body_state=self._base_body(nodes=[]))
+        assert v_with_body.connectedness == v_no_body.connectedness
+
+    # --- Floor behavior: never raises ---
+
+    def test_floor_never_raises_calm(self):
+        """If calm is already below the floor, it stays low."""
+        # web_and_rag + long response → calm ~0.4
+        v = compute_vitals(
+            intent={"tool": "web_and_rag", "mode": "explore"},
+            response_tokens=3000,
+            body_state=self._base_body(gpu_temp=80.0),  # floor at 0.6
+        )
+        # Calm was already pulled below 0.6 by the pipeline signals
+        assert v.calm <= 0.6  # floor doesn't raise it
+
+    def test_floor_never_raises_clarity(self):
+        """If clarity is already 0.3, VRAM floor at 0.7 doesn't raise it."""
+        v = compute_vitals(
+            grounding_score=0.2,
+            body_state=self._base_body(vram_percent=80.0),  # floor at 0.7
+        )
+        assert v.clarity <= 0.2  # stays at grounding_score level
+
+    # --- None body_state is no-op ---
+
+    def test_none_body_state_is_noop(self):
+        v1 = compute_vitals()
+        v2 = compute_vitals(body_state=None)
+        assert v1.calm == v2.calm
+        assert v1.clarity == v2.clarity
+        assert v1.connectedness == v2.connectedness

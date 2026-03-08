@@ -2953,6 +2953,8 @@ def cmd_chat(args):
                 (intent_result or {}).get("mode") == "chat" or len(user_input) < 10
             ):
                 _grounding = 0.6
+            from mycoswarm.body import get_body_state as _get_body
+            _body_state = _get_body(url if daemon_up else None)
             _vitals = compute_vitals(
                 grounding_score=_grounding,
                 source_count=len(doc_hits) + len(session_hits) + len(web_context_parts),
@@ -2963,6 +2965,7 @@ def cmd_chat(args):
                 intent=intent_result,
                 response_tokens=response_tokens,
                 said_dont_know=_dont_know,
+                body_state=_body_state,
             )
             _alerts = _vitals.alerts()
             for _a in _alerts:
@@ -3087,6 +3090,8 @@ def cmd_chat(args):
             (intent_result or {}).get("mode") == "chat" or len(user_input) < 10
         ):
             _grounding = 0.6
+        from mycoswarm.body import get_body_state as _get_body
+        _body_state = _get_body(url if daemon_up else None)
         _vitals = compute_vitals(
             grounding_score=_grounding,
             source_count=len(doc_hits) + len(session_hits) + len(web_context_parts),
@@ -3097,6 +3102,7 @@ def cmd_chat(args):
             intent=intent_result,
             response_tokens=response_tokens,
             said_dont_know=_dont_know,
+            body_state=_body_state,
         )
         _alerts = _vitals.alerts()
         for _a in _alerts:
