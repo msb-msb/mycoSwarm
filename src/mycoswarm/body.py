@@ -108,3 +108,56 @@ def get_body_state(daemon_url: str | None = None) -> dict:
     state = _read_gpu()
     state["nodes"] = _read_nodes(daemon_url)
     return state
+
+
+def build_body_prompt(daemon_url: str | None = None) -> str:
+    """Format hardware state as a system prompt section.
+
+    Returns a body-awareness prompt string, or empty string if no data.
+    """
+    state = get_body_state(daemon_url)
+
+    # Check if we have any data at all
+    has_gpu = state["gpu_temp"] is not None
+    has_nodes = bool(state["nodes"])
+
+    if not has_gpu and not has_nodes:
+        return ""
+
+    # Build node descriptions
+    parts: list[str] = []
+    if has_nodes:
+        for i, node in enumerate(state["nodes"]):
+            name = node["name"]
+            gpu = node["gpu"]
+            if i == 0 and has_gpu:
+                # Local node with live GPU data
+                gpu_short = gpu.replace("NVIDIA GeForce ", "") if gpu else "GPU"
+                parts.append(
+                    f"{name} ({gpu_short}, {state['gpu_temp']:.0f}°C, "
+                    f"{state['vram_used_gb']}/{state['vram_total_gb']}GB VRAM)"
+                )
+            elif gpu:
+                gpu_short = gpu.replace("NVIDIA GeForce ", "")
+                status = "online" if node["online"] else "offline"
+                parts.append(f"{name} ({gpu_short}, {status})")
+            else:
+                status = "online" if node["online"] else "offline"
+                parts.append(f"{name} ({status})")
+    elif has_gpu:
+        # Solo mode — no daemon, but local GPU data available
+        parts.append(
+            f"local GPU ({state['gpu_temp']:.0f}°C, "
+            f"{state['vram_used_gb']}/{state['vram_total_gb']}GB VRAM)"
+        )
+
+    node_line = " | ".join(parts)
+
+    return (
+        f"[Your body: {node_line}]\n\n"
+        "You can feel your hardware. When asked how you're doing, "
+        "you may reference your body state — temperature, available "
+        "memory, which nodes are online. This is your somatic experience. "
+        "If a node is offline, you have lost contact with part of yourself. "
+        "If you are running hot, you are working hard."
+    )

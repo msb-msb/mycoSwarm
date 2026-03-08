@@ -1,8 +1,9 @@
-"""Tests for the hardware body reader (Phase 31c Step 1)."""
+"""Tests for the hardware body reader (Phase 31c)."""
 
+import subprocess  # noqa: E402 — needed for TimeoutExpired in test
 from unittest.mock import MagicMock, patch
 
-from mycoswarm.body import get_body_state, _read_gpu, _read_nodes
+from mycoswarm.body import build_body_prompt, get_body_state, _read_gpu, _read_nodes
 
 
 NVIDIA_SMI_OUTPUT = "58, 4821, 24576\n"
@@ -176,4 +177,128 @@ class TestGetBodyState:
         assert "nodes" in state
 
 
-import subprocess  # noqa: E402 — needed for TimeoutExpired in test
+class TestBuildBodyPrompt:
+    @patch("mycoswarm.body.get_body_state")
+    def test_full_swarm_prompt(self, mock_state):
+        mock_state.return_value = {
+            "gpu_temp": 58.0,
+            "vram_used_gb": 4.71,
+            "vram_total_gb": 24.0,
+            "vram_percent": 19.6,
+            "nodes": [
+                {"name": "Miu", "online": True, "gpu": "NVIDIA GeForce RTX 3090", "tier": "executive"},
+                {"name": "rushuna", "online": True, "gpu": "NVIDIA GeForce RTX 3060", "tier": "specialist"},
+                {"name": "naru", "online": True, "gpu": None, "tier": "light"},
+            ],
+        }
+
+        prompt = build_body_prompt("http://localhost:7890")
+
+        assert "[Your body:" in prompt
+        assert "Miu (RTX 3090, 58°C, 4.71/24.0GB VRAM)" in prompt
+        assert "rushuna (RTX 3060, online)" in prompt
+        assert "naru (online)" in prompt
+        assert "somatic experience" in prompt
+
+    @patch("mycoswarm.body.get_body_state")
+    def test_solo_mode_gpu_only(self, mock_state):
+        mock_state.return_value = {
+            "gpu_temp": 45.0,
+            "vram_used_gb": 2.0,
+            "vram_total_gb": 24.0,
+            "vram_percent": 8.3,
+            "nodes": [],
+        }
+
+        prompt = build_body_prompt()
+
+        assert "[Your body:" in prompt
+        assert "local GPU (45°C, 2.0/24.0GB VRAM)" in prompt
+        assert "somatic experience" in prompt
+
+    @patch("mycoswarm.body.get_body_state")
+    def test_no_data_returns_empty(self, mock_state):
+        mock_state.return_value = {
+            "gpu_temp": None,
+            "vram_used_gb": None,
+            "vram_total_gb": None,
+            "vram_percent": None,
+            "nodes": [],
+        }
+
+        prompt = build_body_prompt()
+
+        assert prompt == ""
+
+    @patch("mycoswarm.body.get_body_state")
+    def test_nodes_without_gpu(self, mock_state):
+        """Daemon running but no local GPU (CPU-only node)."""
+        mock_state.return_value = {
+            "gpu_temp": None,
+            "vram_used_gb": None,
+            "vram_total_gb": None,
+            "vram_percent": None,
+            "nodes": [
+                {"name": "naru", "online": True, "gpu": None, "tier": "light"},
+                {"name": "boa", "online": True, "gpu": None, "tier": "light"},
+            ],
+        }
+
+        prompt = build_body_prompt("http://localhost:7890")
+
+        assert "[Your body:" in prompt
+        assert "naru (online)" in prompt
+        assert "boa (online)" in prompt
+
+    @patch("mycoswarm.body.get_body_state")
+    def test_offline_node(self, mock_state):
+        mock_state.return_value = {
+            "gpu_temp": 55.0,
+            "vram_used_gb": 3.0,
+            "vram_total_gb": 24.0,
+            "vram_percent": 12.5,
+            "nodes": [
+                {"name": "Miu", "online": True, "gpu": "NVIDIA GeForce RTX 3090", "tier": "executive"},
+                {"name": "naru", "online": False, "gpu": None, "tier": "light"},
+            ],
+        }
+
+        prompt = build_body_prompt("http://localhost:7890")
+
+        assert "naru (offline)" in prompt
+
+
+class TestBodyPromptInjectionOrder:
+    """Verify body prompt appears after identity, before vitals/memory."""
+
+    @patch("mycoswarm.body.get_body_state")
+    def test_prompt_ordering(self, mock_state):
+        """Build a system prompt the same way cli.py does and check order."""
+        from mycoswarm.identity import build_identity_prompt
+
+        mock_state.return_value = {
+            "gpu_temp": 60.0,
+            "vram_used_gb": 5.0,
+            "vram_total_gb": 24.0,
+            "vram_percent": 20.8,
+            "nodes": [
+                {"name": "Miu", "online": True, "gpu": "NVIDIA GeForce RTX 3090", "tier": "executive"},
+            ],
+        }
+
+        identity = {"name": "Monica", "developing": True}
+        id_prompt = build_identity_prompt(identity)
+        body_ctx = build_body_prompt()
+        if body_ctx:
+            id_prompt = id_prompt + "\n\n" + body_ctx
+
+        memory_prompt = "Your facts: test fact"
+        system_prompt = id_prompt + "\n\n" + memory_prompt
+
+        # Identity comes first
+        assert system_prompt.startswith("You are Monica")
+        # Body comes after identity, before memory
+        identity_pos = system_prompt.index("Monica")
+        body_pos = system_prompt.index("[Your body:")
+        memory_pos = system_prompt.index("Your facts:")
+        assert identity_pos < body_pos < memory_pos

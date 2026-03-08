@@ -1529,9 +1529,13 @@ def cmd_chat(args):
     # Inject persistent memory into messages (identity goes first)
     from mycoswarm.memory import build_memory_system_prompt
     from mycoswarm.identity import build_identity_prompt
+    from mycoswarm.body import build_body_prompt
 
     _last_vitals = None   # Must exist before first-turn vitals check
     identity_prompt = build_identity_prompt(identity)
+    body_ctx = build_body_prompt(url if daemon_up else None)
+    if body_ctx:
+        identity_prompt = identity_prompt + "\n\n" + body_ctx
     memory_prompt = build_memory_system_prompt()
     vitals_ctx = ""
     if _last_vitals is not None:
@@ -1929,6 +1933,9 @@ def cmd_chat(args):
                 save_identity(identity)
                 # Refresh system prompt with new identity
                 id_prompt = build_identity_prompt(identity)
+                _body = build_body_prompt(url if daemon_up else None)
+                if _body:
+                    id_prompt = id_prompt + "\n\n" + _body
                 mem_prompt = build_memory_system_prompt()
                 sys_prompt = id_prompt + "\n\n" + mem_prompt if mem_prompt else id_prompt
                 if messages and messages[0].get("role") == "system":
@@ -2419,6 +2426,9 @@ def cmd_chat(args):
         refreshed = build_memory_system_prompt(query=user_input)
         if refreshed and messages and messages[0].get("role") == "system":
             id_prompt = build_identity_prompt(identity)
+            _body = build_body_prompt(url if daemon_up else None)
+            if _body:
+                id_prompt = id_prompt + "\n\n" + _body
             vitals_ctx = ""
             if _last_vitals is not None:
                 v = _last_vitals
