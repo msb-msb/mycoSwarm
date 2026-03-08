@@ -56,14 +56,25 @@ update_node() {
     echo "━━━ $name ━━━"
 
     # Check connectivity
-    if ! ssh -o ConnectTimeout=5 -o BatchMode=yes "$ssh_target" "echo ok" &>/dev/null; then
+    if ! ssh -o ConnectTimeout=5 -o ServerAliveInterval=15 -o BatchMode=yes "$ssh_target" "echo ok" &>/dev/null; then
         fail "$name: SSH connection failed (run: ssh-copy-id $ssh_target)"
         FAILED_NODES+=("$name")
         return
     fi
 
-    # Install into venv
-    if ssh "$ssh_target" "cd $venv_dir && source .venv/bin/activate && pip install $PKG" 2>&1; then
+    # Verify venv exists
+    if ! ssh -o ConnectTimeout=10 "$ssh_target" "test -f $venv_dir/.venv/bin/activate" &>/dev/null; then
+        warn "$name: .venv not found — creating"
+        if ! ssh -o ConnectTimeout=10 -o ServerAliveInterval=15 "$ssh_target" "cd $venv_dir && python3 -m venv .venv" 2>&1; then
+            fail "$name: venv creation failed"
+            FAILED_NODES+=("$name")
+            return
+        fi
+        ok "$name: .venv created"
+    fi
+
+    # Install into venv (quiet + timeout to prevent hangs)
+    if ssh -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=4 "$ssh_target" "cd $venv_dir && source .venv/bin/activate && pip install -q $PKG" 2>&1; then
         ok "$name: package updated"
     else
         fail "$name: pip install failed"
@@ -72,7 +83,7 @@ update_node() {
     fi
 
     # Restart daemon
-    if ssh "$ssh_target" "echo '$sudo_pass' | sudo -S systemctl restart mycoswarm" 2>/dev/null; then
+    if ssh -o ConnectTimeout=10 -o ServerAliveInterval=15 "$ssh_target" "echo '$sudo_pass' | sudo -S systemctl restart mycoswarm" 2>/dev/null; then
         ok "$name: daemon restarted"
     else
         fail "$name: restart failed"
@@ -82,7 +93,7 @@ update_node() {
 
     # Verify version
     local remote_ver
-    remote_ver=$(ssh "$ssh_target" "cd $venv_dir && source .venv/bin/activate && python3 -c 'import mycoswarm; print(mycoswarm.__version__)'" 2>/dev/null || echo "unknown")
+    remote_ver=$(ssh -o ConnectTimeout=10 "$ssh_target" "cd $venv_dir && source .venv/bin/activate && python3 -c 'import mycoswarm; print(mycoswarm.__version__)'" 2>/dev/null || echo "unknown")
     echo "  📦 $name: v$remote_ver"
 }
 
@@ -90,10 +101,21 @@ update_node() {
 # UPDATE SEQUENCE
 # ===================================================================
 
-# --- Miu (local dev install) ---
+# --- Miu (local — now updates from PyPI like other nodes) ---
 echo "━━━ Miu (local) ━━━"
-echo "  Miu uses dev install (pip install -e .) — skipping PyPI update."
-echo "  To update Miu: git pull && pip install -e ."
+cd ~/Desktop/mycoSwarm
+if [ ! -f .venv/bin/activate ]; then
+    warn "Miu: .venv not found — creating"
+    python3 -m venv .venv
+    ok "Miu: .venv created"
+fi
+source .venv/bin/activate
+if pip install -q $PKG 2>&1; then
+    ok "Miu: package updated"
+else
+    fail "Miu: pip install failed"
+    FAILED_NODES+=("Miu")
+fi
 LOCAL_VER=$(python3 -c "import mycoswarm; print(mycoswarm.__version__)" 2>/dev/null || echo "unknown")
 echo "  📦 Miu: v$LOCAL_VER"
 

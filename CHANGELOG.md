@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.4.3 — Swarm Body Awareness (2026-03-07)
+* Phase 31c: hardware body awareness — Monica can feel her hardware
+* body.py: GPU temp, VRAM usage, and swarm node online/offline status via nvidia-smi + daemon API
+* Body prompt injected into system prompt (identity → body → vitals → memory)
+* Hardware-to-vitals floor modifiers: GPU temp → Calm, VRAM → Clarity, node count → Connectedness
+* Timing gate hardware signals: GPU >85°C or VRAM >90% biases toward GENTLE mode
+* Graceful fallback: solo mode shows local GPU data, no daemon → empty node list
+* 35 new tests across body, vitals, and timing modules
+
 ## v0.4.2 — Per-Category Research Modes (2026-03-07)
 * RLM now default research mode for research-driven, buying-guide, vs, how-to categories
 * Standard default for news, model-release, explainer, opinion, experience-driven
