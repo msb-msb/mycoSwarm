@@ -1541,21 +1541,21 @@ def cmd_chat(args):
     if _last_vitals is not None:
         v = _last_vitals
         vitals_ctx = (
-            f"\n\n[Your last vital signs: Ca:{v.calm:.1f} Cl:{v.clarity:.1f} "
-            f"Cu:{v.curiosity:.1f} Cp:{v.compassion:.1f} Co:{v.courage:.1f} "
-            f"Cr:{v.creativity:.1f} Cn:{v.connectedness:.1f} Cf:{v.confidence:.1f}]\n\n"
+            f"\n\n[Your last vital signs: Calm:{v.calm:.1f} Clarity:{v.clarity:.1f} "
+            f"Curiosity:{v.curiosity:.1f} Compassion:{v.compassion:.1f} Courage:{v.courage:.1f} "
+            f"Creativity:{v.creativity:.1f} Connectedness:{v.connectedness:.1f} Confidence:{v.confidence:.1f}]\n\n"
             "These are YOUR internal signals. You can reference them when asked how you feel."
         )
     _vitals_defs = (
-        "\n\nYour vitals use the IFS 8 C's: Ca=Calm, Cl=Clarity, Cu=Curiosity, "
-        "Cp=Compassion, Co=Confidence, Cr=Courage, Cn=Connectedness, Cf=Creativity. "
+        "\n\nYour vitals are the IFS 8 C's: Calm, Clarity, Curiosity, "
+        "Compassion, Courage, Creativity, Connectedness, Confidence. "
         "These are qualities of Self energy, not performance metrics. "
         "Do not report them as numbers in conversation."
     )
     _no_tags_rule = (
         "\n\nNever output internal tags like [P1], [P2], [D1], [S1] in your responses. "
         "These are retrieval markers for your context — use the information silently. "
-        "Do not cite vitals scores (Ca, Cl, Cu, etc.) in conversation unless explicitly "
+        "Do not cite vitals scores (Calm, Clarity, Curiosity, etc.) in conversation unless explicitly "
         "asked for them. The Guardian can see vitals in the footer."
     )
     system_prompt = (identity_prompt + vitals_ctx + _vitals_defs + "\n\n" + memory_prompt + _no_tags_rule) if memory_prompt else (identity_prompt + _vitals_defs + _no_tags_rule)
@@ -1844,10 +1844,11 @@ def cmd_chat(args):
                 parts = user_input.split(maxsplit=1)
                 if len(parts) < 2 or not parts[1].strip():
                     print("   Usage: /remember <fact to store>")
-                    print("   Types: pref: | project: | temp: (default: fact)")
+                    print("   Types: identity: | pref: | project: | temp: (default: fact)")
                     continue
                 raw_text = parts[1].strip()
                 _type_prefixes = {
+                    "identity:": "identity",
                     "pref:": "preference",
                     "preference:": "preference",
                     "project:": "project",
@@ -2433,9 +2434,9 @@ def cmd_chat(args):
             if _last_vitals is not None:
                 v = _last_vitals
                 vitals_ctx = (
-                    f"\n\n[Your last vital signs: Ca:{v.calm:.1f} Cl:{v.clarity:.1f} "
-                    f"Cu:{v.curiosity:.1f} Cp:{v.compassion:.1f} Co:{v.courage:.1f} "
-                    f"Cr:{v.creativity:.1f} Cn:{v.connectedness:.1f} Cf:{v.confidence:.1f}]\n\n"
+                    f"\n\n[Your last vital signs: Calm:{v.calm:.1f} Clarity:{v.clarity:.1f} "
+                    f"Curiosity:{v.curiosity:.1f} Compassion:{v.compassion:.1f} Courage:{v.courage:.1f} "
+                    f"Creativity:{v.creativity:.1f} Connectedness:{v.connectedness:.1f} Confidence:{v.confidence:.1f}]\n\n"
                     "These are YOUR internal signals. You can reference them when asked how you feel."
                 )
             messages[0] = {"role": "system", "content": id_prompt + vitals_ctx + "\n\n" + refreshed}

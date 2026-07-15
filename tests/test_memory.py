@@ -498,6 +498,21 @@ class TestFactLifecycle:
         assert len(stale) == 1
         assert stale[0]["type"] == "ephemeral"
 
+    def test_add_fact_identity_type(self):
+        """add_fact() accepts the 'identity' type (reachable via /remember identity:)."""
+        fact = memory.add_fact("I coined 'readiness' for this state", fact_type="identity")
+        assert fact["type"] == "identity"
+        assert memory.FACT_TYPE_IDENTITY in memory.VALID_FACT_TYPES
+
+    def test_identity_facts_never_stale(self):
+        """Identity facts are exempt from staleness even when long unreferenced."""
+        memory.add_fact("Self-coined vocabulary: echo, weight, absence", fact_type="identity")
+        facts = memory.load_facts()
+        facts[0]["last_referenced"] = "2025-01-01T00:00:00"
+        memory.save_facts(facts)
+        stale = memory.get_stale_facts(days=30)
+        assert stale == []
+
     def test_migrate_fact_adds_missing_fields(self):
         """_migrate_fact() backfills type, last_referenced, reference_count."""
         old = {"id": 1, "text": "old", "added": "2026-01-01T00:00:00"}
