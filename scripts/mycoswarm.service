@@ -19,8 +19,14 @@
 #        sudo systemctl status mycoswarm
 #        journalctl -u mycoswarm -f
 #
-# Works on any node — Miu (workstation), M710Qs, P320s.
-# Adjust User and venv path per machine.
+# Default paths below match the WORKER layout: a clone + venv at ~/mycoSwarm.
+# This file can be copied onto any minotaur worker (rushuna, boa, naru, uncho,
+# luvia) verbatim — no editing needed.
+#
+# EXCEPTIONS that still need a hand-edit:
+#   • Miu (executive/dev): editable install at ~/Desktop/mycoSwarm — its already
+#     deployed unit uses that path; do NOT overwrite it with this template.
+#   • pi (User=pi): change User= and the /home/minotaur paths to /home/pi.
 
 [Unit]
 Description=mycoSwarm Node Daemon
@@ -31,8 +37,8 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=minotaur
-WorkingDirectory=/home/minotaur/Desktop/mycoSwarm
-ExecStart=/home/minotaur/Desktop/mycoSwarm/.venv/bin/mycoswarm daemon
+WorkingDirectory=/home/minotaur/mycoSwarm
+ExecStart=/home/minotaur/mycoSwarm/.venv/bin/mycoswarm daemon
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=10
