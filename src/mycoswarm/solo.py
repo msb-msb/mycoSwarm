@@ -53,17 +53,20 @@ def check_ollama() -> tuple[bool, list[str]]:
 
 
 def pick_model(models: list[str], prefer: str | None = None) -> str:
-    """Pick the best model from available Ollama models."""
+    """Pick the model to run.
+
+    Precedence: explicit ``prefer`` > the ``monica_chat`` role binding (if
+    installed) > the role's named fallback. No substring matching — the model is
+    a declared binding, not an emergent property of Ollama's tag order.
+    """
     if prefer:
         return prefer
     if not models:
-        print("❌ No Ollama models found. Install one with: ollama pull llama3.2")
+        print("❌ No Ollama models found. Install one with: ollama pull gemma3:27b")
         sys.exit(1)
-    # Prefer a 14b+ model, fall back to first
-    for m in models:
-        if "14b" in m or "32b" in m or "27b" in m:
-            return m
-    return models[0]
+    from mycoswarm.bindings import resolve_model
+    model, _how = resolve_model("monica_chat", models)
+    return model
 
 
 def ask_direct(prompt: str, model: str) -> None:

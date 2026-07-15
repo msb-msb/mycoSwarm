@@ -291,12 +291,9 @@ def _discover_model(url: str, prefer: str | None = None) -> str:
                     models = best_peer["available_models"]
 
             if models:
-                # Prefer a 14b+ model, fall back to first available
-                model = models[0]
-                for m in models:
-                    if "14b" in m or "32b" in m or "27b" in m:
-                        model = m
-                        break
+                # No substring lottery: resolve via the declared binding.
+                from mycoswarm.bindings import resolve_model
+                model, _how = resolve_model("monica_chat", models)
                 return model
             else:
                 print("❌ No Ollama models available in the swarm.")
@@ -979,6 +976,35 @@ def cmd_models(args):
     print(f"  {total} model(s) across {node_count} node(s)")
 
 
+def cmd_model(args):
+    """Show role→model bindings and whether each bound model is installed here.
+
+    A binding is only valid on a node that actually has the model pulled, so this
+    reports the install status on THIS node. (Per-node binding validity — e.g. a
+    12GB card that physically cannot run gemma3:27b — is a separate follow-up.)
+    """
+    from mycoswarm.solo import check_ollama
+    from mycoswarm.bindings import MODEL_BINDINGS, ROLE_FALLBACKS, model_installed
+
+    running, installed = check_ollama()
+
+    print("🍄 mycoSwarm — Model Bindings")
+    print("=" * 60)
+    if not running:
+        print("   ⚠️  Ollama not reachable on this node — install status unknown.")
+    for role, bound in MODEL_BINDINGS.items():
+        here = model_installed(bound, installed)
+        mark = "✅ yes" if here else "❌ no"
+        print(f"   {role:<14} → {bound:<20} installed here: {mark}")
+        if not here:
+            fb = ROLE_FALLBACKS.get(role)
+            if fb:
+                fb_mark = "✅" if model_installed(fb, installed) else "❌ (also missing)"
+                print(f"   {'':<14}   ↳ fallback: {fb:<18} {fb_mark}")
+    print("=" * 60)
+    print("   Precedence: --model flag  >  role binding  >  named fallback")
+
+
 def cmd_plugins(args):
     """List installed plugins and their status."""
     from mycoswarm.plugins import discover_plugins, PLUGIN_DIR
@@ -1445,7 +1471,7 @@ def _check_draft_save(response_text: str) -> bool:
 def cmd_chat(args):
     """Interactive chat with the swarm."""
     from datetime import datetime
-    from mycoswarm.solo import check_daemon, check_ollama, pick_model, chat_stream
+    from mycoswarm.solo import check_daemon, check_ollama, chat_stream
 
     # Handle --list
     if args.list_sessions:
@@ -1479,18 +1505,23 @@ def cmd_chat(args):
             print("   Or start the daemon with: mycoswarm daemon")
             sys.exit(1)
 
-    # Session loading
+    # Session loading.
+    # NOTE: resuming restores the conversation HISTORY only. The model a session
+    # was saved with is captured as an observation (`resumed_model`) for the
+    # divergence note below — it does NOT control which model runs. The role
+    # binding does. This is the fix for the self-perpetuating carry-forward bug.
     session_name = None
     messages: list[dict[str, str]] = []
+    resumed_from = None      # session name whose history we resumed
+    resumed_model = None     # model that session was last saved with (observation)
 
     if args.resume:
         session_name = _latest_session_name()
         if session_name:
             loaded = _load_session(session_name)
             if loaded:
-                messages, saved_model = loaded
-                if not args.model and saved_model:
-                    args.model = saved_model
+                messages, resumed_model = loaded
+                resumed_from = session_name
         else:
             print("No previous session to resume.")
 
@@ -1498,9 +1529,8 @@ def cmd_chat(args):
         session_name = args.session
         loaded = _load_session(session_name)
         if loaded:
-            messages, saved_model = loaded
-            if not args.model and saved_model:
-                args.model = saved_model
+            messages, resumed_model = loaded
+            resumed_from = session_name
         else:
             print(f"Session '{session_name}' not found, starting new.")
 
@@ -1521,10 +1551,29 @@ def cmd_chat(args):
         else:
             print("   No problem — you can name it later with /name")
 
+    # --- Resolve the model: --model override > role binding > named fallback ---
+    from mycoswarm.bindings import resolve_model, bound_model
+    role = "monica_chat"
     if daemon_up:
-        model = _discover_model(url, args.model)
+        installed = _list_swarm_models(url)
     else:
-        model = pick_model(models, args.model)
+        installed = models
+    if not installed and not args.model:
+        print("❌ No Ollama models available.")
+        sys.exit(1)
+    model, how = resolve_model(role, installed, override=args.model)
+    if how == "fallback":
+        intended = bound_model(role)
+        print(
+            f"⚠️  {role}: bound model '{intended}' is not installed on this node — "
+            f"falling back to '{model}'. Pull '{intended}' or edit the binding."
+        )
+    _how_label = {
+        "override": "--model override",
+        "binding": f"binding: {role}",
+        "fallback": f"fallback — bound '{bound_model(role)}' not installed",
+        "unbound": "no binding",
+    }.get(how, how)
 
     # Inject persistent memory into messages (identity goes first)
     from mycoswarm.memory import build_memory_system_prompt
@@ -1568,12 +1617,17 @@ def cmd_chat(args):
             messages.insert(0, {"role": "system", "content": system_prompt})
 
     print("🍄 mycoSwarm Chat")
-    print(f"   Model: {model}")
+    print(f"   Role: {role}  →  Model: {model}  ({_how_label})")
     print(f"   Session: {session_name}")
     if not daemon_up:
         print("   Running in single-node mode. Start the daemon to join a swarm.")
     if messages:
         print(f"   Resumed: {len(messages)} messages")
+    # Divergence note: the resumed session ran on a different model than we will.
+    # Never silent — the saved model is an observation, the binding is control.
+    if resumed_from and resumed_model and resumed_model != model:
+        print(f"   resumed: history from {resumed_from} (last ran on {resumed_model})")
+        print(f"   running: {model} ({_how_label})")
     if daemon_up:
         print("   /model /peers /rag /library /auto /write /drafts /remember /memories /stale /forget /identity /name /vitals /timing /access /clear /quit")
     else:
@@ -1794,6 +1848,7 @@ def cmd_chat(args):
                 if len(parts) > 1:
                     model = parts[1]
                     print(f"   Model → {model}")
+                    print(f"   (this session only; edit the {role} binding to make it permanent)")
                 else:
                     if daemon_up:
                         all_models = _list_swarm_models(url)
@@ -3749,6 +3804,12 @@ def main():
         "--port", type=int, default=7890, help="Local daemon port"
     )
     models_parser.set_defaults(func=cmd_models)
+
+    # model (singular) — show role→model bindings + install status on this node
+    model_parser = subparsers.add_parser(
+        "model", help="Show role→model bindings and install status on this node"
+    )
+    model_parser.set_defaults(func=cmd_model)
 
     # plugins
     plugins_parser = subparsers.add_parser(
