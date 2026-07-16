@@ -6,7 +6,11 @@ Each node runs a lightweight FastAPI server that exposes:
   GET  /peers           → discovered peers
   POST /task            → submit a task to this node
 
-All endpoints are LAN-only by default (bound to the LAN IP, not 0.0.0.0).
+The server binds 0.0.0.0 (all interfaces), so reachability does not depend on
+which interface a request arrives through — the LAN IP is only what the node
+*advertises* to peers, not a bind restriction. Endpoints are not exposed to the
+internet in practice (nodes sit on private LANs), and every request is gated by
+the shared swarm token (see auth.py) — an unauthenticated request gets 403.
 """
 
 from __future__ import annotations

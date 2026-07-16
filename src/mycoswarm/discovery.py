@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from zeroconf import IPVersion, Zeroconf, ServiceInfo
 from zeroconf.asyncio import AsyncZeroconf, AsyncServiceBrowser
 
+from mycoswarm.hardware import prefer_subnet
 from mycoswarm.node import NodeIdentity
 
 logger = logging.getLogger(__name__)
@@ -26,21 +27,32 @@ DEFAULT_PORT = 7890  # mycoSwarm API port
 
 
 def _all_lan_addresses() -> list[bytes]:
-    """Return packed IPv4 addresses for all non-loopback interfaces."""
+    """Return packed IPv4 addresses for all non-loopback interfaces.
+
+    Ordered so addresses in the preferred swarm subnet ($MYCOSWARM_SWARM_SUBNET)
+    lead the announced list; with no subnet configured the order is the raw
+    psutil enumeration order, exactly as before.
+    """
     import psutil
 
-    addrs: list[bytes] = []
+    ips: list[str] = []
     for _iface, snics in psutil.net_if_addrs().items():
         for snic in snics:
             if snic.family == socket.AF_INET and not snic.address.startswith("127."):
-                addrs.append(socket.inet_aton(snic.address))
-    return addrs
+                ips.append(snic.address)
+    return [socket.inet_aton(ip) for ip in prefer_subnet(ips)]
 
 
 async def _pick_reachable_address(addresses: list[bytes], port: int) -> str:
-    """Try a quick TCP connect to each address; return the first reachable one."""
-    for addr in addresses:
-        ip = socket.inet_ntoa(addr)
+    """Try a quick TCP connect to each address; return the first reachable one.
+
+    Addresses in the preferred swarm subnet ($MYCOSWARM_SWARM_SUBNET) are tried
+    first, so a peer reachable on both the wired fabric and wifi is recorded at
+    its fabric address. The other-subnet address is still tried as a fallback
+    (soft-prefer), preserving reachability if the fabric probe momentarily misses.
+    """
+    ip_strs = prefer_subnet([socket.inet_ntoa(a) for a in addresses])
+    for ip in ip_strs:
         try:
             _, writer = await asyncio.wait_for(
                 asyncio.open_connection(ip, port), timeout=0.5
@@ -50,8 +62,8 @@ async def _pick_reachable_address(addresses: list[bytes], port: int) -> str:
             return ip
         except (OSError, asyncio.TimeoutError):
             continue
-    # None responded — fall back to first
-    return socket.inet_ntoa(addresses[0])
+    # None responded — fall back to first (preferred-subnet first if configured)
+    return ip_strs[0]
 
 
 @dataclass

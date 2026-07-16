@@ -57,7 +57,7 @@ from eBay and a borrowed gaming PC should be a working swarm.
 - Hardware detection: subprocess for nvidia-smi, psutil for CPU/RAM/disk
 - Ollama integration: HTTP to localhost:11434 (never assume it's running)
 - Discovery: zeroconf AsyncZeroconf, service type _mycoswarm._tcp.local.
-- API: FastAPI bound to LAN IP (not 0.0.0.0)
+- API: FastAPI binds 0.0.0.0 (all interfaces); the LAN IP is only advertised to peers. Reachability is not interface-dependent — security comes from the swarm token, not the bind address.
 - Task flow: CLI/API → TaskQueue → TaskWorker → Handler → TaskResult
 - Node IDs: persistent in ~/.config/mycoswarm/node_id, format myco-{12hex}
 
@@ -66,7 +66,7 @@ from eBay and a borrowed gaming PC should be a working swarm.
 - Don't require configuration files for basic operation
 - Don't break the zero-config promise
 - Don't import heavy frameworks (no torch, no transformers)
-- Don't use 0.0.0.0 for network binding — always LAN IP
+- Don't rely on the bind address for access control — the daemon intentionally binds 0.0.0.0 (all interfaces) and depends on the swarm token + LAN isolation for security. To confine swarm traffic to a specific fabric, set MYCOSWARM_SWARM_SUBNET (soft-prefer), don't change the bind.
 
 ## Updating PLAN.md
 After completing work, update PLAN.md:

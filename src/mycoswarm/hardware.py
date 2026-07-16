@@ -5,7 +5,10 @@ No external dependencies beyond psutil and subprocess calls to nvidia-smi/ollama
 Cross-platform: Linux and macOS (Apple Silicon + Intel).
 """
 
+import ipaddress
 import json
+import logging
+import os
 import platform
 import shutil
 import subprocess
@@ -15,8 +18,61 @@ from pathlib import Path
 
 import psutil
 
+logger = logging.getLogger(__name__)
+
 IS_MACOS = sys.platform == "darwin"
 IS_LINUX = sys.platform.startswith("linux")
+
+# Optional: pin swarm traffic to a preferred subnet (e.g. a wired, internet-less
+# fabric) instead of following raw interface-enumeration order. UNSET means no
+# preference — the historical first-enumerated behavior, unchanged.
+SWARM_SUBNET_ENV = "MYCOSWARM_SWARM_SUBNET"
+
+
+def _swarm_subnet() -> ipaddress.IPv4Network | None:
+    """The preferred swarm subnet from $MYCOSWARM_SWARM_SUBNET, or None.
+
+    Unset, empty, or malformed all resolve to None (no preference), so a
+    fresh node with nothing configured behaves exactly as before.
+    """
+    raw = os.environ.get(SWARM_SUBNET_ENV, "").strip()
+    if not raw:
+        return None
+    try:
+        return ipaddress.ip_network(raw, strict=False)
+    except ValueError:
+        logger.warning(
+            "Ignoring invalid %s=%r (not a CIDR like 192.168.50.0/24)",
+            SWARM_SUBNET_ENV,
+            raw,
+        )
+        return None
+
+
+def prefer_subnet(
+    ips: list[str], subnet: ipaddress.IPv4Network | None = None
+) -> list[str]:
+    """Stably reorder ``ips`` so addresses inside the preferred swarm subnet lead.
+
+    Soft-prefer: out-of-subnet addresses are kept as a fallback, in their
+    original relative order. With no configured subnet (the default) the list
+    is returned unchanged — byte-for-byte today's behavior. ``subnet`` defaults
+    to :func:`_swarm_subnet` but can be passed explicitly (e.g. for tests).
+    """
+    if subnet is None:
+        subnet = _swarm_subnet()
+    if subnet is None:
+        return list(ips)
+
+    def _in_subnet(ip: str) -> bool:
+        try:
+            return ipaddress.ip_address(ip) in subnet
+        except ValueError:
+            return False
+
+    # Stable sort: in-subnet (key False) sorts ahead of out (key True),
+    # relative order preserved within each group.
+    return sorted(ips, key=lambda ip: not _in_subnet(ip))
 
 
 @dataclass
@@ -97,11 +153,20 @@ class HardwareProfile:
 
     @property
     def lan_ip(self) -> str | None:
-        """First non-loopback IPv4 address."""
-        for iface in self.network:
-            if not iface.is_loopback and iface.ipv4:
-                return iface.ipv4
-        return None
+        """First non-loopback IPv4 address.
+
+        When $MYCOSWARM_SWARM_SUBNET is set, an address inside that subnet is
+        preferred over first-enumerated; otherwise (the default) this returns
+        the first non-loopback IPv4 in interface-enumeration order, as before.
+        """
+        candidates = [
+            iface.ipv4
+            for iface in self.network
+            if not iface.is_loopback and iface.ipv4
+        ]
+        if not candidates:
+            return None
+        return prefer_subnet(candidates)[0]
 
 
 def _detect_nvidia_gpus() -> list[GpuInfo]:

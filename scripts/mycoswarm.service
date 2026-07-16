@@ -51,5 +51,14 @@ SyslogIdentifier=mycoswarm
 # Environment
 Environment=PYTHONUNBUFFERED=1
 
+# Optional: pin swarm traffic to a preferred subnet. On a dual-homed node (wired
+# fabric + wifi for internet) the announced/recorded address is otherwise decided
+# by interface-enumeration order and a per-observer TCP-probe race, so swarm
+# traffic can non-deterministically ride wifi. Set this to prefer the wired
+# fabric; the other subnet is still kept as a fallback (soft-prefer). Leave it
+# commented for zero-config default (first-enumerated, historical behavior).
+# This fleet's inter-node fabric is 192.168.50.0/24:
+# Environment=MYCOSWARM_SWARM_SUBNET=192.168.50.0/24
+
 [Install]
 WantedBy=multi-user.target

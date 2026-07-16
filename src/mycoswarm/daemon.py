@@ -201,7 +201,10 @@ async def run_daemon(port: int = DEFAULT_PORT, verbose: bool = False):
         _status_refresh_loop(discovery, registry)
     )
 
-    logger.info(f"🌐 API listening on http://{identity.lan_ip}:{port}")
+    logger.info(
+        f"🌐 API bound on 0.0.0.0:{port} (all interfaces) — "
+        f"advertised to peers as http://{identity.lan_ip}:{port}"
+    )
     logger.info("👷 Task worker running")
     logger.info("🎯 Orchestrator active — tasks route to best node")
 
