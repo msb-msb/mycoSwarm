@@ -13,6 +13,7 @@
 #   naru     — light node, user=minotaur
 #   uncho    — light node, user=minotaur
 #   luvia    — light node, user=minotaur
+#   mai      — light node, user=minotaur (no Ollama → cpu_worker only)
 #   pi       — RETIRED: Raspberry Pi 2 (1GB RAM, 32-bit ARM), manifesto demo, not connected
 
 set -euo pipefail
@@ -165,6 +166,7 @@ update_node "boa"     "minotaur@boa"     "~/mycoSwarm" "$SUDO_PASS"
 update_node "naru"    "minotaur@naru"    "~/mycoSwarm" "$SUDO_PASS"
 update_node "uncho"   "minotaur@uncho"   "~/mycoSwarm" "$SUDO_PASS"
 update_node "luvia"   "minotaur@luvia"   "~/mycoSwarm" "$SUDO_PASS"
+update_node "mai"     "minotaur@mai"     "~/mycoSwarm" "$SUDO_PASS"
 
 # --- pi (RETIRED — commented out, not deleted) ---
 # pi was a Raspberry Pi 2 (192.168.50.16, user=pi): 1GB RAM, 32-bit ARM. It was a

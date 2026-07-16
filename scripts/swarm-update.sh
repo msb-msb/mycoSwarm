@@ -25,6 +25,7 @@ NODES=(
     "boa|192.168.50.12|minotaur|/home/minotaur/mycoSwarm/.venv/bin/pip"
     "uncho|192.168.50.13|minotaur|/home/minotaur/mycoSwarm/.venv/bin/pip"
     "luvia|192.168.50.11|minotaur|/home/minotaur/mycoSwarm/.venv/bin/pip"
+    "mai|192.168.50.14|minotaur|/home/minotaur/mycoSwarm/.venv/bin/pip"
     # pi RETIRED — Raspberry Pi 2 (1GB RAM, 32-bit ARM), manifesto demo, not connected:
     # "pi|192.168.50.16|pi|/home/pi/mycoSwarm/.venv/bin/pip"
 )
