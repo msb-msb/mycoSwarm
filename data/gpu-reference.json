@@ -2,14 +2,20 @@
   "_meta": {
     "version": "1.0.0",
     "description": "Canonical GPU and system RAM reference for InsiderLLM pipeline. Verified specs are ground truth \u2014 models may add to but never contradict these values.",
-    "last_updated": "2026-03-03",
+    "last_updated": "2026-07-25",
     "maintainer": "mark@insiderllm.com",
     "notes": [
       "used_price_usd: manually updated from eBay sold listings",
+      "used_price_status: 'verified' = firsthand sold-listing data on the stated date. Absent = older research-sourced figure, still believed but unconfirmed. 'unverified — ...' = deliberately not priced; never fill these by inference.",
+      "2026-07-25 refresh: rtx-3090-24gb and rtx-3060-12gb re-priced from firsthand eBay sold listings, superseding May/March research figures. The other cards were NOT touched — no firsthand data existed for them, and a stale-but-honest number beats a fabricated fresh one. morning-brief.py §8 reports their age daily.",
       "benchmarks: manually verified from trusted sources",
       "specs: cross-referenced against techpowerup.com GPU database",
       "bandwidth predicts tok/s for memory-bound LLM inference",
-      "VRAM is the primary constraint for model size that fits on GPU"
+      "VRAM is the primary constraint for model size that fits on GPU",
+      "May 2026 refresh: RTX 3090 appreciating due to local AI demand (used median ~$1,000, premium AIB $1,100-1,300)",
+      "DRAM shortage affecting 16GB+ Blackwell cards (RTX 5070 Ti, RTX 5060 Ti 16GB) \u2014 street prices inflated above MSRP",
+      "tier field added (entry/mid/high/flagship) for Hugo shortcode filtering",
+      "ebay_sold_url field added for one-click sold-listing access during quarterly updates"
     ]
   },
   "gpus": {
@@ -44,7 +50,10 @@
       },
       "used_price_updated": "2026-03-02",
       "used_price_source": "ebay sold auctions",
-      "benchmarks": {}
+      "benchmarks": {},
+      "tier": "entry",
+      "ebay_search_query": "GTX 1660 Super",
+      "ebay_sold_url": "https://www.ebay.com/sch/i.html?_nkw=GTX+1660+Super+-broken+-parts+-repair+-%22parts+only%22+-%22not+working%22+-%22for+parts%22+-damaged+-faulty+-%22box+only%22+-shroud+-mining&LH_Sold=1&LH_Complete=1&_sop=13&_sacat=27386"
     },
     "rtx-2060-12gb": {
       "name": "NVIDIA RTX 2060 12GB",
@@ -77,7 +86,10 @@
       },
       "used_price_updated": "2026-03-02",
       "used_price_source": "ebay sold auctions",
-      "benchmarks": {}
+      "benchmarks": {},
+      "tier": "entry",
+      "ebay_search_query": "RTX 2060 12GB -6GB",
+      "ebay_sold_url": "https://www.ebay.com/sch/i.html?_nkw=RTX+2060+12GB+-6GB+-broken+-parts+-repair+-%22parts+only%22+-%22not+working%22+-%22for+parts%22+-damaged+-faulty+-%22box+only%22+-shroud+-mining&LH_Sold=1&LH_Complete=1&_sop=13&_sacat=27386"
     },
     "rtx-3060-12gb": {
       "name": "NVIDIA RTX 3060 12GB",
@@ -102,14 +114,15 @@
         "tdp_watts": 170,
         "psu_recommended_watts": 550
       },
-      "ai_notes": "The entry-level workhorse. 12GB fits 13B Q4 models. Bandwidth is the bottleneck \u2014 half the 3080's speed. Best value under $200 used.",
+      "ai_notes": "The entry-level workhorse. 12GB fits 13B Q4 models. Bandwidth is the bottleneck \u2014 half the 3080's speed. Still the cheapest honest 12GB, though the 2026 memory shortage lifted the floor off ~$170.",
       "used_price_usd": {
-        "low": 170,
-        "mid": 275,
-        "high": 380
+        "low": 200,
+        "mid": 300,
+        "high": 400
       },
-      "used_price_updated": "2026-03-02",
-      "used_price_source": "ebay sold auctions",
+      "used_price_updated": "2026-07-25",
+      "used_price_source": "firsthand eBay sold listings",
+      "used_price_status": "verified",
       "benchmarks": {
         "llama3_8b_q4": {
           "tok_s": 51,
@@ -153,7 +166,10 @@
           "date": "2026-03-03",
           "notes": "Ollama deepseek-r1:14b think=true, 3x token overhead (380\u2192921 tokens)"
         }
-      }
+      },
+      "tier": "mid",
+      "ebay_search_query": "RTX 3060 12GB -Ti -8GB",
+      "ebay_sold_url": "https://www.ebay.com/sch/i.html?_nkw=RTX+3060+12GB+-Ti+-8GB+-broken+-parts+-repair+-%22parts+only%22+-%22not+working%22+-%22for+parts%22+-damaged+-faulty+-%22box+only%22+-shroud+-mining&LH_Sold=1&LH_Complete=1&_sop=13&_sacat=27386"
     },
     "rtx-3070-8gb": {
       "name": "NVIDIA RTX 3070",
@@ -193,7 +209,10 @@
           "date": "2024-05",
           "notes": "llama.cpp CUDA tg1024 RunPod"
         }
-      }
+      },
+      "tier": "entry",
+      "ebay_search_query": "RTX 3070 -Ti",
+      "ebay_sold_url": "https://www.ebay.com/sch/i.html?_nkw=RTX+3070+-Ti+-broken+-parts+-repair+-%22parts+only%22+-%22not+working%22+-%22for+parts%22+-damaged+-faulty+-%22box+only%22+-shroud+-mining&LH_Sold=1&LH_Complete=1&_sop=13&_sacat=27386"
     },
     "rtx-3070-ti-8gb": {
       "name": "NVIDIA RTX 3070 Ti",
@@ -226,7 +245,10 @@
       },
       "used_price_updated": "2026-03-02",
       "used_price_source": "ebay sold auctions",
-      "benchmarks": {}
+      "benchmarks": {},
+      "tier": "entry",
+      "ebay_search_query": "RTX 3070 Ti",
+      "ebay_sold_url": "https://www.ebay.com/sch/i.html?_nkw=RTX+3070+Ti+-broken+-parts+-repair+-%22parts+only%22+-%22not+working%22+-%22for+parts%22+-damaged+-faulty+-%22box+only%22+-shroud+-mining&LH_Sold=1&LH_Complete=1&_sop=13&_sacat=27386"
     },
     "rtx-3080-10gb": {
       "name": "NVIDIA RTX 3080 10GB",
@@ -266,7 +288,10 @@
           "date": "2024-05",
           "notes": "llama.cpp CUDA tg1024 RunPod"
         }
-      }
+      },
+      "tier": "mid",
+      "ebay_search_query": "RTX 3080 10GB -Ti -12GB",
+      "ebay_sold_url": "https://www.ebay.com/sch/i.html?_nkw=RTX+3080+10GB+-Ti+-12GB+-broken+-parts+-repair+-%22parts+only%22+-%22not+working%22+-%22for+parts%22+-damaged+-faulty+-%22box+only%22+-shroud+-mining&LH_Sold=1&LH_Complete=1&_sop=13&_sacat=27386"
     },
     "rtx-3080-12gb": {
       "name": "NVIDIA RTX 3080 12GB",
@@ -306,7 +331,10 @@
           "date": "2024-05",
           "notes": "3080 Ti proxy \u2014 same GA102, same bandwidth; llama.cpp CUDA tg1024"
         }
-      }
+      },
+      "tier": "mid",
+      "ebay_search_query": "RTX 3080 12GB -Ti -10GB",
+      "ebay_sold_url": "https://www.ebay.com/sch/i.html?_nkw=RTX+3080+12GB+-Ti+-10GB+-broken+-parts+-repair+-%22parts+only%22+-%22not+working%22+-%22for+parts%22+-damaged+-faulty+-%22box+only%22+-shroud+-mining&LH_Sold=1&LH_Complete=1&_sop=13&_sacat=27386"
     },
     "rtx-3090-24gb": {
       "name": "NVIDIA RTX 3090",
@@ -314,7 +342,7 @@
       "architecture": "Ampere",
       "gpu_chip": "GA102",
       "release_date": "2020-09-24",
-      "status": "discontinued",
+      "status": "appreciating",
       "msrp_usd": 1499,
       "memory": {
         "vram_gb": 24,
@@ -331,14 +359,15 @@
         "tdp_watts": 350,
         "psu_recommended_watts": 750
       },
-      "ai_notes": "The budget local AI king. 24GB runs 30B Q4, even 70B Q2. 936 GB/s bandwidth means fast inference. Power hungry and runs hot. Dual-slot blower cooler cards run especially hot \u2014 look for triple-fan models.",
+      "ai_notes": "24GB at 936 GB/s. Best price-per-VRAM-GB for 24GB, but appreciating through 2026 as local AI demand outruns gaming depreciation. Median used ~$1,200; the 2026 memory shortage pushed the whole band up.",
       "used_price_usd": {
-        "low": 950,
-        "mid": 1040,
-        "high": 1125
+        "low": 1000,
+        "mid": 1200,
+        "high": 1400
       },
-      "used_price_updated": "2026-03-02",
-      "used_price_source": "ebay sold auctions",
+      "used_price_updated": "2026-07-25",
+      "used_price_source": "firsthand eBay sold listings",
+      "used_price_status": "verified",
       "benchmarks": {
         "llama3_8b_q4": {
           "tok_s": 112,
@@ -370,7 +399,10 @@
           "date": "2026-03-03",
           "notes": "Ollama gemma3:27b, RTX 3090 24GB. 27B model fits entirely in VRAM."
         }
-      }
+      },
+      "tier": "flagship",
+      "ebay_search_query": "RTX 3090 -Ti",
+      "ebay_sold_url": "https://www.ebay.com/sch/i.html?_nkw=RTX+3090+-Ti+-broken+-parts+-repair+-%22parts+only%22+-%22not+working%22+-%22for+parts%22+-damaged+-faulty+-%22box+only%22+-shroud+-mining&LH_Sold=1&LH_Complete=1&_sop=13&_sacat=27386"
     },
     "rtx-4060-8gb": {
       "name": "NVIDIA RTX 4060",
@@ -410,7 +442,10 @@
           "date": "2026-03",
           "notes": "localscore community median; may include laptop variants"
         }
-      }
+      },
+      "tier": "entry",
+      "ebay_search_query": "RTX 4060 -Ti",
+      "ebay_sold_url": "https://www.ebay.com/sch/i.html?_nkw=RTX+4060+-Ti+-broken+-parts+-repair+-%22parts+only%22+-%22not+working%22+-%22for+parts%22+-damaged+-faulty+-%22box+only%22+-shroud+-mining&LH_Sold=1&LH_Complete=1&_sop=13&_sacat=27386"
     },
     "rtx-4060-ti-8gb": {
       "name": "NVIDIA RTX 4060 Ti 8GB",
@@ -443,7 +478,10 @@
       },
       "used_price_updated": "2026-03-02",
       "used_price_source": "ebay sold auctions",
-      "benchmarks": {}
+      "benchmarks": {},
+      "tier": "entry",
+      "ebay_search_query": "RTX 4060 Ti 8GB -16GB",
+      "ebay_sold_url": "https://www.ebay.com/sch/i.html?_nkw=RTX+4060+Ti+8GB+-16GB+-broken+-parts+-repair+-%22parts+only%22+-%22not+working%22+-%22for+parts%22+-damaged+-faulty+-%22box+only%22+-shroud+-mining&LH_Sold=1&LH_Complete=1&_sop=13&_sacat=27386"
     },
     "rtx-4060-ti-16gb": {
       "name": "NVIDIA RTX 4060 Ti 16GB",
@@ -489,7 +527,10 @@
           "date": "2024-12",
           "notes": "llama.cpp CUDA tg128"
         }
-      }
+      },
+      "tier": "mid",
+      "ebay_search_query": "RTX 4060 Ti 16GB -8GB",
+      "ebay_sold_url": "https://www.ebay.com/sch/i.html?_nkw=RTX+4060+Ti+16GB+-8GB+-broken+-parts+-repair+-%22parts+only%22+-%22not+working%22+-%22for+parts%22+-damaged+-faulty+-%22box+only%22+-shroud+-mining&LH_Sold=1&LH_Complete=1&_sop=13&_sacat=27386"
     },
     "rx-7600-8gb": {
       "name": "AMD Radeon RX 7600",
@@ -522,7 +563,10 @@
       },
       "used_price_updated": "2026-03-02",
       "used_price_source": "ebay sold auctions",
-      "benchmarks": {}
+      "benchmarks": {},
+      "tier": "entry",
+      "ebay_search_query": "RX 7600 -XT -16GB",
+      "ebay_sold_url": "https://www.ebay.com/sch/i.html?_nkw=RX+7600+-XT+-16GB+-broken+-parts+-repair+-%22parts+only%22+-%22not+working%22+-%22for+parts%22+-damaged+-faulty+-%22box+only%22+-shroud+-mining&LH_Sold=1&LH_Complete=1&_sop=13&_sacat=27386"
     },
     "rx-7700-xt-12gb": {
       "name": "AMD Radeon RX 7700 XT",
@@ -555,7 +599,10 @@
       },
       "used_price_updated": "2026-03-02",
       "used_price_source": "ebay sold auctions",
-      "benchmarks": {}
+      "benchmarks": {},
+      "tier": "mid",
+      "ebay_search_query": "RX 7700 XT",
+      "ebay_sold_url": "https://www.ebay.com/sch/i.html?_nkw=RX+7700+XT+-broken+-parts+-repair+-%22parts+only%22+-%22not+working%22+-%22for+parts%22+-damaged+-faulty+-%22box+only%22+-shroud+-mining&LH_Sold=1&LH_Complete=1&_sop=13&_sacat=27386"
     },
     "rx-7800-xt-16gb": {
       "name": "AMD Radeon RX 7800 XT",
@@ -601,7 +648,10 @@
           "date": "2025-01",
           "notes": "llama.cpp ROCm tg128"
         }
-      }
+      },
+      "tier": "mid",
+      "ebay_search_query": "RX 7800 XT",
+      "ebay_sold_url": "https://www.ebay.com/sch/i.html?_nkw=RX+7800+XT+-broken+-parts+-repair+-%22parts+only%22+-%22not+working%22+-%22for+parts%22+-damaged+-faulty+-%22box+only%22+-shroud+-mining&LH_Sold=1&LH_Complete=1&_sop=13&_sacat=27386"
     },
     "rx-7900-gre-16gb": {
       "name": "AMD Radeon RX 7900 GRE",
@@ -634,7 +684,10 @@
       },
       "used_price_updated": "2026-03-02",
       "used_price_source": "ebay sold auctions",
-      "benchmarks": {}
+      "benchmarks": {},
+      "tier": "mid",
+      "ebay_search_query": "RX 7900 GRE",
+      "ebay_sold_url": "https://www.ebay.com/sch/i.html?_nkw=RX+7900+GRE+-broken+-parts+-repair+-%22parts+only%22+-%22not+working%22+-%22for+parts%22+-damaged+-faulty+-%22box+only%22+-shroud+-mining&LH_Sold=1&LH_Complete=1&_sop=13&_sacat=27386"
     },
     "rx-7900-xt-20gb": {
       "name": "AMD Radeon RX 7900 XT",
@@ -680,7 +733,10 @@
           "date": "2024-01",
           "notes": "llama.cpp ROCm longer context"
         }
-      }
+      },
+      "tier": "high",
+      "ebay_search_query": "RX 7900 XT -XTX",
+      "ebay_sold_url": "https://www.ebay.com/sch/i.html?_nkw=RX+7900+XT+-XTX+-broken+-parts+-repair+-%22parts+only%22+-%22not+working%22+-%22for+parts%22+-damaged+-faulty+-%22box+only%22+-shroud+-mining&LH_Sold=1&LH_Complete=1&_sop=13&_sacat=27386"
     },
     "rtx-5060": {
       "name": "NVIDIA RTX 5060",
@@ -707,13 +763,16 @@
       },
       "ai_notes": "PRELIMINARY \u2014 specs not confirmed. Likely 8GB VRAM with 128-bit bus. If so, same VRAM limitation as RTX 4060.",
       "used_price_usd": {
-        "low": null,
-        "mid": null,
-        "high": null
+        "low": 280,
+        "mid": 320,
+        "high": 360
       },
-      "used_price_updated": null,
-      "used_price_source": null,
-      "benchmarks": {}
+      "used_price_updated": "2026-05-19",
+      "used_price_source": "eBay sold listings May 2026",
+      "benchmarks": {},
+      "tier": "entry",
+      "ebay_search_query": "RTX 5060 -Ti -16GB",
+      "ebay_sold_url": "https://www.ebay.com/sch/i.html?_nkw=RTX+5060+-Ti+-16GB+-broken+-parts+-repair+-%22parts+only%22+-%22not+working%22+-%22for+parts%22+-damaged+-faulty+-%22box+only%22+-shroud+-mining&LH_Sold=1&LH_Complete=1&_sop=13&_sacat=27386"
     },
     "rtx-5060-ti": {
       "name": "NVIDIA RTX 5060 Ti",
@@ -740,13 +799,16 @@
       },
       "ai_notes": "PRELIMINARY \u2014 specs not confirmed. 16GB GDDR7 rumored. If bandwidth improves over 4060 Ti 16GB, could be a solid mid-range AI card.",
       "used_price_usd": {
-        "low": null,
-        "mid": null,
-        "high": null
+        "low": 475,
+        "mid": 600,
+        "high": 720
       },
-      "used_price_updated": null,
-      "used_price_source": null,
-      "benchmarks": {}
+      "used_price_updated": "2026-05-19",
+      "used_price_source": "eBay sold listings May 2026",
+      "benchmarks": {},
+      "tier": "mid",
+      "ebay_search_query": "RTX 5060 Ti -8GB",
+      "ebay_sold_url": "https://www.ebay.com/sch/i.html?_nkw=RTX+5060+Ti+-8GB+-broken+-parts+-repair+-%22parts+only%22+-%22not+working%22+-%22for+parts%22+-damaged+-faulty+-%22box+only%22+-shroud+-mining&LH_Sold=1&LH_Complete=1&_sop=13&_sacat=27386"
     },
     "rtx-5070": {
       "name": "NVIDIA RTX 5070",
@@ -773,13 +835,16 @@
       },
       "ai_notes": "GDDR7 gives 672 GB/s on a 192-bit bus \u2014 impressive. 12GB VRAM same as 3060 but nearly 2x bandwidth. Availability and actual pricing TBD.",
       "used_price_usd": {
-        "low": null,
-        "mid": null,
-        "high": null
+        "low": 570,
+        "mid": 685,
+        "high": 800
       },
-      "used_price_updated": null,
-      "used_price_source": null,
-      "benchmarks": {}
+      "used_price_updated": "2026-05-19",
+      "used_price_source": "eBay sold listings May 2026",
+      "benchmarks": {},
+      "tier": "mid",
+      "ebay_search_query": "RTX 5070 -Ti -16GB",
+      "ebay_sold_url": "https://www.ebay.com/sch/i.html?_nkw=RTX+5070+-Ti+-16GB+-broken+-parts+-repair+-%22parts+only%22+-%22not+working%22+-%22for+parts%22+-damaged+-faulty+-%22box+only%22+-shroud+-mining&LH_Sold=1&LH_Complete=1&_sop=13&_sacat=27386"
     },
     "rx-9070": {
       "name": "AMD Radeon RX 9070",
@@ -812,7 +877,11 @@
       },
       "used_price_updated": null,
       "used_price_source": null,
-      "benchmarks": {}
+      "used_price_status": "unverified — never priced. RDNA 4 used market is thin and we have no firsthand sold-listing data; left null deliberately rather than guessed.",
+      "benchmarks": {},
+      "tier": "high",
+      "ebay_search_query": "RX 9070 -XT",
+      "ebay_sold_url": "https://www.ebay.com/sch/i.html?_nkw=RX+9070+-XT+-broken+-parts+-repair+-%22parts+only%22+-%22not+working%22+-%22for+parts%22+-damaged+-faulty+-%22box+only%22+-shroud+-mining&LH_Sold=1&LH_Complete=1&_sop=13&_sacat=27386"
     },
     "rx-9070-xt": {
       "name": "AMD Radeon RX 9070 XT",
@@ -839,13 +908,377 @@
       },
       "ai_notes": "PRELIMINARY \u2014 same memory subsystem as RX 9070. More compute units. Same ROCm uncertainty as 9070.",
       "used_price_usd": {
+        "low": 580,
+        "mid": 690,
+        "high": 800
+      },
+      "used_price_updated": "2026-05-19",
+      "used_price_source": "eBay sold listings May 2026",
+      "benchmarks": {},
+      "tier": "high",
+      "ebay_search_query": "RX 9070 XT",
+      "ebay_sold_url": "https://www.ebay.com/sch/i.html?_nkw=RX+9070+XT+-broken+-parts+-repair+-%22parts+only%22+-%22not+working%22+-%22for+parts%22+-damaged+-faulty+-%22box+only%22+-shroud+-mining&LH_Sold=1&LH_Complete=1&_sop=13&_sacat=27386"
+    },
+    "rtx-3090-ti-24gb": {
+      "name": "NVIDIA RTX 3090 Ti",
+      "vendor": "nvidia",
+      "architecture": "Ampere",
+      "gpu_chip": "GA102",
+      "release_date": "2022-03-29",
+      "status": "current",
+      "msrp_usd": 1999,
+      "memory": {
+        "vram_gb": 24,
+        "vram_type": "GDDR6X",
+        "bus_width_bit": 384,
+        "bandwidth_gbs": 1008
+      },
+      "compute": {
+        "cuda_cores": 10752,
+        "tensor_cores": 336,
+        "fp16_tflops": 40.0
+      },
+      "power": {
+        "tdp_watts": 450,
+        "psu_recommended_watts": 1000
+      },
+      "ai_notes": "Slightly faster than 3090 (~10-15%) with same 24GB. NVLink removed vs vanilla 3090 \u2014 less attractive for dual-card AI setups. Higher power draw (450W vs 350W).",
+      "used_price_usd": {
+        "low": 1150,
+        "mid": 1199,
+        "high": 1400
+      },
+      "used_price_updated": "2026-05-18",
+      "used_price_source": "bestvaluegpu.com May 2026",
+      "tier": "flagship",
+      "ebay_search_query": "RTX 3090 Ti",
+      "benchmarks": {},
+      "ebay_sold_url": "https://www.ebay.com/sch/i.html?_nkw=RTX+3090+Ti+-broken+-parts+-repair+-%22parts+only%22+-%22not+working%22+-%22for+parts%22+-damaged+-faulty+-%22box+only%22+-shroud+-mining&LH_Sold=1&LH_Complete=1&_sop=13&_sacat=27386"
+    },
+    "rtx-4070-12gb": {
+      "name": "NVIDIA RTX 4070",
+      "vendor": "nvidia",
+      "architecture": "Ada Lovelace",
+      "gpu_chip": "AD104",
+      "release_date": "2023-04-13",
+      "status": "current",
+      "msrp_usd": 599,
+      "memory": {
+        "vram_gb": 12,
+        "vram_type": "GDDR6X",
+        "bus_width_bit": 192,
+        "bandwidth_gbs": 504
+      },
+      "compute": {
+        "cuda_cores": 5888,
+        "tensor_cores": 184,
+        "fp16_tflops": 29.1
+      },
+      "power": {
+        "tdp_watts": 200,
+        "psu_recommended_watts": 650
+      },
+      "ai_notes": "12GB VRAM, decent bandwidth, very efficient (200W). Fits 14B Q4 comfortably. RTX 4070 Super is the better buy if you can find one.",
+      "used_price_usd": {
+        "low": 450,
+        "mid": 570,
+        "high": 690
+      },
+      "used_price_updated": "2026-05-19",
+      "used_price_source": "eBay sold listings May 2026",
+      "tier": "mid",
+      "ebay_search_query": "RTX 4070 -Ti -Super",
+      "benchmarks": {},
+      "ebay_sold_url": "https://www.ebay.com/sch/i.html?_nkw=RTX+4070+-Ti+-Super+-broken+-parts+-repair+-%22parts+only%22+-%22not+working%22+-%22for+parts%22+-damaged+-faulty+-%22box+only%22+-shroud+-mining&LH_Sold=1&LH_Complete=1&_sop=13&_sacat=27386"
+    },
+    "rtx-4070-ti-super-16gb": {
+      "name": "NVIDIA RTX 4070 Ti Super",
+      "vendor": "nvidia",
+      "architecture": "Ada Lovelace",
+      "gpu_chip": "AD103",
+      "release_date": "2024-01-24",
+      "status": "current",
+      "msrp_usd": 799,
+      "memory": {
+        "vram_gb": 16,
+        "vram_type": "GDDR6X",
+        "bus_width_bit": 256,
+        "bandwidth_gbs": 672
+      },
+      "compute": {
+        "cuda_cores": 8448,
+        "tensor_cores": 264,
+        "fp16_tflops": 44.1
+      },
+      "power": {
+        "tdp_watts": 285,
+        "psu_recommended_watts": 700
+      },
+      "ai_notes": "16GB at 672 GB/s makes this a solid AI card for 30B-class models. Better value than 4080 in many cases.",
+      "used_price_usd": {
+        "low": 630,
+        "mid": 815,
+        "high": 1000
+      },
+      "used_price_updated": "2026-05-19",
+      "used_price_source": "eBay sold listings May 2026",
+      "tier": "high",
+      "ebay_search_query": "RTX 4070 Ti Super",
+      "benchmarks": {},
+      "ebay_sold_url": "https://www.ebay.com/sch/i.html?_nkw=RTX+4070+Ti+Super+-broken+-parts+-repair+-%22parts+only%22+-%22not+working%22+-%22for+parts%22+-damaged+-faulty+-%22box+only%22+-shroud+-mining&LH_Sold=1&LH_Complete=1&_sop=13&_sacat=27386"
+    },
+    "rtx-4080-16gb": {
+      "name": "NVIDIA RTX 4080",
+      "vendor": "nvidia",
+      "architecture": "Ada Lovelace",
+      "gpu_chip": "AD103",
+      "release_date": "2022-11-16",
+      "status": "current",
+      "msrp_usd": 1199,
+      "memory": {
+        "vram_gb": 16,
+        "vram_type": "GDDR6X",
+        "bus_width_bit": 256,
+        "bandwidth_gbs": 716
+      },
+      "compute": {
+        "cuda_cores": 9728,
+        "tensor_cores": 304,
+        "fp16_tflops": 48.7
+      },
+      "power": {
+        "tdp_watts": 320,
+        "psu_recommended_watts": 750
+      },
+      "ai_notes": "16GB GDDR6X, solid bandwidth. Superseded by 4080 SUPER on price/perf. For AI, 4070 Ti Super at $799 is often the better buy unless found cheap used.",
+      "used_price_usd": {
+        "low": 620,
+        "mid": 935,
+        "high": 1250
+      },
+      "used_price_updated": "2026-05-19",
+      "used_price_source": "eBay sold listings May 2026",
+      "tier": "high",
+      "ebay_search_query": "RTX 4080 -Super",
+      "benchmarks": {},
+      "ebay_sold_url": "https://www.ebay.com/sch/i.html?_nkw=RTX+4080+-Super+-broken+-parts+-repair+-%22parts+only%22+-%22not+working%22+-%22for+parts%22+-damaged+-faulty+-%22box+only%22+-shroud+-mining&LH_Sold=1&LH_Complete=1&_sop=13&_sacat=27386"
+    },
+    "rtx-4090-24gb": {
+      "name": "NVIDIA RTX 4090",
+      "vendor": "nvidia",
+      "architecture": "Ada Lovelace",
+      "gpu_chip": "AD102",
+      "release_date": "2022-10-12",
+      "status": "current",
+      "msrp_usd": 1599,
+      "memory": {
+        "vram_gb": 24,
+        "vram_type": "GDDR6X",
+        "bus_width_bit": 384,
+        "bandwidth_gbs": 1008
+      },
+      "compute": {
+        "cuda_cores": 16384,
+        "tensor_cores": 512,
+        "fp16_tflops": 82.6
+      },
+      "power": {
+        "tdp_watts": 450,
+        "psu_recommended_watts": 850
+      },
+      "ai_notes": "24GB, 1008 GB/s, FP8 support. Fastest 24GB consumer card. Used market data conflicted as of 2026-05-18 \u2014 verify before populating prices.",
+      "used_price_usd": {
+        "low": 2200,
+        "mid": 2400,
+        "high": 2600
+      },
+      "used_price_updated": "2026-05-19",
+      "used_price_source": "eBay sold listings May 2026",
+      "tier": "flagship",
+      "ebay_search_query": "RTX 4090",
+      "benchmarks": {},
+      "ebay_sold_url": "https://www.ebay.com/sch/i.html?_nkw=RTX+4090+-broken+-parts+-repair+-%22parts+only%22+-%22not+working%22+-%22for+parts%22+-damaged+-faulty+-%22box+only%22+-shroud+-mining&LH_Sold=1&LH_Complete=1&_sop=13&_sacat=27386"
+    },
+    "rtx-5070-ti-16gb": {
+      "name": "NVIDIA RTX 5070 Ti",
+      "vendor": "nvidia",
+      "architecture": "Blackwell",
+      "gpu_chip": "GB203",
+      "release_date": "2025-02-20",
+      "status": "scarce",
+      "msrp_usd": 749,
+      "memory": {
+        "vram_gb": 16,
+        "vram_type": "GDDR7",
+        "bus_width_bit": 256,
+        "bandwidth_gbs": 896
+      },
+      "compute": {
+        "cuda_cores": 8960,
+        "tensor_cores": 280,
+        "fp16_tflops": null
+      },
+      "power": {
+        "tdp_watts": 300,
+        "psu_recommended_watts": 750
+      },
+      "ai_notes": "$749 MSRP, but street prices $850-1,000+ due to 16GB GDDR7 supply constraints (DRAM shortage). RTX 5070 Ti SUPER (24GB) rumored October 2026 \u2014 buyers may want to wait.",
+      "used_price_usd": {
         "low": null,
-        "mid": null,
+        "mid": 875,
         "high": null
       },
-      "used_price_updated": null,
-      "used_price_source": null,
-      "benchmarks": {}
+      "used_price_updated": "2026-05-18",
+      "used_price_source": "bestvaluegpu.com May 2026 \u2014 inflated above $749 MSRP due to DRAM shortage",
+      "tier": "high",
+      "ebay_search_query": "RTX 5070 Ti -Super",
+      "benchmarks": {},
+      "ebay_sold_url": "https://www.ebay.com/sch/i.html?_nkw=RTX+5070+Ti+-Super+-broken+-parts+-repair+-%22parts+only%22+-%22not+working%22+-%22for+parts%22+-damaged+-faulty+-%22box+only%22+-shroud+-mining&LH_Sold=1&LH_Complete=1&_sop=13&_sacat=27386"
+    },
+    "rtx-5080-16gb": {
+      "name": "NVIDIA RTX 5080",
+      "vendor": "nvidia",
+      "architecture": "Blackwell",
+      "gpu_chip": "GB203",
+      "release_date": "2025-01-30",
+      "status": "current",
+      "msrp_usd": 999,
+      "memory": {
+        "vram_gb": 16,
+        "vram_type": "GDDR7",
+        "bus_width_bit": 256,
+        "bandwidth_gbs": 960
+      },
+      "compute": {
+        "cuda_cores": 10752,
+        "tensor_cores": 336,
+        "fp16_tflops": null
+      },
+      "power": {
+        "tdp_watts": 360,
+        "psu_recommended_watts": 850
+      },
+      "ai_notes": "16GB GDDR7. EOL rumored October 2026 in favor of RTX 5080 SUPER (24GB) \u2014 buyers may want to wait.",
+      "used_price_usd": {
+        "low": null,
+        "mid": 1200,
+        "high": null
+      },
+      "used_price_updated": "2026-05-18",
+      "used_price_source": "bestvaluegpu.com May 2026",
+      "tier": "high",
+      "ebay_search_query": "RTX 5080 -Super",
+      "benchmarks": {},
+      "ebay_sold_url": "https://www.ebay.com/sch/i.html?_nkw=RTX+5080+-Super+-broken+-parts+-repair+-%22parts+only%22+-%22not+working%22+-%22for+parts%22+-damaged+-faulty+-%22box+only%22+-shroud+-mining&LH_Sold=1&LH_Complete=1&_sop=13&_sacat=27386"
+    },
+    "rtx-5090-32gb": {
+      "name": "NVIDIA RTX 5090",
+      "vendor": "nvidia",
+      "architecture": "Blackwell",
+      "gpu_chip": "GB202",
+      "release_date": "2025-01-30",
+      "status": "scarce",
+      "msrp_usd": 1999,
+      "memory": {
+        "vram_gb": 32,
+        "vram_type": "GDDR7",
+        "bus_width_bit": 512,
+        "bandwidth_gbs": 1792
+      },
+      "compute": {
+        "cuda_cores": 21760,
+        "tensor_cores": 680,
+        "fp16_tflops": null
+      },
+      "power": {
+        "tdp_watts": 575,
+        "psu_recommended_watts": 1000
+      },
+      "ai_notes": "32GB flagship with NVFP4 support, 1792 GB/s bandwidth. Ongoing supply constraints since launch \u2014 street prices inflated above $1,999 MSRP.",
+      "used_price_usd": {
+        "low": null,
+        "mid": 3750,
+        "high": null
+      },
+      "used_price_updated": "2026-05-18",
+      "used_price_source": "multi-source: bestvaluegpu.com, gpudeals.net, Tom's Hardware",
+      "used_price_status": "unverified — mid only, no low/high band established. Supply is too erratic to bound a range honestly; do not infer one. Page-drift checking is skipped for this card until low/high are filled from sold listings.",
+      "tier": "flagship",
+      "ebay_search_query": "RTX 5090",
+      "benchmarks": {},
+      "ebay_sold_url": "https://www.ebay.com/sch/i.html?_nkw=RTX+5090+-broken+-parts+-repair+-%22parts+only%22+-%22not+working%22+-%22for+parts%22+-damaged+-faulty+-%22box+only%22+-shroud+-mining&LH_Sold=1&LH_Complete=1&_sop=13&_sacat=27386"
+    },
+    "tesla-p40-24gb": {
+      "name": "NVIDIA Tesla P40",
+      "vendor": "nvidia",
+      "architecture": "Pascal",
+      "gpu_chip": "GP102",
+      "release_date": "2016-09-13",
+      "status": "discontinued",
+      "msrp_usd": 5699,
+      "memory": {
+        "vram_gb": 24,
+        "vram_type": "GDDR5",
+        "bus_width_bit": 384,
+        "bandwidth_gbs": 346
+      },
+      "compute": {
+        "cuda_cores": 3840,
+        "tensor_cores": 0,
+        "fp16_tflops": 0.19
+      },
+      "power": {
+        "tdp_watts": 250,
+        "psu_recommended_watts": 600
+      },
+      "ai_notes": "24GB at $180-250 used was historically the budget AI bargain. But: Pascal arch lost CUDA support in CUDA 13 (Oct 2025). No tensor cores. Vulkan/llama.cpp only now. Skip for new builds.",
+      "used_price_usd": {
+        "low": 190,
+        "mid": 270,
+        "high": 350
+      },
+      "used_price_updated": "2026-05-19",
+      "used_price_source": "eBay sold listings May 2026",
+      "tier": "flagship",
+      "ebay_search_query": "Tesla P40 -M40",
+      "benchmarks": {},
+      "ebay_sold_url": "https://www.ebay.com/sch/i.html?_nkw=Tesla+P40+-M40+-broken+-parts+-repair+-%22parts+only%22+-%22not+working%22+-%22for+parts%22+-damaged+-faulty+-%22box+only%22+-shroud+-mining&LH_Sold=1&LH_Complete=1&_sop=13&_sacat=27386"
+    },
+    "rtx-2080-ti-22gb": {
+      "name": "NVIDIA RTX 2080 Ti 22GB (modded)",
+      "vendor": "nvidia",
+      "architecture": "Turing",
+      "gpu_chip": "TU102",
+      "release_date": "2018-09-20",
+      "status": "scarce",
+      "msrp_usd": null,
+      "memory": {
+        "vram_gb": 22,
+        "vram_type": "GDDR6",
+        "bus_width_bit": 352,
+        "bandwidth_gbs": 616
+      },
+      "compute": {
+        "cuda_cores": 4352,
+        "tensor_cores": 544,
+        "fp16_tflops": 28.5
+      },
+      "power": {
+        "tdp_watts": 250,
+        "psu_recommended_watts": 650
+      },
+      "ai_notes": "Chinese-modded variant: 11GB chips swapped for 22GB. Turing arch supports current CUDA. 616 GB/s + 22GB is a credible value play for AI. Not OEM \u2014 buy only from sellers with verified mod history.",
+      "used_price_usd": {
+        "low": 400,
+        "mid": 450,
+        "high": 500
+      },
+      "used_price_updated": "2026-05-19",
+      "used_price_source": "eBay sold listings May 2026",
+      "tier": "high",
+      "ebay_search_query": "RTX 2080 Ti 22GB",
+      "benchmarks": {},
+      "ebay_sold_url": "https://www.ebay.com/sch/i.html?_nkw=RTX+2080+Ti+22GB+-broken+-parts+-repair+-%22parts+only%22+-%22not+working%22+-%22for+parts%22+-damaged+-faulty+-%22box+only%22+-shroud+-mining&LH_Sold=1&LH_Complete=1&_sop=13&_sacat=27386"
     }
   },
   "system_ram": {
