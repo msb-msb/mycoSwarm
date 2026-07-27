@@ -175,6 +175,44 @@
       "ebay_search_query": "RTX 3060 12GB -Ti -8GB",
       "ebay_sold_url": "https://www.ebay.com/sch/i.html?_nkw=RTX+3060+12GB+-Ti+-8GB+-broken+-parts+-repair+-%22parts+only%22+-%22not+working%22+-%22for+parts%22+-damaged+-faulty+-%22box+only%22+-shroud+-mining&LH_Sold=1&LH_Complete=1&_sop=13&_sacat=27386"
     },
+    "rtx-3060-ti-8gb": {
+      "name": "NVIDIA RTX 3060 Ti",
+      "vendor": "nvidia",
+      "architecture": "Ampere",
+      "gpu_chip": "GA104",
+      "release_date": "2020-12-02",
+      "status": "discontinued",
+      "msrp_usd": 399,
+      "memory": {
+        "vram_gb": 8,
+        "vram_type": "GDDR6",
+        "bus_width_bit": 256,
+        "bandwidth_gbs": 448
+      },
+      "compute": {
+        "cuda_cores": 4864,
+        "tensor_cores": 152,
+        "fp16_tflops": 16.2
+      },
+      "power": {
+        "tdp_watts": 200,
+        "psu_recommended_watts": 600
+      },
+      "ai_notes": "Faster than the 3060 12GB at gaming and 25% more bandwidth, but 8GB caps it at 7B-class models. The used market now prices it BELOW the 3060 12GB despite the higher tier badge — VRAM, not gaming performance, sets the price. Same $/GB as the 3060 12GB with a third less memory.",
+      "used_price_usd": {
+        "low": 150,
+        "mid": 210,
+        "high": 260
+      },
+      "used_price_updated": "2026-07-27",
+      "used_price_source": "firsthand eBay sold listings",
+      "used_price_note": "Working cards; bulk of sales $190-230. Excluded: parts-only ($50-132), Canada-based auctions ($163-172, currency), and a $555 Yeston outlier.",
+      "used_price_status": "verified",
+      "benchmarks": {},
+      "tier": "entry",
+      "ebay_search_query": "RTX 3060 Ti",
+      "ebay_sold_url": "https://www.ebay.com/sch/i.html?_nkw=RTX+3060+Ti+-broken+-parts+-repair+-%22parts+only%22+-%22not+working%22+-%22for+parts%22+-damaged+-faulty+-%22box+only%22+-shroud+-mining&LH_Sold=1&LH_Complete=1&_sop=13&_sacat=27386"
+    },
     "rtx-3070-8gb": {
       "name": "NVIDIA RTX 3070",
       "vendor": "nvidia",
@@ -1040,13 +1078,14 @@
       },
       "ai_notes": "16GB at 672 GB/s makes this a solid AI card for 30B-class models. Better value than 4080 in many cases.",
       "used_price_usd": {
-        "low": 630,
-        "mid": 815,
-        "high": 1000
+        "low": 650,
+        "mid": 750,
+        "high": 900
       },
-      "used_price_updated": "2026-05-19",
-      "used_price_source": "eBay sold listings May 2026",
-      "used_price_status": "researched",
+      "used_price_updated": "2026-07-27",
+      "used_price_source": "firsthand eBay sold listings",
+      "used_price_note": "Working cards; bulk of sales $700-800. Excluded: parts-only ($139-520), China-based new listings ($1,098-1,499), and a STALKER special edition at $1,150.",
+      "used_price_status": "verified",
       "tier": "high",
       "ebay_search_query": "RTX 4070 Ti Super",
       "benchmarks": {},
