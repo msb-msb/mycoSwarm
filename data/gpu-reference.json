@@ -16,7 +16,8 @@
       "DRAM shortage affecting 16GB+ Blackwell cards (RTX 5070 Ti, RTX 5060 Ti 16GB) \u2014 street prices inflated above MSRP",
       "tier field added (entry/mid/high/flagship) for Hugo shortcode filtering",
       "ebay_sold_url field added for one-click sold-listing access during quarterly updates",
-      "2026-07-27: used_price_status normalized to a three-value enum (verified/researched/unverified) and per-card prose moved to used_price_note. rx-7800-xt-16gb re-priced from firsthand eBay sold listings ($400-465-550), superseding the March research figure."
+      "2026-07-27: used_price_status normalized to a three-value enum (verified/researched/unverified) and per-card prose moved to used_price_note. rx-7800-xt-16gb re-priced from firsthand eBay sold listings ($400-465-550), superseding the March research figure.",
+      "2026-07-27: rtx-4090-24gb re-priced from firsthand eBay sold listings ($2,100-2,250-2,550), superseding the May 2026 research figure of $2,200-2,400-2,600. Fourth verified card."
     ]
   },
   "gpus": {
@@ -1113,13 +1114,14 @@
       },
       "ai_notes": "24GB, 1008 GB/s, FP8 support. Fastest 24GB consumer card. Used market data conflicted as of 2026-05-18 \u2014 verify before populating prices.",
       "used_price_usd": {
-        "low": 2200,
-        "mid": 2400,
-        "high": 2600
+        "low": 2100,
+        "mid": 2250,
+        "high": 2550
       },
-      "used_price_updated": "2026-05-19",
-      "used_price_source": "eBay sold listings May 2026",
-      "used_price_status": "researched",
+      "used_price_updated": "2026-07-27",
+      "used_price_source": "firsthand eBay sold listings",
+      "used_price_status": "verified",
+      "used_price_note": "Working cards only, ~16 clean listings clustering $2,100-2,250. Excluded: parts-only ($98-1,950), a $1,600 waterblock bundle, and a $1,425 parts-only that drew 30 bids.",
       "tier": "flagship",
       "ebay_search_query": "RTX 4090",
       "benchmarks": {},
