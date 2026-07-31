@@ -1267,14 +1267,14 @@
       },
       "ai_notes": "32GB flagship with NVFP4 support, 1792 GB/s bandwidth. Ongoing supply constraints since launch \u2014 street prices inflated above $1,999 MSRP.",
       "used_price_usd": {
-        "low": null,
-        "mid": 3750,
-        "high": null
+        "low": 3000,
+        "mid": 3800,
+        "high": 4700
       },
-      "used_price_updated": "2026-05-18",
-      "used_price_source": "multi-source: bestvaluegpu.com, gpudeals.net, Tom's Hardware",
-      "used_price_status": "unverified",
-      "used_price_note": "Mid only, no low/high band established. Supply is too erratic to bound a range honestly; do not infer one. Page-drift checking is skipped for this card until low/high are filled from sold listings.",
+      "used_price_updated": "2026-07-31",
+      "used_price_source": "firsthand eBay sold listings",
+      "used_price_status": "verified",
+      "used_price_note": "Working cards only, US sellers, July 2026. Bulk of sales $3,500-4,100. Excluded: parts-only/broken ($55-3,599 \u2014 broken FE cards sold at $3,099-3,599), 5-card lots (~$19K), overseas listings at $999-2,399 (implausible against domestic), a repeated $2,250 TUF bait listing, and MSI Lightning Z halo SKUs ($5,500-6,180). Still selling well above the $1,999 MSRP.",
       "tier": "flagship",
       "ebay_search_query": "RTX 5090",
       "benchmarks": {},
