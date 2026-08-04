@@ -1,23 +1,24 @@
 {
   "_meta": {
-    "version": "1.0.0",
-    "description": "Canonical GPU and system RAM reference for InsiderLLM pipeline. Verified specs are ground truth \u2014 models may add to but never contradict these values.",
-    "last_updated": "2026-07-27",
+    "version": "1.1.0",
+    "description": "Canonical GPU, system RAM, and NVMe storage reference for InsiderLLM pipeline. Verified specs are ground truth — models may add to but never contradict these values.",
+    "last_updated": "2026-08-04",
     "maintainer": "mark@insiderllm.com",
     "notes": [
       "used_price_usd: manually updated from eBay sold listings",
-      "used_price_status: 'verified' = firsthand sold-listing data on the stated date; these are the only cards whose age is allowed to go stale (morning-brief \u00a78 nags past 60d). 'researched' = figure from a cited third-party source, believed but not confirmed firsthand; reported as an informational count, never nagged on age. 'unverified' = no defensible band (mid-only or never priced); never fill these by inference. See used_price_note for per-card reasoning.",
-      "2026-07-25 refresh: rtx-3090-24gb and rtx-3060-12gb re-priced from firsthand eBay sold listings, superseding May/March research figures. The other cards were NOT touched \u2014 no firsthand data existed for them, and a stale-but-honest number beats a fabricated fresh one. morning-brief.py \u00a78 reports their age daily.",
+      "used_price_status: 'verified' = firsthand sold-listing data on the stated date; these are the only cards whose age is allowed to go stale (morning-brief §8 nags past 60d). 'researched' = figure from a cited third-party source, believed but not confirmed firsthand; reported as an informational count, never nagged on age. 'unverified' = no defensible band (mid-only or never priced); never fill these by inference. See used_price_note for per-card reasoning.",
+      "2026-07-25 refresh: rtx-3090-24gb and rtx-3060-12gb re-priced from firsthand eBay sold listings, superseding May/March research figures. The other cards were NOT touched — no firsthand data existed for them, and a stale-but-honest number beats a fabricated fresh one. morning-brief.py §8 reports their age daily.",
       "benchmarks: manually verified from trusted sources",
       "specs: cross-referenced against techpowerup.com GPU database",
       "bandwidth predicts tok/s for memory-bound LLM inference",
       "VRAM is the primary constraint for model size that fits on GPU",
       "May 2026 refresh: RTX 3090 appreciating due to local AI demand (used median ~$1,000, premium AIB $1,100-1,300)",
-      "DRAM shortage affecting 16GB+ Blackwell cards (RTX 5070 Ti, RTX 5060 Ti 16GB) \u2014 street prices inflated above MSRP",
+      "DRAM shortage affecting 16GB+ Blackwell cards (RTX 5070 Ti, RTX 5060 Ti 16GB) — street prices inflated above MSRP",
       "tier field added (entry/mid/high/flagship) for Hugo shortcode filtering",
       "ebay_sold_url field added for one-click sold-listing access during quarterly updates",
       "2026-07-27: used_price_status normalized to a three-value enum (verified/researched/unverified) and per-card prose moved to used_price_note. rx-7800-xt-16gb re-priced from firsthand eBay sold listings ($400-465-550), superseding the March research figure.",
-      "2026-07-27: rtx-4090-24gb re-priced from firsthand eBay sold listings ($2,100-2,250-2,550), superseding the May 2026 research figure of $2,200-2,400-2,600. Fourth verified card."
+      "2026-07-27: rtx-4090-24gb re-priced from firsthand eBay sold listings ($2,100-2,250-2,550), superseding the May 2026 research figure of $2,200-2,400-2,600. Fourth verified card.",
+      "2026-08-04: added `storage` — 2TB NVMe price bands from firsthand eBay sold listings, keyed by host interface generation following the system_ram precedent. storage._host_interface_rule is BOARD-CONDITIONAL and carries an explicit quotation_warning; it is false if quoted without the PCIe 3.0 host condition. No consumer reads `storage` — GPU_PROSE_CARDS was deliberately not extended, so the drift checker does not scan storage prices."
     ]
   },
   "gpus": {
@@ -118,7 +119,7 @@
         "tdp_watts": 170,
         "psu_recommended_watts": 550
       },
-      "ai_notes": "The entry-level workhorse. 12GB fits 13B Q4 models. Bandwidth is the bottleneck \u2014 half the 3080's speed. Still the cheapest honest 12GB, though the 2026 memory shortage lifted the floor off ~$170.",
+      "ai_notes": "The entry-level workhorse. 12GB fits 13B Q4 models. Bandwidth is the bottleneck — half the 3080's speed. Still the cheapest honest 12GB, though the 2026 memory shortage lifted the floor off ~$170.",
       "used_price_usd": {
         "low": 200,
         "mid": 300,
@@ -156,7 +157,7 @@
           "tok_s": 46.6,
           "source": "self-tested rushuna",
           "date": "2026-03-03",
-          "notes": "Ollama qwen3.5:9b think=true, 4x token overhead (871\u21923404 tokens)"
+          "notes": "Ollama qwen3.5:9b think=true, 4x token overhead (871→3404 tokens)"
         },
         "deepseek_r1_14b_think_off": {
           "tok_s": 35.6,
@@ -168,7 +169,7 @@
           "tok_s": 35.1,
           "source": "self-tested rushuna",
           "date": "2026-03-03",
-          "notes": "Ollama deepseek-r1:14b think=true, 3x token overhead (380\u2192921 tokens)"
+          "notes": "Ollama deepseek-r1:14b think=true, 3x token overhead (380→921 tokens)"
         }
       },
       "tier": "mid",
@@ -375,7 +376,7 @@
           "tok_s": 107,
           "source": "github.com/XiongjieDai/GPU-Benchmarks-on-LLM-Inference",
           "date": "2024-05",
-          "notes": "3080 Ti proxy \u2014 same GA102, same bandwidth; llama.cpp CUDA tg1024"
+          "notes": "3080 Ti proxy — same GA102, same bandwidth; llama.cpp CUDA tg1024"
         }
       },
       "tier": "mid",
@@ -729,7 +730,7 @@
         "tdp_watts": 260,
         "psu_recommended_watts": 700
       },
-      "ai_notes": "Navi 31 chip means more compute units than 7800 XT but slightly lower bandwidth. 16GB VRAM. ROCm compatibility varies \u2014 test before committing.",
+      "ai_notes": "Navi 31 chip means more compute units than 7800 XT but slightly lower bandwidth. 16GB VRAM. ROCm compatibility varies — test before committing.",
       "used_price_usd": {
         "low": 400,
         "mid": 475,
@@ -816,7 +817,7 @@
         "tdp_watts": null,
         "psu_recommended_watts": null
       },
-      "ai_notes": "PRELIMINARY \u2014 specs not confirmed. Likely 8GB VRAM with 128-bit bus. If so, same VRAM limitation as RTX 4060.",
+      "ai_notes": "PRELIMINARY — specs not confirmed. Likely 8GB VRAM with 128-bit bus. If so, same VRAM limitation as RTX 4060.",
       "used_price_usd": {
         "low": 280,
         "mid": 320,
@@ -853,7 +854,7 @@
         "tdp_watts": null,
         "psu_recommended_watts": null
       },
-      "ai_notes": "PRELIMINARY \u2014 specs not confirmed. 16GB GDDR7 rumored. If bandwidth improves over 4060 Ti 16GB, could be a solid mid-range AI card.",
+      "ai_notes": "PRELIMINARY — specs not confirmed. 16GB GDDR7 rumored. If bandwidth improves over 4060 Ti 16GB, could be a solid mid-range AI card.",
       "used_price_usd": {
         "low": 475,
         "mid": 600,
@@ -890,7 +891,7 @@
         "tdp_watts": 250,
         "psu_recommended_watts": 650
       },
-      "ai_notes": "GDDR7 gives 672 GB/s on a 192-bit bus \u2014 impressive. 12GB VRAM same as 3060 but nearly 2x bandwidth. Availability and actual pricing TBD.",
+      "ai_notes": "GDDR7 gives 672 GB/s on a 192-bit bus — impressive. 12GB VRAM same as 3060 but nearly 2x bandwidth. Availability and actual pricing TBD.",
       "used_price_usd": {
         "low": 570,
         "mid": 685,
@@ -927,7 +928,7 @@
         "tdp_watts": 220,
         "psu_recommended_watts": 650
       },
-      "ai_notes": "PRELIMINARY \u2014 16GB VRAM with 256-bit bus. ROCm support status for RDNA 4 unknown. Wait for confirmed local AI benchmarks before recommending.",
+      "ai_notes": "PRELIMINARY — 16GB VRAM with 256-bit bus. ROCm support status for RDNA 4 unknown. Wait for confirmed local AI benchmarks before recommending.",
       "used_price_usd": {
         "low": null,
         "mid": null,
@@ -965,7 +966,7 @@
         "tdp_watts": 250,
         "psu_recommended_watts": 700
       },
-      "ai_notes": "PRELIMINARY \u2014 same memory subsystem as RX 9070. More compute units. Same ROCm uncertainty as 9070.",
+      "ai_notes": "PRELIMINARY — same memory subsystem as RX 9070. More compute units. Same ROCm uncertainty as 9070.",
       "used_price_usd": {
         "low": 580,
         "mid": 690,
@@ -1002,7 +1003,7 @@
         "tdp_watts": 450,
         "psu_recommended_watts": 1000
       },
-      "ai_notes": "Slightly faster than 3090 (~10-15%) with same 24GB. NVLink removed vs vanilla 3090 \u2014 less attractive for dual-card AI setups. Higher power draw (450W vs 350W).",
+      "ai_notes": "Slightly faster than 3090 (~10-15%) with same 24GB. NVLink removed vs vanilla 3090 — less attractive for dual-card AI setups. Higher power draw (450W vs 350W).",
       "used_price_usd": {
         "low": 1150,
         "mid": 1199,
@@ -1151,7 +1152,7 @@
         "tdp_watts": 450,
         "psu_recommended_watts": 850
       },
-      "ai_notes": "24GB, 1008 GB/s, FP8 support. Fastest 24GB consumer card. Used market data conflicted as of 2026-05-18 \u2014 verify before populating prices.",
+      "ai_notes": "24GB, 1008 GB/s, FP8 support. Fastest 24GB consumer card. Used market data conflicted as of 2026-05-18 — verify before populating prices.",
       "used_price_usd": {
         "low": 2100,
         "mid": 2250,
@@ -1189,14 +1190,14 @@
         "tdp_watts": 300,
         "psu_recommended_watts": 750
       },
-      "ai_notes": "$749 MSRP, but street prices $850-1,000+ due to 16GB GDDR7 supply constraints (DRAM shortage). RTX 5070 Ti SUPER (24GB) rumored October 2026 \u2014 buyers may want to wait.",
+      "ai_notes": "$749 MSRP, but street prices $850-1,000+ due to 16GB GDDR7 supply constraints (DRAM shortage). RTX 5070 Ti SUPER (24GB) rumored October 2026 — buyers may want to wait.",
       "used_price_usd": {
         "low": null,
         "mid": 875,
         "high": null
       },
       "used_price_updated": "2026-05-18",
-      "used_price_source": "bestvaluegpu.com May 2026 \u2014 inflated above $749 MSRP due to DRAM shortage",
+      "used_price_source": "bestvaluegpu.com May 2026 — inflated above $749 MSRP due to DRAM shortage",
       "used_price_status": "unverified",
       "used_price_note": "Mid only, no low/high band. bestvaluegpu.com May 2026 figure is inflated above the $749 MSRP by the DRAM shortage.",
       "tier": "high",
@@ -1227,7 +1228,7 @@
         "tdp_watts": 360,
         "psu_recommended_watts": 850
       },
-      "ai_notes": "16GB GDDR7. EOL rumored October 2026 in favor of RTX 5080 SUPER (24GB) \u2014 buyers may want to wait.",
+      "ai_notes": "16GB GDDR7. EOL rumored October 2026 in favor of RTX 5080 SUPER (24GB) — buyers may want to wait.",
       "used_price_usd": {
         "low": null,
         "mid": 1200,
@@ -1265,7 +1266,7 @@
         "tdp_watts": 575,
         "psu_recommended_watts": 1000
       },
-      "ai_notes": "32GB flagship with NVFP4 support, 1792 GB/s bandwidth. Ongoing supply constraints since launch \u2014 street prices inflated above $1,999 MSRP.",
+      "ai_notes": "32GB flagship with NVFP4 support, 1792 GB/s bandwidth. Ongoing supply constraints since launch — street prices inflated above $1,999 MSRP.",
       "used_price_usd": {
         "low": 3000,
         "mid": 3800,
@@ -1274,7 +1275,7 @@
       "used_price_updated": "2026-07-31",
       "used_price_source": "firsthand eBay sold listings",
       "used_price_status": "verified",
-      "used_price_note": "Working cards only, US sellers, July 2026. Bulk of sales $3,500-4,100. Excluded: parts-only/broken ($55-3,599 \u2014 broken FE cards sold at $3,099-3,599), 5-card lots (~$19K), overseas listings at $999-2,399 (implausible against domestic), a repeated $2,250 TUF bait listing, and MSI Lightning Z halo SKUs ($5,500-6,180). Still selling well above the $1,999 MSRP.",
+      "used_price_note": "Working cards only, US sellers, July 2026. Bulk of sales $3,500-4,100. Excluded: parts-only/broken ($55-3,599 — broken FE cards sold at $3,099-3,599), 5-card lots (~$19K), overseas listings at $999-2,399 (implausible against domestic), a repeated $2,250 TUF bait listing, and MSI Lightning Z halo SKUs ($5,500-6,180). Still selling well above the $1,999 MSRP.",
       "tier": "flagship",
       "ebay_search_query": "RTX 5090",
       "benchmarks": {},
@@ -1340,7 +1341,7 @@
         "tdp_watts": 250,
         "psu_recommended_watts": 650
       },
-      "ai_notes": "Chinese-modded variant: 11GB chips swapped for 22GB. Turing arch supports current CUDA. 616 GB/s + 22GB is a credible value play for AI. Not OEM \u2014 buy only from sellers with verified mod history.",
+      "ai_notes": "Chinese-modded variant: 11GB chips swapped for 22GB. Turing arch supports current CUDA. 616 GB/s + 22GB is a credible value play for AI. Not OEM — buy only from sellers with verified mod history.",
       "used_price_usd": {
         "low": 400,
         "mid": 450,
@@ -1429,7 +1430,7 @@
       "status": "current",
       "used_price_per_16gb_usd": "50-80",
       "used_price_updated": "2026-03-02",
-      "ai_notes": "25.6 GB/s at 3200MHz dual-channel. 2x DDR3 performance for offloading. Sweet spot for budget builds \u2014 Optiplex 5060/7060 are cheap and take DDR4.",
+      "ai_notes": "25.6 GB/s at 3200MHz dual-channel. 2x DDR3 performance for offloading. Sweet spot for budget builds — Optiplex 5060/7060 are cheap and take DDR4.",
       "used_price_per_32gb_usd": "100-170"
     },
     "ddr5": {
@@ -1473,6 +1474,133 @@
       "used_price_per_64gb_usd": "320-450"
     }
   },
+  "storage": {
+    "_meta": {
+      "description": "NVMe SSD pricing and interface reference. Bands are for 2TB M.2 NVMe, the capacity where local-AI model storage actually gets decided.",
+      "capacity_reference_gb": 2000,
+      "price_source": "ebay sold listings",
+      "price_status": "verified",
+      "price_verified": "2026-08-04",
+      "price_basis_note": "Firsthand sold-listing data, same method and standard as used_price_status='verified' on the GPU entries.",
+      "market_conditions": {
+        "summary": "2026 NVMe pricing is elevated against historical norms.",
+        "cause": "NAND and DRAM market pressure — the same supply dynamic driving the 2026 GPU and system-RAM pricing recorded elsewhere in this file.",
+        "implication": "Do not treat these bands as a long-run floor. A 2TB drive at these prices is expensive by pre-2026 standards, and the $/GB comparisons against older articles will not line up.",
+        "recorded": "2026-08-04"
+      }
+    },
+    "nvme_gen3": {
+      "generation": "PCIe 3.0 x4 NVMe",
+      "interface_peak_mbs": 3500,
+      "price_bands_usd": {
+        "used": {
+          "low": 65,
+          "mid": 135,
+          "high": 170
+        }
+      },
+      "price_updated": "2026-08-04",
+      "status": "legacy",
+      "ai_notes": "The correct buy for a PCIe 3.0 host. Model load is a large sequential read, so sustained throughput matters more than random IOPS — prefer TLC with a DRAM cache over DRAM-less at the same price. A 13-rung -ncmoe sweep reloads the weights once per rung, which is where load speed shows up."
+    },
+    "nvme_gen4": {
+      "generation": "PCIe 4.0 x4 NVMe",
+      "interface_peak_mbs": 7000,
+      "price_bands_usd": {
+        "new": {
+          "low": 190,
+          "mid": 230,
+          "high": 295
+        },
+        "used": {
+          "low": 155,
+          "mid": 195,
+          "high": 225
+        }
+      },
+      "price_updated": "2026-08-04",
+      "status": "current",
+      "ai_notes": "Only worth the premium on a PCIe 4.0 host — see _host_interface_rule. Note that budget Gen4 drives are often rated at or near the Gen3 ceiling anyway (the Patriot P400 Lite peaks at 3,500 MB/s), so 'Gen4' on the box does not by itself mean faster than Gen3."
+    },
+    "_host_interface_rule": {
+      "id": "gen4_premium_unspendable_on_gen3_host",
+      "claim": "A Gen4 NVMe delivers no sequential-throughput advantage over a Gen3 NVMe.",
+      "holds_only_when": "the host board's M.2 slot is PCIe 3.0",
+      "does_not_hold_when": "the host board's M.2 slot is PCIe 4.0 or newer, where a Gen4 drive can exceed the Gen3 ceiling",
+      "mechanism": "The PCIe 3.0 x4 host link caps at roughly 3,500 MB/s. Both generations saturate that same ceiling, so the drive's own higher rating is unreachable.",
+      "host_link_peak_mbs": 3500,
+      "buying_implication_when_it_holds": "Buy Gen3. The Gen4 price premium purchases throughput the board cannot deliver.",
+      "price_delta_when_it_holds_usd": {
+        "gen3_used_mid": 135,
+        "gen4_used_mid": 195,
+        "unspendable_premium_mid": 60
+      },
+      "verified_on": {
+        "board": "ASRock B365M Pro4",
+        "rig": "miu",
+        "host_pcie_generation": 3,
+        "date": "2026-08-04"
+      },
+      "quotation_warning": "BOARD-CONDITIONAL. Quoting this claim without the PCIe 3.0 host condition makes it false. On a Gen4 board the premium is spendable."
+    },
+    "_sold_examples": [
+      {
+        "model": "Kioxia XG6",
+        "capacity_gb": 2000,
+        "interface_gen": 3,
+        "nand_type": "TLC",
+        "dram_cache": true,
+        "condition": "used",
+        "price_usd": 119.99,
+        "source": "ebay sold",
+        "verified": "2026-08-04"
+      },
+      {
+        "model": "Silicon Power A60",
+        "capacity_gb": 2000,
+        "interface_gen": 3,
+        "nand_type": null,
+        "dram_cache": null,
+        "dram_cache_note": "not stated in the sold-listing data; left null rather than inferred",
+        "condition": "used",
+        "price_range_usd": {
+          "low": 125,
+          "high": 155
+        },
+        "source": "ebay sold",
+        "verified": "2026-08-04"
+      },
+      {
+        "model": "HP EX950",
+        "capacity_gb": 2000,
+        "interface_gen": 3,
+        "nand_type": "TLC",
+        "dram_cache": true,
+        "condition": "used",
+        "price_usd": 65,
+        "note": "Low end of the Gen3 band. TLC with DRAM at this price is the value case for a PCIe 3.0 host.",
+        "source": "ebay sold",
+        "verified": "2026-08-04"
+      },
+      {
+        "model": "Patriot P400 Lite",
+        "capacity_gb": 2000,
+        "interface_gen": 4,
+        "nand_type": null,
+        "dram_cache": false,
+        "rated_seq_read_mbs": 3500,
+        "rated_note": "Rated peak equals the PCIe 3.0 host ceiling, so this Gen4 drive would not beat Gen3 sequential even on a Gen4 board. Interface generation and rated speed verified from vendor and retailer specs, not from the sold listing.",
+        "condition": "used and new",
+        "price_range_usd": {
+          "low": 140.81,
+          "high": 179.99
+        },
+        "price_new_usd": 244.99,
+        "source": "ebay sold",
+        "verified": "2026-08-04"
+      }
+    ]
+  },
   "rules": {
     "vram_model_fit": {
       "6gb": "7B Q4 max, tight",
@@ -1483,7 +1611,7 @@
       "20gb": "30B Q4, some 70B Q2",
       "24gb": "30B Q5, 70B Q2-Q3"
     },
-    "bandwidth_impact": "For models that fit entirely in VRAM, memory bandwidth is the primary predictor of tok/s. Double the bandwidth \u2248 double the tok/s for memory-bound inference.",
+    "bandwidth_impact": "For models that fit entirely in VRAM, memory bandwidth is the primary predictor of tok/s. Double the bandwidth ≈ double the tok/s for memory-bound inference.",
     "offload_penalty": "Each layer offloaded to CPU RAM runs at system RAM bandwidth instead of VRAM bandwidth. DDR4-3200 (25.6 GB/s) vs GDDR6X (936 GB/s) = ~37x slower per offloaded layer.",
     "power_budget": "Budget builds often reuse old PSUs. Cards over 250W TDP need PSU upgrade. Factor $40-80 for a used 750W PSU.",
     "rocm_caveat": "AMD ROCm support is improving but not all models/frameworks work. Always verify ROCm compatibility for your specific use case before buying AMD for AI."
