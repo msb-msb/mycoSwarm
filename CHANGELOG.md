@@ -1,5 +1,132 @@
 # Changelog
 
+## v0.5.0 — Declared Model Bindings (2026-08-06)
+
+Minor bump, not a patch: this release changes documented behavior in three
+places. Read "Behavior changes" before upgrading a node you care about.
+
+### Model bindings — one declared answer to "what model is running?"
+* New `src/mycoswarm/bindings.py` is the single source of truth. `MODEL_BINDINGS`
+  maps role → model explicitly; `monica_chat` → `gemma3:27b`, `embedding` →
+  `nomic-embed-text`.
+* The substring scan is deleted from both `_discover_model` and `solo.pick_model`.
+  The old `14b`/`32b`/`27b` matching is why `qwen3.5:35b-a3b` was unreachable
+  ("35b" matches none of the tokens) and why `qwen3.5:27b` won the lottery over
+  the intended `gemma3:27b`.
+* Precedence: `--model` override → role binding → named fallback. When the
+  fallback fires it is logged loudly, naming both the intended and substituted
+  model — never a silent swap.
+* `model_installed()` honors Ollama's implicit `:latest` tag, so a binding
+  written as `nomic-embed-text` is satisfied by `nomic-embed-text:latest`. Exact
+  name matching, not the old substring lottery.
+* New `mycoswarm model` subcommand: prints role → bound model → installed here?,
+  including whether the fallback is present.
+* The chat header now shows role → model → how it resolved.
+
+### Fallback validity — the light-node crash is fixed
+* `resolve_model` now verifies the fallback is actually installed before
+  returning it. Previously it returned the `ROLE_FALLBACKS` entry unchecked, so a
+  node with neither the bound model nor the fallback started fine and then died
+  with an unhandled `httpx.HTTPStatusError` on the first message.
+* When nothing usable exists, `resolve_model` returns `(None, "unavailable")` —
+  a new member of the `how` enum. Returning `None` rather than a name is
+  deliberate: an uninstalled model can no longer reach Ollama by accident.
+  Invariant, asserted in tests: `model is None` iff `how == "unavailable"`.
+* Callers print a readable, self-diagnosing message — node, role, both models
+  looked for, and the pull command — and exit 1. No stack trace.
+* The `--model` override is validated too, but **only when the installed list is
+  non-empty**. An empty list means enumeration failed (Ollama down, daemon
+  unreachable), which is not evidence of absence — the escape hatch has to
+  survive Ollama being down.
+* `chat_stream` now catches `httpx.HTTPStatusError` alongside `ConnectError` and
+  `TimeoutException`, so a bad status from Ollama is a readable error on any path.
+
+### Networking
+* `MYCOSWARM_SWARM_SUBNET` soft-prefers a CIDR when choosing which address a node
+  announces and probes. New `prefer_subnet()` helper in `hardware.py` (stdlib
+  `ipaddress`, no new dependencies), applied at the three points that previously
+  trusted raw `psutil` enumeration order: `HardwareProfile.lan_ip`,
+  `discovery._all_lan_addresses()`, and `discovery._pick_reachable_address()`.
+* On dual-homed nodes (wired fabric + wifi) the recorded address was decided by
+  interface order and a per-observer 0.5s TCP-probe race, so swarm traffic could
+  ride wifi non-deterministically, varying per boot. Nothing was unreachable —
+  the API binds `0.0.0.0` — but inter-node performance was unmeasurable.
+* Soft-prefer only: out-of-subnet addresses are kept as a fallback, so a node
+  whose fabric probe momentarily misses is still reachable. **Unset reproduces
+  the previous first-enumerated behavior exactly**, asserted in tests.
+* Documentation correction: docs claiming the API "binds the LAN IP, not
+  0.0.0.0" were wrong and actively misled debugging. It binds `0.0.0.0`
+  intentionally and relies on the swarm token for access control, not the bind
+  address. Fixed in the daemon startup log, the `api.py` docstring, and CLAUDE.md.
+
+### Prompting and memory
+* Vitals reach the model as full C-names (`Calm:0.9`) while the terminal footer
+  keeps the abbreviated form (`Ca:0.9`). gemma3:27b read the two-letter
+  abbreviations as periodic-table symbols and narrated "my Calcium levels" / "my
+  Copper levels". Also retires a legend whose Co/Cr/Cf labels were mislabeled.
+* `/remember identity: <text>` routes to `type="identity"`, which is
+  staleness-exempt — closing a gap that silently archived self-coined vocabulary.
+* Identity prompt: stop ending every response with a question.
+* Memory prompt: only reference past conversations when there is actually
+  retrieved context (`[S]`/`[D]`); do not fabricate or paraphrase memories.
+* Body prompt reads as background awareness rather than a status report.
+
+### Fleet (repo scripts; not shipped in the wheel)
+* `harden_node()` disables and masks `apt-daily.timer`,
+  `apt-daily-upgrade.timer` and `unattended-upgrades.service`, and pins both
+  periodic values to "0". This is the confirmed root cause of the recurring node
+  "freezes": the unattended upgrade touches systemd, triggering
+  `systemctl daemon-reexec`, and on Ubuntu 24 PID 1 hangs mid-re-exec. Userspace
+  dies while the kernel lives, so the node still answers ping and still completes
+  the TCP handshake on port 22 via a stale listen backlog with no live sshd
+  behind it — the "connects but never sends an SSH banner" symptom. Only a hard
+  power cut recovers it. Confirmed on mai across two independent boots.
+  Idempotent and self-healing: re-runs on every update, so a node cannot stay
+  armed or silently re-arm if apt reinstalls the package.
+* Deliberate tradeoff: automatic patching is given up in exchange for nodes that
+  do not silently die. These are LAN-only and patched on command via the script.
+* `scripts/mycoswarm.service` corrected to the worker layout (`~/mycoSwarm`, not
+  Miu's `~/Desktop`) so a fresh worker can copy it verbatim.
+* luvia and mai onboarded and added to the update scripts.
+* pi retired — commented out, not deleted, in both fleet scripts. It was a
+  Raspberry Pi 2 (1GB RAM, 32-bit ARM) manifesto demo that is not connected.
+
+### Behavior changes
+1. **A session's saved model no longer overrides the binding on `--resume`.**
+   Resuming restores conversation *history* only. The saved model is recorded as
+   an observation; the binding decides what runs. When a resumed session's saved
+   model differs, the header prints the divergence — never silent.
+2. **`/model` is session-only.** It still swaps the live model, but no longer
+   persists across resume. Permanent changes mean editing the binding in
+   `bindings.py` — one place, greppable, printable via `mycoswarm model`.
+3. **`--model` naming a model that is demonstrably not installed is now a clean
+   error**, not a deferred Ollama 404. Previously the override won outright and
+   always. It still wins over the binding and fallback, and it is still honored
+   when the installed list cannot be enumerated.
+
+### Notes for fleet operators
+* After upgrading, a light node with neither `gemma3:27b` nor `qwen3.5:9b` will
+  **fail cleanly with a readable message instead of crashing** — but it still
+  will not serve `monica_chat` until a suitable model is pulled or
+  `ROLE_FALLBACKS` is revisited. As of this release that applies to boa
+  (`gemma3:1b` only) and luvia (`gemma3:4b`, `gemma3:1b`, `rwkv7:2.9b`).
+  A 9b fallback may be the wrong choice for 8GB nodes.
+* `MYCOSWARM_SWARM_SUBNET` is a no-op until a node actually runs this release.
+  Activate fleet-wide via a systemd drop-in at deploy time.
+* rushuna was not hardened in the last pass — its ethernet was unplugged. It
+  hardens automatically the next time it is on the wire and the script runs.
+
+### Tests
+* `tests/test_bindings.py` — 24 tests: precedence, `:latest` tolerance, fallback
+  validity, both light nodes' real model lists, the None-iff-unavailable
+  invariant, caller-level clean exit, and injected 404/500 through `chat_stream`.
+* `tests/test_subnet_preference.py` — 18 tests: in/out-of-CIDR, malformed, empty,
+  unset, host-bits, explicit-arg override, stable grouping, `lan_ip` with and
+  without the variable, `_all_lan_addresses` ordering.
+* Fact-lifecycle tests for the identity type; body prompt tests updated.
+* Full suite: 687 passed. The 7 `test_library.py` failures are pre-existing and
+  unrelated (verified identical against a pristine checkout).
+
 ## v0.4.3 — Swarm Body Awareness (2026-03-07)
 * Phase 31c: hardware body awareness — Monica can feel her hardware
 * body.py: GPU temp, VRAM usage, and swarm node online/offline status via nvidia-smi + daemon API
