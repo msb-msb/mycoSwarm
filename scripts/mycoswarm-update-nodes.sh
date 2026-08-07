@@ -41,8 +41,13 @@ echo "========================="
 echo "  Package: $PKG"
 echo ""
 
-read -s -p "  Enter sudo password for minotaur nodes: " SUDO_PASS
-echo ""
+# Accept a pre-set SUDO_PASS from the environment so a caller can do the
+# shadow-install cleanup and this update in one prompt. Falls back to prompting
+# when run standalone, which is the normal path.
+if [ -z "${SUDO_PASS:-}" ]; then
+    read -s -p "  Enter sudo password for minotaur nodes: " SUDO_PASS
+    echo ""
+fi
 echo ""
 # pi is retired (Raspberry Pi 2, not connected) — see the commented-out block
 # near the end of this script. No pi@pi password prompt needed.
@@ -114,8 +119,12 @@ update_node() {
         ok "$name: .venv created"
     fi
 
-    # Install into venv (quiet + timeout to prevent hangs)
-    if ssh -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=4 "$ssh_target" "cd $venv_dir && source .venv/bin/activate && pip install -q $PKG" 2>&1; then
+    # Install into venv (quiet + timeout to prevent hangs).
+    # --no-cache-dir is REQUIRED, not optional: pip's HTTP cache served a stale
+    # index for minutes after the 0.5.0 upload (`pip index versions` still said
+    # 0.4.3). Without it a node can silently "succeed" while reinstalling the
+    # version it already had, and the run looks clean.
+    if ssh -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=4 "$ssh_target" "cd $venv_dir && source .venv/bin/activate && pip install -q --no-cache-dir $PKG" 2>&1; then
         ok "$name: package updated"
     else
         fail "$name: pip install failed"
@@ -142,23 +151,46 @@ update_node() {
 # UPDATE SEQUENCE
 # ===================================================================
 
-# --- Miu (local — now updates from PyPI like other nodes) ---
-echo "━━━ Miu (local) ━━━"
+# --- Miu (local dev install — editable, NOT updated from PyPI) ---
+# Miu is the workstation: `pip install -e .` tracking ~/Desktop/mycoSwarm, so it
+# already runs whatever is in the working tree and is normally AHEAD of PyPI.
+# A `pip install mycoswarm --upgrade` here would silently replace the editable
+# install with a PyPI one, detaching Miu from the working tree — every subsequent
+# source edit would stop taking effect, with no error to notice. Verify only.
+echo "━━━ Miu (local, editable — verify only) ━━━"
 cd ~/Desktop/mycoSwarm
 if [ ! -f .venv/bin/activate ]; then
-    warn "Miu: .venv not found — creating"
-    python3 -m venv .venv
-    ok "Miu: .venv created"
-fi
-source .venv/bin/activate
-if pip install -q $PKG 2>&1; then
-    ok "Miu: package updated"
-else
-    fail "Miu: pip install failed"
+    fail "Miu: .venv not found — expected an editable dev install"
     FAILED_NODES+=("Miu")
+else
+    source .venv/bin/activate
+    LOCAL_VER=$(python3 -c "import mycoswarm; print(mycoswarm.__version__)" 2>/dev/null || echo "unknown")
+
+    # Capture first, match in-shell. Do NOT pipe pip into `grep -q`: grep exits
+    # at the first match, pip's stdout closes mid-write, pip exits 120
+    # (BrokenPipeError), and `set -o pipefail` above propagates that 120 as the
+    # pipeline status — so a SUCCESSFUL match reads as a failure. That inverted
+    # this guard on the v0.5.0 run: it reported "NOT an editable install" about
+    # a Miu that was, and still is, correctly editable. Verified: grep exit 0,
+    # pip exit 120. The bug only bites because the field sits mid-output; a
+    # match on pip's LAST line returns 0 and looks fine, which is why it hid.
+    # Bash pattern matching has no pipe and no exit status to misread.
+    MIU_PIP_INFO=$(pip show mycoswarm 2>/dev/null) || MIU_PIP_INFO=""
+
+    if [ -z "$MIU_PIP_INFO" ]; then
+        # Say so explicitly rather than asserting either state.
+        warn "Miu: could not query pip — editable state UNKNOWN (not verified)"
+        warn "      check by hand: pip show mycoswarm | grep 'Editable project'"
+    elif [[ "$MIU_PIP_INFO" == *"Editable project location:"* ]]; then
+        ok "Miu: editable install intact (v$LOCAL_VER) — left alone"
+    else
+        fail "Miu: NOT an editable install (v$LOCAL_VER) — a PyPI install has"
+        fail "      replaced it, detaching Miu from the working tree."
+        fail "      Restore: cd ~/Desktop/mycoSwarm && pip install -e ."
+        FAILED_NODES+=("Miu")
+    fi
+    echo "  📦 Miu: v$LOCAL_VER"
 fi
-LOCAL_VER=$(python3 -c "import mycoswarm; print(mycoswarm.__version__)" 2>/dev/null || echo "unknown")
-echo "  📦 Miu: v$LOCAL_VER"
 
 # --- All minotaur nodes ---
 update_node "rushuna" "minotaur@rushuna" "~/mycoSwarm" "$SUDO_PASS"
