@@ -59,13 +59,18 @@ def pick_model(models: list[str], prefer: str | None = None) -> str:
     installed) > the role's named fallback. No substring matching — the model is
     a declared binding, not an emergent property of Ollama's tag order.
     """
-    if prefer:
-        return prefer
-    if not models:
+    if not models and not prefer:
         print("❌ No Ollama models found. Install one with: ollama pull gemma3:27b")
         sys.exit(1)
-    from mycoswarm.bindings import resolve_model
-    model, _how = resolve_model("monica_chat", models)
+    from mycoswarm.bindings import resolve_model, unavailable_message
+    model, how = resolve_model("monica_chat", models, override=prefer)
+    if how == "unavailable":
+        if prefer:
+            print(f"❌ Model '{prefer}' is not installed on this node.")
+            print(f"   Pull it with: ollama pull {prefer}")
+        else:
+            print(unavailable_message("monica_chat"))
+        sys.exit(1)
     return model
 
 
@@ -418,6 +423,16 @@ def chat_stream(
         return "", {}
     except httpx.TimeoutException:
         print("\n❌ Ollama timed out.")
+        return "".join(tokens), {}
+    except httpx.HTTPStatusError as e:
+        # Belt-and-braces. resolve_model should never hand us an uninstalled model
+        # now, but any other path that does must not surface as a raw traceback.
+        code = e.response.status_code
+        if code == 404:
+            print(f"\n❌ Ollama does not have model '{model}'.")
+            print(f"   Pull it with: ollama pull {model}")
+        else:
+            print(f"\n❌ Ollama returned HTTP {code} for model '{model}'.")
         return "".join(tokens), {}
 
     duration = time.time() - start

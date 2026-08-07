@@ -292,8 +292,11 @@ def _discover_model(url: str, prefer: str | None = None) -> str:
 
             if models:
                 # No substring lottery: resolve via the declared binding.
-                from mycoswarm.bindings import resolve_model
-                model, _how = resolve_model("monica_chat", models)
+                from mycoswarm.bindings import resolve_model, unavailable_message
+                model, how = resolve_model("monica_chat", models)
+                if how == "unavailable":
+                    print(unavailable_message("monica_chat", node="the swarm"))
+                    sys.exit(1)
                 return model
             else:
                 print("❌ No Ollama models available in the swarm.")
@@ -1552,7 +1555,7 @@ def cmd_chat(args):
             print("   No problem — you can name it later with /name")
 
     # --- Resolve the model: --model override > role binding > named fallback ---
-    from mycoswarm.bindings import resolve_model, bound_model
+    from mycoswarm.bindings import resolve_model, bound_model, unavailable_message
     role = "monica_chat"
     if daemon_up:
         installed = _list_swarm_models(url)
@@ -1562,6 +1565,13 @@ def cmd_chat(args):
         print("❌ No Ollama models available.")
         sys.exit(1)
     model, how = resolve_model(role, installed, override=args.model)
+    if how == "unavailable":
+        if args.model:
+            print(f"❌ Model '{args.model}' is not installed on this node.")
+            print(f"   Pull it with: ollama pull {args.model}")
+        else:
+            print(unavailable_message(role))
+        sys.exit(1)
     if how == "fallback":
         intended = bound_model(role)
         print(
