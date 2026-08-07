@@ -1161,7 +1161,107 @@ handles fast explicit recall. Weight-level (Share subspace) handles deep
 implicit patterns. Together they mirror episodic + procedural memory.
 Neither alone is sufficient.
 
+### Phase 41: Declared Model Bindings + v0.5.0 Release (2026-08-06)
+
+**Release blocker — resolve_model fallback validation**
+- [x] `resolve_model` verifies the fallback is actually installed before
+      returning it. It previously returned the `ROLE_FALLBACKS` entry
+      unchecked, so a node with neither the bound model nor the fallback
+      started fine and then died with an unhandled `httpx.HTTPStatusError`
+      on the first message. Documented as a known gap in 1e24218; fixed
+      in 9b9ca22.
+- [x] New `(None, "unavailable")` return state. `None` rather than a name
+      is deliberate — an uninstalled model can no longer reach Ollama by
+      accident, so a caller that ignores `how` fails at the call site
+      instead of 404-ing mid-stream. Invariant asserted in tests:
+      `model is None` iff `how == "unavailable"`.
+- [x] `unavailable_message()` — one self-diagnosing message (node, role,
+      both models looked for, pull command) shared by all three callers.
+- [x] `--model` override validated too, but only when the installed list
+      is non-empty. An empty list means enumeration failed, not absence —
+      the escape hatch has to survive Ollama being down.
+- [x] `chat_stream` catches `httpx.HTTPStatusError` alongside
+      `ConnectError` and `TimeoutException` — the safety net that holds
+      regardless of resolution logic.
+- [x] tests/test_bindings.py 13 → 24 tests, including boa's and luvia's
+      real model lists as named regression cases.
+
+**v0.5.0 release (2026-08-06)**
+- [x] Published to PyPI, tagged v0.5.0, GitHub release with notes
+- [x] Minor bump, not patch — three documented behaviors changed: saved
+      model no longer overrides the binding on `--resume`; `/model` is
+      session-only; `--model` naming an absent model is a clean error
+- [x] CHANGELOG.md v0.5.0 entry
+- [x] Note: only `src/` ships in the wheel, so a PyPI upgrade delivers
+      the binding fixes but NOT the fleet hardening in `scripts/`
+
+**Fleet upgrade to v0.5.0 (2026-08-06)**
+- [x] All 7 nodes on v0.5.0, hardened, daemons restarted
+- [x] Removed stale 0.3.0 shadow installs on boa, naru and uncho
+      (`/usr/local/bin/mycoswarm` + `~/.local`, all dated Feb 24). These
+      shadowed the shell `mycoswarm` and `pip show` while systemd
+      correctly ran the venv — i.e. manual verification on those nodes
+      reported the wrong version. luvia, mai and rushuna were clean.
+- [x] `--no-cache-dir` added to the fleet update script. pip's HTTP cache
+      served a stale index for minutes after the 0.5.0 upload
+      (`pip index versions` still reported 0.4.3), so without it a node
+      can silently reinstall the version it already had and look clean.
+- [x] Miu editable-install guard restored to verify-only. The script had
+      been changed to run `pip install mycoswarm --upgrade` inside Miu's
+      venv, which would silently replace the editable install and detach
+      Miu from the working tree with no error.
+- [x] Fixed a false positive in that guard: `pip show | grep -q` under
+      `set -o pipefail` reports failure on SUCCESS, because grep exits at
+      the first match, pip's stdout closes mid-write, and pip exits 120
+      (BrokenPipeError) which pipefail propagates. Now captured to a
+      variable and matched in-shell, with an explicit UNKNOWN state when
+      pip cannot be queried rather than asserting the bad case.
+- [x] Confirmed all six workers were already hardened, rushuna included
+      (its apt timers are `masked`; the other five are `disabled` with
+      the underlying services masked)
+
+**Addressing observation — why the subnet drop-in still matters**
+- After the simultaneous fleet restart, all 7 nodes announce `.50.x`
+  (rushuna .50.17, luvia .50.11, boa .50.12, naru .50.15, uncho .50.13,
+  mai .50.14). An hour earlier 6 of 7 were on `.1.x`. The restart flushed
+  every peer registry at once, so stale `.1.x` records vanished and
+  rediscovery happened with all daemons fresh — psutil enumerates wired
+  before wifi on these boxes, so `.50` led the announced list and won the
+  probe race.
+- This confirms the diagnosis: stale observer records plus a coin-flip
+  0.5s probe, NOT a routing problem.
+- **It is currently luck, not guarantee.** `MYCOSWARM_SWARM_SUBNET` is
+  not set anywhere, so a node that brings wifi up first on some future
+  boot flips again, silently. Every node is dual-homed (all six workers
+  have both a `.50.x` and a `.1.x` address), so this is fleet-wide, not
+  rushuna-specific.
+- The soft-prefer code shipped in v0.5.0 (d9b6d99) and is now running on
+  every node, so the drop-in is deployable — it was a no-op until this
+  upgrade.
+
 ## Next
+
+### Phase 42: Subnet drop-in + rolling restart
+
+**Goal:** Make the `.50.x` fabric deterministic rather than lucky.
+
+- [ ] systemd drop-in setting `MYCOSWARM_SWARM_SUBNET=192.168.50.0/24`
+      on all nodes
+- [ ] Rolling restart (not simultaneous — verify it holds per node rather
+      than relying on a whole-fleet flush)
+- [ ] Confirm announced addresses stay `.50.x` across an individual node
+      reboot with wifi available
+
+### Phase 43: Light-node model bindings
+
+**Goal:** boa, luvia, uncho and mai fail cleanly on `monica_chat` but
+still cannot serve it. Decide whether that is correct.
+
+- [ ] Revisit `ROLE_FALLBACKS["monica_chat"]` — `qwen3.5:9b` may be the
+      wrong fallback for 8GB nodes. luvia already has `gemma3:4b`.
+- [ ] Consider a per-tier fallback chain rather than one global fallback
+- [ ] Decide explicitly: do light nodes serve `monica_chat` at all, or is
+      cpu_worker + classification (gemma3:1b/4b) their whole role?
 
 ### Phase 39: Agent Pipeline Architecture (inspired by Pi.dev)
 
