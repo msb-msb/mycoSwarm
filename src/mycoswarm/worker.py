@@ -58,6 +58,17 @@ _CTX_LADDER = (4096, 8192, 16384, 32768)
 _CTX_MAX = 32768
 
 
+def estimate_tokens(chars: int) -> int:
+    """Chars → approximate tokens. THE single estimate used everywhere.
+
+    2.5 rather than the conventional 4 — see _fit_num_ctx. Exported so the
+    --debug prompt-size readout cannot disagree with the window actually
+    requested; two numbers that contradict each other are worse than one
+    approximate number.
+    """
+    return int(chars / 2.5)
+
+
 def _fit_num_ctx(prompt_chars: int, num_predict: int) -> int:
     """Pick a context window that fits the prompt AND leaves room to generate.
 
@@ -76,7 +87,7 @@ def _fit_num_ctx(prompt_chars: int, num_predict: int) -> int:
     # estimate picked an 8k window and the turn STILL truncated. Underestimating
     # here reproduces the exact bug this function exists to prevent, so the
     # divisor is deliberately pessimistic — a too-large window only costs VRAM.
-    approx_prompt = int(prompt_chars / 2.5)
+    approx_prompt = estimate_tokens(prompt_chars)
     needed = approx_prompt + num_predict + 512  # margin for template + drift
     for size in _CTX_LADDER:
         if needed <= size:

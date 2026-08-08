@@ -789,6 +789,29 @@ _bm25_sessions = BM25Index("session_memory")
 _bm25_procedures = BM25Index("procedural_memory")
 
 
+# Two procedures whose problem+solution text is this similar are treated as the
+# same guidance. 0.90 is deliberately high: merging genuinely distinct
+# procedures would silently lose learned behaviour, which is worse than a
+# duplicate slot.
+_NEAR_DUPLICATE_RATIO = 0.90
+
+
+def _is_near_duplicate(candidate: dict, kept: list[dict]) -> bool:
+    """True if ``candidate`` restates something already in ``kept``."""
+    import difflib
+
+    def _key(p):
+        return f"{p.get('problem', '')} {p.get('solution', '')}".strip().lower()
+
+    ck = _key(candidate)
+    if not ck:
+        return False
+    for k in kept:
+        if difflib.SequenceMatcher(None, ck, _key(k)).ratio() >= _NEAR_DUPLICATE_RATIO:
+            return True
+    return False
+
+
 def _rrf_fuse(
     vector_ids: list[str], bm25_ids: list[str], k: int = 60,
 ) -> dict[str, float]:
@@ -998,7 +1021,18 @@ def search_procedures(
         if col.count() == 0:
             return []
 
-        n_fetch = min(n_results * 2, col.count())
+        # Ghost filter. The Chroma index drifts ahead of the JSONL store — as of
+        # 2026-08-08 it held 95 rows against 42 live procedures, so 62 were
+        # orphans. Ranking happened over all 95 and hydration then dropped the
+        # orphans SILENTLY, which is why a request for 3 procedures routinely
+        # returned 1. Measured ghost rate in the top-3 was 22%. Excluding them
+        # before ranking makes n_results mean what it says and stops dead rows
+        # displacing live ones.
+        from mycoswarm.memory import load_procedures as _load_procs
+        _live = {p["id"]: p for p in _load_procs()}
+
+        # Over-fetch, because filtering happens after the vector/BM25 query.
+        n_fetch = min(max(n_results * 6, 20), col.count())
 
         # Vector search
         vec_results = col.query(
@@ -1015,6 +1049,8 @@ def search_procedures(
 
         if vec_results and vec_results["ids"]:
             for i, pid in enumerate(vec_results["ids"][0]):
+                if pid not in _live:      # ghost — no backing JSONL record
+                    continue
                 vec_ids.append(pid)
                 meta = vec_results["metadatas"][0][i] if vec_results["metadatas"] else {}
                 proc_data[pid] = {
@@ -1026,6 +1062,8 @@ def search_procedures(
 
         bm25_ids: list[str] = []
         for hit in bm25_results:
+            if hit["id"] not in _live:    # ghost
+                continue
             bm25_ids.append(hit["id"])
             if hit["id"] not in proc_data:
                 meta = hit["metadata"]
@@ -1041,14 +1079,21 @@ def search_procedures(
         sorted_ids = sorted(rrf_scores, key=lambda x: rrf_scores[x], reverse=True)
         sorted_ids = sorted_ids[:n_results]
 
-        # Hydrate with full procedure data from JSONL
-        all_procs = {p["id"]: p for p in load_procedures()}
+        # Hydrate + near-duplicate suppression. The store holds procedures with
+        # near-identical text (observed live: the "unfamiliar human concept"
+        # procedure returned as both hit 1 and hit 3 of the same query), so the
+        # same guidance was consuming two of the three slots.
         results = []
         for pid in sorted_ids:
-            full = all_procs.get(pid)
-            if full:
-                full["rrf_score"] = round(rrf_scores[pid], 6)
-                results.append(full)
+            full = _live.get(pid)
+            if not full:
+                continue
+            if _is_near_duplicate(full, results):
+                continue
+            full["rrf_score"] = round(rrf_scores[pid], 6)
+            results.append(full)
+            if len(results) >= n_results:
+                break
 
         return results
 

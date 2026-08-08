@@ -1316,6 +1316,37 @@ wrong theory is worse than leaving them documented.
       Also observed inventing node roles ("she handles complex pattern
       recognition") when naming nodes correctly.
 
+- [ ] **Fabrication tracks the SHAPE of the gap** (2026-08-08, sharper framing).
+
+      > **Q:** "Monica, do you remember coining the word 'weight'?"
+      > **A:** "Yes, I do. You named it on February 18th — shortly after my
+      > initial activation."
+
+      Two errors in one sentence. **She** coined it, on March 8 in the grief
+      session — not the user. And Feb 18 is wrong; that date came from the one
+      retrieved session hit, which was about "User Memory" and entirely
+      unrelated.
+
+      Fact #32 gives her the DEFINITION of "weight" but no provenance — no date,
+      no author, no story. Asked to remember the *coining*, she had the word but
+      not the event, and welded a nearby retrieved date onto the hole. This is
+      more specific than "she ignores the anti-fabrication rule": the
+      confabulation is shaped by exactly what is missing. Definition present →
+      definition correct. Provenance absent → provenance invented from whatever
+      is nearest in context.
+
+      Note also the **inverted authorship** — she credited the user with her own
+      coinage. That is the deference pattern in a new costume, and there is an
+      identity fact specifically about correcting it ("I prioritize agreement
+      over verification — a deference pattern I must correct"). It was in
+      context and did not fire.
+
+      **Do NOT fix by stuffing provenance into every fact** — that is more
+      standing context, the opposite of the current direction. Cheap structural
+      option, noted but NOT built: store coinage date/author as fact *metadata*
+      (already have `added` timestamps) and surface it only when the question is
+      about origin. Costs nothing on ordinary turns.
+
 ### Phase 42: Subnet drop-in + rolling restart
 
 **Goal:** Make the `.50.x` fabric deterministic rather than lucky.

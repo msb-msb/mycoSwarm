@@ -1480,6 +1480,54 @@ def _check_draft_save(response_text: str) -> bool:
     return False
 
 
+def _debug_prompt_size(send_msgs, tool_context, identity_prompt, vitals_ctx,
+                       memory_prompt, proc_chars=0):
+    """Print the assembled prompt's size and per-block breakdown (--debug only).
+
+    The total is what the context-overflow bug turned on — a 19,970-char
+    tool_context consumed 4,091 of a 4,096-token window and generation died
+    after one token. Showing num_ctx alongside makes that visible before it
+    bites. The BREAKDOWN is the useful half: the total says something is big,
+    the breakdown says which block to attack.
+
+    Uses worker.estimate_tokens and worker._fit_num_ctx directly so this readout
+    and the window actually requested can never disagree.
+
+    Not every block is independently separable in the current assembly: the body
+    prompt is concatenated into identity_prompt, and retrieved procedures live
+    inside tool_context. Those are shown as combined figures rather than
+    restructuring the prompt builder to split them.
+    """
+    from mycoswarm.worker import _fit_num_ctx, estimate_tokens
+
+    total_chars = sum(len(m.get("content", "")) for m in send_msgs)
+    total_tok = estimate_tokens(total_chars)
+    num_ctx = _fit_num_ctx(total_chars, 2048)
+    pct = 100 * total_tok / num_ctx if num_ctx else 0
+
+    sys_chars = len(send_msgs[0].get("content", "")) if send_msgs else 0
+    hist_chars = total_chars - sys_chars - len(tool_context or "")
+    try:
+        from mycoswarm.memory import (FACT_TYPE_IDENTITY, format_facts_for_prompt,
+                                      load_facts)
+        facts_chars = len(format_facts_for_prompt(load_facts(),
+                                                  only={FACT_TYPE_IDENTITY}))
+    except Exception:
+        facts_chars = 0
+
+    warn = "  ⚠️ NEAR LIMIT" if pct >= 85 else ""
+    print(f"🐛 DEBUG: PROMPT SIZE: {total_tok:,} tok ({total_chars:,} chars), "
+          f"num_ctx {num_ctx:,} ({pct:.0f}% used){warn}", flush=True)
+    print("🐛 DEBUG:   "
+          f"identity+body {estimate_tokens(len(identity_prompt or ''))} | "
+          f"vitals {estimate_tokens(len(vitals_ctx or ''))} | "
+          f"memory {estimate_tokens(len(memory_prompt or ''))} "
+          f"[identity-facts {estimate_tokens(facts_chars)}] | "
+          f"history {estimate_tokens(max(hist_chars, 0))} | "
+          f"tool_context {estimate_tokens(len(tool_context or ''))} "
+          f"[procedures {estimate_tokens(proc_chars)}]", flush=True)
+
+
 def _reject_truncated(full_text, metrics, messages):
     """Return True if the generation is a fragment that must NOT be kept.
 
@@ -1637,12 +1685,13 @@ def cmd_chat(args):
             f"Creativity:{v.creativity:.1f} Connectedness:{v.connectedness:.1f} Confidence:{v.confidence:.1f}]\n\n"
             "These are YOUR internal signals. You can reference them when asked how you feel."
         )
-    _vitals_defs = (
-        "\n\nYour vitals are the IFS 8 C's: Calm, Clarity, Curiosity, "
-        "Compassion, Courage, Creativity, Connectedness, Confidence. "
-        "These are qualities of Self energy, not performance metrics. "
-        "Do not report them as numbers in conversation."
-    )
+    # _vitals_defs deleted 2026-08-08. It was a static legend (~62 tokens on
+    # every turn) that mostly duplicated _no_tags_rule's "do not cite vitals
+    # scores". Deleted rather than made pull-able: 62 tokens is well below the
+    # point where a lookup round-trip pays for itself. Also serves as the Bug 45
+    # experiment — if vitals narration drops without it, the data-in-context
+    # mechanism from the body prompt applies here too.
+    _vitals_defs = ""
     _no_tags_rule = (
         "\n\nNever output internal tags like [P1], [P2], [D1], [S1] in your responses. "
         "These are retrieval markers for your context — use the information silently. "
@@ -2540,6 +2589,7 @@ def cmd_chat(args):
 
         # --- Agentic classification + tool gathering ---
         tool_context = ""
+        _proc_text_len = 0
         tool_sources: list[str] = []
         doc_hits: list[dict] = []
         session_hits: list[dict] = []
@@ -2897,6 +2947,7 @@ def cmd_chat(args):
                 proc_text = format_procedures_for_prompt(procedure_hits)
                 # Strip [P1], [P2] etc. — these leak into Monica's responses
                 proc_text = _ptag_re.sub(r'\[[A-Z]\d+\]\s*', '', proc_text)
+                _proc_text_len = len(proc_text)
                 rag_context_parts.append(
                     "\nRelevant procedures (follow these silently, do NOT "
                     "reference procedure tags or numbers in your response):\n" + proc_text
@@ -2957,6 +3008,7 @@ def cmd_chat(args):
                     import re as _ptag_re2
                     proc_text = format_procedures_for_prompt(procedure_hits)
                     proc_text = _ptag_re2.sub(r'\[[A-Z]\d+\]\s*', '', proc_text)
+                    _proc_text_len = len(proc_text)
                     rag_context_parts.append(
                         "\nRelevant procedures (follow these silently, do NOT "
                         "reference procedure tags or numbers in your response):\n" + proc_text
@@ -3047,6 +3099,8 @@ def cmd_chat(args):
             }
 
         if debug:
+            _debug_prompt_size(_send_msgs, tool_context, identity_prompt,
+                               vitals_ctx, memory_prompt, _proc_text_len)
             if tool_context:
                 print(f"🐛 DEBUG: PROMPT: tool_context ({len(tool_context)} chars):", flush=True)
                 for _line in tool_context.split("\n")[:20]:
