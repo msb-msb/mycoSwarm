@@ -978,7 +978,12 @@ async def handle_code_run(task: TaskRequest) -> TaskResult:
 # --- Intent Classification Handler ---
 
 
-_GATE_MODEL_PREFERENCE = ("gemma3:4b", "llama3.2:3b", "gemma3:1b", "llama3.2:1b")
+# Single shared list — see bindings.GATE_MODEL_PREFERENCE. This module used to
+# carry its own copy, and it had already drifted from solo.py's (worker
+# preferred gemma3:4b, solo preferred gemma3:1b), so the daemon and the CLI
+# classified the same query with different models.
+from mycoswarm.bindings import GATE_MODEL_PREFERENCE as _GATE_MODEL_PREFERENCE
+
 _EMBEDDING_ONLY = ("nomic-embed-text", "mxbai-embed", "all-minilm", "snowflake-arctic-embed")
 
 
@@ -1008,6 +1013,20 @@ async def _pick_gate_model_async() -> str | None:
         if not _is_embedding_model(m):
             return m
     return None
+
+
+def _log_sanitize(field: str, bad, fallback: str, model, query: str) -> None:
+    """Record that the intent sanitiser had to repair a field.
+
+    DEBUG only — fires on every malformed classification and would be noisy at
+    normal verbosity. But it must exist: without it a model emitting an illegal
+    enum on half its inputs is indistinguishable from a healthy one, because the
+    fallback often lands on the right answer anyway.
+    """
+    logger.debug(
+        "🤔 intent sanitiser: %s=%r invalid (model=%s) → using %r | query=%r",
+        field, bad, model, fallback, query[:60],
+    )
 
 
 _INTENT_SYSTEM_PROMPT = (
@@ -1117,18 +1136,28 @@ async def handle_intent_classify(task: TaskRequest) -> TaskResult:
     if raw.startswith("json"):
         raw = raw[4:].strip()
 
+    # Each sanitiser rewrite is logged at DEBUG. The repair is silent by design
+    # (an invalid tool becomes "answer", correct by luck for greetings), so a
+    # model emitting garbage looks healthy. gemma3:1b did exactly that on 51% of
+    # inputs and production had no way to see it.
     result = dict(_INTENT_DEFAULT)
     try:
         data = json.loads(raw)
         tool = data.get("tool", "answer")
         if tool in _VALID_TOOLS:
             result["tool"] = tool
+        else:
+            _log_sanitize("tool", tool, result["tool"], model, query)
         mode = data.get("mode", "chat")
         if mode in _VALID_MODES:
             result["mode"] = mode
+        else:
+            _log_sanitize("mode", mode, result["mode"], model, query)
         scope = data.get("scope", "all")
         if scope in _VALID_SCOPES:
             result["scope"] = scope
+        else:
+            _log_sanitize("scope", scope, result["scope"], model, query)
     except (json.JSONDecodeError, ValueError):
         lower = raw.lower()
         for category in ("web_and_rag", "web_search", "rag", "answer"):

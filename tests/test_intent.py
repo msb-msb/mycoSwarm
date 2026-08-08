@@ -36,10 +36,31 @@ class TestPickGateModel:
     """Test _pick_gate_model preference order and embedding exclusion."""
 
     @patch("mycoswarm.solo.httpx.Client")
-    def test_prefers_gemma3_1b(self, mock_client_cls):
+    def test_prefers_gemma3_4b_over_1b(self, mock_client_cls):
+        """4b leads the preference list on measured evidence, not size.
+
+        intent-eval-2026-08-07: accuracy is statistically identical to 1b
+        (McNemar p=1.000) but 1b emitted a schema-invalid enum on 51% of inputs
+        vs 4b's 0%, and 1b is 1.7x SLOWER on the real ~650-token prompt.
+        """
         from mycoswarm.solo import _pick_gate_model
 
-        models = ["qwen2.5:14b", "gemma3:1b", "llama3.2:3b"]
+        models = ["qwen2.5:14b", "gemma3:1b", "gemma3:4b", "llama3.2:3b"]
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_client.get.return_value = _mock_ollama_tags(models)
+        mock_client_cls.return_value = mock_client
+
+        result = _pick_gate_model()
+        assert result == "gemma3:4b"
+
+    @patch("mycoswarm.solo.httpx.Client")
+    def test_falls_back_to_gemma3_1b_when_4b_absent(self, mock_client_cls):
+        """Nodes too small for 4b must still get a gate model."""
+        from mycoswarm.solo import _pick_gate_model
+
+        models = ["qwen2.5:14b", "gemma3:1b"]
         mock_client = MagicMock()
         mock_client.__enter__ = MagicMock(return_value=mock_client)
         mock_client.__exit__ = MagicMock(return_value=False)
@@ -50,10 +71,11 @@ class TestPickGateModel:
         assert result == "gemma3:1b"
 
     @patch("mycoswarm.solo.httpx.Client")
-    def test_prefers_llama32_1b_over_4b(self, mock_client_cls):
+    def test_prefers_llama32_3b_over_1b_models(self, mock_client_cls):
+        """With no gemma3:4b, the 3B-class llama beats either 1b."""
         from mycoswarm.solo import _pick_gate_model
 
-        models = ["qwen2.5:14b", "llama3.2:1b", "gemma3:4b"]
+        models = ["qwen2.5:14b", "llama3.2:1b", "llama3.2:3b", "gemma3:1b"]
         mock_client = MagicMock()
         mock_client.__enter__ = MagicMock(return_value=mock_client)
         mock_client.__exit__ = MagicMock(return_value=False)
@@ -61,7 +83,27 @@ class TestPickGateModel:
         mock_client_cls.return_value = mock_client
 
         result = _pick_gate_model()
-        assert result == "llama3.2:1b"
+        assert result == "llama3.2:3b"
+
+    def test_solo_and_worker_share_one_preference_list(self):
+        """The regression this change exists to prevent: the two paths had
+        drifted (solo preferred gemma3:1b, worker preferred gemma3:4b), so the
+        CLI and the daemon classified the same query with different models."""
+        from mycoswarm.bindings import GATE_MODEL_PREFERENCE
+        from mycoswarm.worker import _GATE_MODEL_PREFERENCE
+
+        assert _GATE_MODEL_PREFERENCE is GATE_MODEL_PREFERENCE
+        assert GATE_MODEL_PREFERENCE[0] == "gemma3:4b"
+
+    def test_agrees_with_task_model_map_classification(self):
+        """bindings.GATE_MODEL_PREFERENCE is deliberately NOT read from
+        TASK_MODEL_MAP (different consumers/semantics — see the comment there),
+        so this asserts they at least still agree on the head model."""
+        from mycoswarm.bindings import GATE_MODEL_PREFERENCE
+        from mycoswarm.capabilities import TASK_MODEL_MAP
+
+        declared = TASK_MODEL_MAP["classification"]["prefer_models"]
+        assert declared[0] == GATE_MODEL_PREFERENCE[0] == "gemma3:4b"
 
     @patch("mycoswarm.solo.httpx.Client")
     def test_falls_back_to_first_non_embedding_model(self, mock_client_cls):
@@ -500,3 +542,62 @@ class TestIntentRouting:
         from mycoswarm.router import DISTRIBUTABLE_TASKS
 
         assert "intent_classify" in DISTRIBUTABLE_TASKS
+
+
+class TestSanitiserLogging:
+    """The sanitiser repairs invalid enums silently, which is why a 51%
+    malformation rate from gemma3:1b was invisible in production. It must now
+    leave a DEBUG trace naming the offending value."""
+
+    @patch("mycoswarm.solo.httpx.Client")
+    def test_invalid_tool_is_logged_at_debug(self, mock_client_cls, caplog):
+        import logging as _logging
+
+        from mycoswarm.solo import intent_classify
+
+        # the exact real-world failure: "chat" is a MODE, not a tool
+        resp = MagicMock()
+        resp.raise_for_status = MagicMock()
+        resp.json.return_value = {
+            "message": {"content": '{"tool": "chat", "mode": "chat", "scope": "all"}'}
+        }
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_client.post.return_value = resp
+        mock_client_cls.return_value = mock_client
+
+        with caplog.at_level(_logging.DEBUG, logger="mycoswarm.solo"):
+            result = intent_classify("hi there", model="gemma3:1b")
+
+        # repair still happens — behaviour unchanged
+        assert result["tool"] == "answer"
+        # ...but it is no longer silent, and names the bad value
+        assert any("sanitiser" in r.message and "chat" in r.message
+                   for r in caplog.records), caplog.text
+        assert all(r.levelno == _logging.DEBUG
+                   for r in caplog.records if "sanitiser" in r.message)
+
+    @patch("mycoswarm.solo.httpx.Client")
+    def test_valid_output_logs_nothing(self, mock_client_cls, caplog):
+        import logging as _logging
+
+        from mycoswarm.solo import intent_classify
+
+        resp = MagicMock()
+        resp.raise_for_status = MagicMock()
+        resp.json.return_value = {
+            "message": {"content": '{"tool": "rag", "mode": "recall", "scope": "docs"}'}
+        }
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_client.post.return_value = resp
+        mock_client_cls.return_value = mock_client
+
+        with caplog.at_level(_logging.DEBUG, logger="mycoswarm.solo"):
+            result = intent_classify("what does PLAN.md say about Phase 37?",
+                                     model="gemma3:4b")
+
+        assert result == {"tool": "rag", "mode": "recall", "scope": "docs"}
+        assert not any("sanitiser" in r.message for r in caplog.records)

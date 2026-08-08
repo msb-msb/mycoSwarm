@@ -49,6 +49,42 @@ ROLE_FALLBACKS: dict[str, str] = {
 }
 
 
+# --- Gate-model preference ------------------------------------------------------
+#
+# Which small model runs the "gate" tasks: intent classification (solo.py,
+# worker.py) and procedure extraction (memory.py). Ordered best-first; the first
+# one actually installed on this node wins.
+#
+# gemma3:4b leads on measured evidence, not intuition (intent-eval-2026-08-07):
+# accuracy is statistically identical to gemma3:1b (44.9% vs 43.8%, McNemar
+# p=1.000), but 1b emitted a schema-INVALID enum on 51% of inputs (45/89) versus
+# 4b's 0%, and 1b is 1.7x SLOWER on the real ~650-token prompt (8.33s vs 4.85s)
+# because Ollama reprocesses that prompt every call for 1b while serving it from
+# KV cache for 4b. The failure was invisible in production because the sanitiser
+# rewrites an invalid tool to "answer", which is correct by luck for greetings.
+#
+# RELATIONSHIP TO capabilities.TASK_MODEL_MAP["classification"]:
+# that entry declares ["gemma3:4b", "gemma3:1b"] and now agrees with this list's
+# head. It is deliberately NOT read directly here, for three reasons:
+#   1. Different consumers. This picker also serves memory._pick_extraction_model,
+#      which is extraction, not classification. TASK_MODEL_MAP["extraction"]
+#      prefers deepseek-r1:14b/gemma3:12b — right for orchestrator routing,
+#      badly wrong as a light node's local gate.
+#   2. Different semantics. TASK_MODEL_MAP expresses which model a task SHOULD
+#      route to; this list is filtered against what is actually installed
+#      (/api/tags) with an embedding-model exclusion and a first-available
+#      fallback. TASK_MODEL_MAP carries no install-check contract.
+#   3. Coverage. TASK_MODEL_MAP["classification"] lists 2 models; this needs the
+#      llama3.2 fallbacks for nodes with no gemma3 at all.
+# If the two ever need to diverge again, change them together and say why here.
+GATE_MODEL_PREFERENCE: tuple[str, ...] = (
+    "gemma3:4b",
+    "llama3.2:3b",
+    "gemma3:1b",
+    "llama3.2:1b",
+)
+
+
 def model_installed(name: str, installed) -> bool:
     """True if ``name`` is present, honoring Ollama's implicit ``:latest`` tag.
 

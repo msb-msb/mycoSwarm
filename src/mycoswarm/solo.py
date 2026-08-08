@@ -5,6 +5,7 @@ No mDNS, no orchestrator, no API server — just detect hardware and talk to Oll
 """
 
 import json
+import logging
 import re
 import sys
 import time
@@ -15,6 +16,8 @@ from mycoswarm.hardware import detect_all, HardwareProfile
 
 OLLAMA_BASE = "http://localhost:11434"
 OLLAMA_TIMEOUT = 300.0
+
+logger = logging.getLogger(__name__)
 
 
 def _datetime_string() -> str:
@@ -161,11 +164,17 @@ def _is_embedding_model(name: str) -> bool:
 
 
 def _pick_gate_model() -> str | None:
-    """Pick the smallest available model for gate tasks (classification, etc.).
+    """Pick the best available small model for gate tasks (classification, etc.).
 
-    Preference order: gemma3:1b > llama3.2:1b > gemma3:4b > llama3.2:3b.
+    Order comes from bindings.GATE_MODEL_PREFERENCE — the single shared list, so
+    this path and worker.py cannot drift apart again (they had: solo preferred
+    gemma3:1b while worker preferred gemma3:4b, so the CLI and the daemon were
+    classifying with different models).
+
     Falls back to first available non-embedding model, or None.
     """
+    from mycoswarm.bindings import GATE_MODEL_PREFERENCE
+
     try:
         with httpx.Client(timeout=5) as client:
             resp = client.get(f"{OLLAMA_BASE}/api/tags")
@@ -174,7 +183,7 @@ def _pick_gate_model() -> str | None:
     except (httpx.ConnectError, httpx.TimeoutException, httpx.HTTPError):
         return None
 
-    for pattern in ("gemma3:1b", "llama3.2:1b", "gemma3:4b", "llama3.2:3b"):
+    for pattern in GATE_MODEL_PREFERENCE:
         for m in models:
             if pattern in m and not _is_embedding_model(m):
                 return m
@@ -224,6 +233,20 @@ _INTENT_DEFAULT = {"tool": "answer", "mode": "chat", "scope": "all"}
 _VALID_TOOLS = {"answer", "web_search", "rag", "web_and_rag"}
 _VALID_MODES = {"recall", "explore", "execute", "chat"}
 _VALID_SCOPES = {"session", "docs", "facts", "all"}
+
+
+def _log_sanitize(field: str, bad, fallback: str, model: str, query: str) -> None:
+    """Record that the intent sanitiser had to repair a field.
+
+    DEBUG only — this fires on every malformed classification and would be very
+    noisy at normal verbosity. But it must exist: without it a model emitting an
+    illegal enum on half its inputs is indistinguishable from a healthy one,
+    because the fallback often lands on the right answer anyway.
+    """
+    logger.debug(
+        "🤔 intent sanitiser: %s=%r invalid (model=%s) → using %r | query=%r",
+        field, bad, model, fallback, query[:60],
+    )
 
 
 def intent_classify(query: str, model: str | None = None) -> dict:
@@ -281,17 +304,26 @@ def intent_classify(query: str, model: str | None = None) -> dict:
                 break
         return result
 
-    # Validate and sanitize
+    # Validate and sanitize. Each rewrite is logged at DEBUG: the repair is
+    # silent by design (an invalid tool becomes "answer", which for greetings is
+    # correct by luck), so a model emitting garbage looks healthy in production.
+    # gemma3:1b did exactly that on 51% of inputs and nothing surfaced it.
     result = dict(_INTENT_DEFAULT)
     tool = data.get("tool", "answer")
     if tool in _VALID_TOOLS:
         result["tool"] = tool
+    else:
+        _log_sanitize("tool", tool, result["tool"], model, query)
     mode = data.get("mode", "chat")
     if mode in _VALID_MODES:
         result["mode"] = mode
+    else:
+        _log_sanitize("mode", mode, result["mode"], model, query)
     scope = data.get("scope", "all")
     if scope in _VALID_SCOPES:
         result["scope"] = scope
+    else:
+        _log_sanitize("scope", scope, result["scope"], model, query)
 
     # Override: regex-detected past reference forces session scope
     if detect_past_reference(query):
