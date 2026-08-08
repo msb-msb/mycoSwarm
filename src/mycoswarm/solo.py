@@ -13,6 +13,7 @@ import time
 import httpx
 
 from mycoswarm.hardware import detect_all, HardwareProfile
+from mycoswarm.intent_rules import classify_fast
 
 OLLAMA_BASE = "http://localhost:11434"
 OLLAMA_TIMEOUT = 300.0
@@ -136,17 +137,10 @@ _PAST_REFERENCE_RE = re.compile(
     r")\b"
 )
 
-_DATETIME_QUERY_RE = re.compile(
-    r"(?i)\b(?:"
-    r"what time|what date|what day"
-    r"|what is the (?:date|time|day)"
-    r"|what.s the (?:date|time|day)"
-    r"|tell me the (?:date|time|day)"
-    r"|current (?:date|time|day)"
-    r"|today.s date"
-    r"|date and time|time and date"
-    r")\b"
-)
+# Moved to intent_rules (both the solo AND daemon paths need it; previously only
+# solo checked it, so date questions were still being shipped to a peer).
+# Re-exported for backwards compatibility with existing importers.
+from mycoswarm.intent_rules import _DATETIME_QUERY_RE  # noqa: E402
 
 
 def detect_past_reference(query: str) -> bool:
@@ -259,14 +253,18 @@ def intent_classify(query: str, model: str | None = None) -> dict:
     }
     Falls back to {"tool": "answer", "mode": "chat", "scope": "all"} on error.
     """
+    # Deterministic rules first — an explicit search request or a "thanks" does
+    # not need an LLM's opinion, and this runs before any model is even chosen.
+    # See intent_rules for why each pattern is deliberately narrow.
+    fast = classify_fast(query)
+    if fast is not None:
+        result, rule = fast
+        return {**result, "_via": rule, "_model": None}
+
     if model is None:
         model = _pick_gate_model()
     if model is None:
-        return dict(_INTENT_DEFAULT)
-
-    # Fast path: date/time queries — datetime is already in system prompt
-    if _DATETIME_QUERY_RE.search(query):
-        return {"tool": "answer", "mode": "chat", "scope": "facts"}
+        return {**_INTENT_DEFAULT, "_via": "no_model", "_model": None}
 
     try:
         with httpx.Client(timeout=httpx.Timeout(5.0, read=15.0)) as client:
@@ -285,7 +283,7 @@ def intent_classify(query: str, model: str | None = None) -> dict:
             resp.raise_for_status()
             raw = resp.json().get("message", {}).get("content", "").strip()
     except (httpx.ConnectError, httpx.TimeoutException, httpx.HTTPError):
-        return dict(_INTENT_DEFAULT)
+        return {**_INTENT_DEFAULT, "_via": "error", "_model": model}
 
     # Parse JSON from response (may contain markdown fences)
     raw = raw.strip("`").strip()
@@ -302,7 +300,7 @@ def intent_classify(query: str, model: str | None = None) -> dict:
             if category in lower:
                 result["tool"] = category
                 break
-        return result
+        return {**result, "_via": "unparseable", "_model": model}
 
     # Validate and sanitize. Each rewrite is logged at DEBUG: the repair is
     # silent by design (an invalid tool becomes "answer", which for greetings is
@@ -332,6 +330,8 @@ def intent_classify(query: str, model: str | None = None) -> dict:
     if result["scope"] == "docs" and result["tool"] == "web_and_rag":
         result["tool"] = "rag"
 
+    result["_via"] = "model"
+    result["_model"] = model
     return result
 
 

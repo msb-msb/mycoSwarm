@@ -1042,6 +1042,12 @@ def cmd_plugins(args):
 
 SESSIONS_DIR = "~/.config/mycoswarm/sessions"
 
+# How long the CLI waits for a REMOTE intent classification. Must exceed
+# worker._INTENT_OLLAMA_READ_TIMEOUT_S with margin for queueing and network,
+# otherwise the caller throws away a classification that actually succeeded.
+# These were both 15s: a peer answered at 15.5s and the CLI had already given up.
+_INTENT_POLL_BUDGET_S = 30
+
 
 def _sessions_path() -> "Path":
     from pathlib import Path
@@ -2518,12 +2524,31 @@ def cmd_chat(args):
         if auto_tools and len(user_input.split()) >= 5:
             print("   🤔 Classifying...", end="\r", flush=True)
 
-            # Fast path: date/time queries — datetime already in system prompt, skip all retrieval
+            # Deterministic rules first. This runs BEFORE the daemon round-trip
+            # on purpose: an explicit "search for X" must not depend on a peer
+            # node being reachable and fast. It previously did — the task was
+            # routed to a remote node, timed out past the 15s poll budget, and
+            # the CLI silently substituted answer/chat/all, so an explicit
+            # search request looked like it had been classified as chat.
             _intent_node = ""
-            from mycoswarm.solo import _DATETIME_QUERY_RE
-            if _DATETIME_QUERY_RE.search(user_input):
-                intent_result = {"tool": "answer", "mode": "chat", "scope": "facts"}
-            elif daemon_up:
+            from mycoswarm.intent_rules import classify_fast
+            _fast = classify_fast(user_input)
+            if _fast is not None:
+                _fr, _frule = _fast
+                intent_result = {**_fr, "_via": _frule, "_model": None}
+            else:
+                # LOCAL FIRST. Shipping a ~650-token prompt across the LAN to
+                # get a ~20-token JSON answer back is poor economics, and the
+                # light nodes are slow enough that it times out: a peer took
+                # 15.5s against a 15s poll budget, the CLI defaulted to
+                # answer/chat/all, no RAG fired, and the model confabulated an
+                # answer with no grounding. Remote is kept only as a fallback
+                # for nodes with no local gate model at all.
+                from mycoswarm.solo import intent_classify as _local_classify
+                intent_result = _local_classify(user_input)
+                if intent_result.get("_via") == "no_model" and daemon_up:
+                    intent_result = None
+            if intent_result is None and daemon_up:
                 # Daemon mode: submit intent_classify as distributed task
                 import uuid as _uuid
                 _ic_id = f"intent-{_uuid.uuid4().hex[:8]}"
@@ -2544,7 +2569,7 @@ def cmd_chat(args):
                     # Poll for result
                     intent_result = None
                     with httpx.Client(headers=_swarm_headers(), timeout=5) as _ic_client:
-                        while _t.time() - _ic_start < 15:
+                        while _t.time() - _ic_start < _INTENT_POLL_BUDGET_S:
                             _t.sleep(0.3)
                             try:
                                 _r = _ic_client.get(f"{url}/task/{_ic_id}")
@@ -2560,19 +2585,67 @@ def cmd_chat(args):
                     intent_result = None
 
                 if intent_result is None:
-                    intent_result = {"tool": "answer", "mode": "chat", "scope": "all"}
-            else:
-                # Solo mode: call intent_classify() directly
-                from mycoswarm.solo import intent_classify
-                intent_result = intent_classify(user_input)
+                    # Remote failed or outran the poll budget. Retry LOCALLY
+                    # before giving up — a local gate model is usually present
+                    # and costs a second, and this is the last chance to get a
+                    # real classification.
+                    from mycoswarm.solo import intent_classify as _local_retry
+                    _retry = _local_retry(user_input)
+                    if _retry.get("_via") not in ("no_model", "error"):
+                        intent_result = {**_retry, "_via": f"local_retry_after_remote_fail"}
+                    else:
+                        # Nothing could classify. Default to a RETRIEVAL-INCLUSIVE
+                        # intent, not answer/chat/all. The old default meant no RAG
+                        # fired, so an ungrounded model answered a factual question
+                        # from training data and invented specifics (light nodes
+                        # "came online in late April" with "older generation GPUs"
+                        # — they are CPU-only ThinkCentres onboarded in July).
+                        # Erring toward searching costs latency; erring toward
+                        # answering costs truth.
+                        intent_result = {
+                            "tool": "rag", "mode": "recall", "scope": "all",
+                            "_via": "fallback_retrieval", "_model": None,
+                        }
+            # (No separate solo branch any more — local classification above is
+            # now the default path for BOTH solo and daemon mode.)
 
             # Show intent debug line (replaces "Classifying..." indicator)
-            print(f"\r   🤔 intent: {intent_result['tool']}/{intent_result.get('mode', '?')}/{intent_result.get('scope', '?')}", flush=True)
+            _via = intent_result.get("_via", "?")
+            _degraded = (" ⚠️ classifier unavailable — searching anyway"
+                         if _via == "fallback_retrieval" else "")
+            print(f"\r   🤔 intent: {intent_result['tool']}/{intent_result.get('mode', '?')}/{intent_result.get('scope', '?')}{_degraded}", flush=True)
 
             if debug:
-                _ic_node_label = _intent_node if daemon_up and _intent_node else "local"
+                if _via == "fallback_retrieval":
+                    _ic_node_label = ("NONE — no classifier available; defaulting to "
+                                      "RETRIEVAL so the answer is grounded")
+                elif _via == "local_retry_after_remote_fail":
+                    _ic_node_label = f"local retry (remote failed), gate model: {intent_result.get('_model')}"
+                elif _via in ("datetime", "small_talk", "web_search"):
+                    _ic_node_label = f"regex rule '{_via}' (no model)"
+                else:
+                    _ic_node_label = _intent_node if daemon_up and _intent_node else "local"
+                    _gm = intent_result.get("_model")
+                    if _gm:
+                        _ic_node_label += f", gate model: {_gm}"
                 print(f"🐛 DEBUG: INTENT classified by: {_ic_node_label}", flush=True)
                 print(f"🐛 DEBUG: INTENT: {intent_result}", flush=True)
+
+            # --- Datetime queries: put the REAL clock next to the question ---
+            # The daemon/solo paths already prepend a datetime line to the system
+            # prompt, but that lands at the front of a very long identity + vitals
+            # + memory prompt, and the model answered "9:48 PM" when the clock read
+            # 21:32 — a confabulated time. Classifying the query correctly is
+            # worthless if the actual time never lands where the model reads it.
+            # Putting it in tool_context sits it immediately before the user's
+            # question, and makes it visible in the debug dump.
+            if _via == "datetime":
+                from mycoswarm.solo import _datetime_string
+                tool_context = (
+                    "AUTHORITATIVE SYSTEM CLOCK (read this, do not estimate):\n"
+                    f"{_datetime_string()}\n"
+                    "Answer the time/date question using EXACTLY this value."
+                )
 
             classification = intent_result["tool"]
             past_ref = intent_result.get("scope") in ("personal", "session")

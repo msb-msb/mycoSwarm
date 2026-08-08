@@ -260,7 +260,10 @@ class TestIntentClassify:
         # No model arg, and _pick_gate_model returns None
         with patch("mycoswarm.solo._pick_gate_model", return_value=None):
             result = intent_classify("test query")
-        assert result == {"tool": "answer", "mode": "chat", "scope": "all"}
+        assert {k: result[k] for k in ("tool", "mode", "scope")} == {
+            "tool": "answer", "mode": "chat", "scope": "all"}
+        # provenance says WHY it is the default, so a silent fallback is visible
+        assert result["_via"] == "no_model"
 
     @patch("mycoswarm.solo.httpx.Client")
     def test_validates_mode_field(self, mock_client_cls):
@@ -476,7 +479,9 @@ class TestHandleIntentClassify:
     async def test_no_model_no_ollama_fails(self, make_task):
         from mycoswarm.worker import handle_intent_classify
 
-        task = make_task({"query": "hello"})  # no model
+        # NB: must be a query no fast rule intercepts — "hello" now short-
+        # circuits to small_talk and never reaches model selection at all.
+        task = make_task({"query": "what does readiness mean to you"})  # no model
 
         with patch("mycoswarm.worker._pick_gate_model_async", return_value=None):
             result = await handle_intent_classify(task)
@@ -567,8 +572,11 @@ class TestSanitiserLogging:
         mock_client.post.return_value = resp
         mock_client_cls.return_value = mock_client
 
+        # deliberately NOT a greeting: small talk short-circuits before the
+        # model, so it could never exercise the sanitiser
         with caplog.at_level(_logging.DEBUG, logger="mycoswarm.solo"):
-            result = intent_classify("hi there", model="gemma3:1b")
+            result = intent_classify("what does readiness mean to you",
+                                     model="gemma3:1b")
 
         # repair still happens — behaviour unchanged
         assert result["tool"] == "answer"
@@ -599,5 +607,7 @@ class TestSanitiserLogging:
             result = intent_classify("what does PLAN.md say about Phase 37?",
                                      model="gemma3:4b")
 
-        assert result == {"tool": "rag", "mode": "recall", "scope": "docs"}
+        assert {k: result[k] for k in ("tool", "mode", "scope")} == {
+            "tool": "rag", "mode": "recall", "scope": "docs"}
+        assert result["_via"] == "model" and result["_model"] == "gemma3:4b"
         assert not any("sanitiser" in r.message for r in caplog.records)

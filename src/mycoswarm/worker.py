@@ -986,6 +986,13 @@ from mycoswarm.bindings import GATE_MODEL_PREFERENCE as _GATE_MODEL_PREFERENCE
 
 _EMBEDDING_ONLY = ("nomic-embed-text", "mxbai-embed", "all-minilm", "snowflake-arctic-embed")
 
+# How long a worker waits on Ollama for one classification. The CLI's
+# _INTENT_POLL_BUDGET_S must stay comfortably ABOVE this — when both were 15s a
+# peer that answered at 15.5s had its result discarded by the caller.
+# A light node needs real headroom here: gemma3:4b on an M710q spends ~5s on the
+# 650-token prompt alone, more if the model has to cold-load first.
+_INTENT_OLLAMA_READ_TIMEOUT_S = 20.0
+
 
 def _is_embedding_model(name: str) -> bool:
     """Return True if the model name looks like an embedding-only model."""
@@ -1080,12 +1087,28 @@ async def handle_intent_classify(task: TaskRequest) -> TaskResult:
     """
     payload = task.payload
     query = payload.get("query")
+    start = time.time()
 
     if not query:
         return TaskResult(
             task_id=task.task_id,
             status=TaskStatus.FAILED,
             error="Missing required field: 'query'",
+        )
+
+    # Deterministic rules first — same set the CLI and solo path use, so all
+    # three agree. Costs microseconds and cannot time out.
+    from mycoswarm.intent_rules import classify_fast
+
+    _fast = classify_fast(query)
+    if _fast is not None:
+        _res, _rule = _fast
+        logger.info(f"🤔 intent via rule '{_rule}': {query[:50]!r} → {_res}")
+        return TaskResult(
+            task_id=task.task_id,
+            status=TaskStatus.COMPLETED,
+            result={**_res, "_via": _rule, "_model": None},
+            duration_seconds=round(time.time() - start, 3),
         )
 
     model = payload.get("model")
@@ -1098,11 +1121,12 @@ async def handle_intent_classify(task: TaskRequest) -> TaskResult:
             error="No model available for intent classification",
         )
 
-    start = time.time()
     logger.info(f"🧠 Classifying intent: {query[:60]!r} (model={model})")
 
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(5.0, read=15.0)) as client:
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(5.0, read=_INTENT_OLLAMA_READ_TIMEOUT_S)
+        ) as client:
             resp = await client.post(
                 f"{OLLAMA_BASE}/api/chat",
                 json={
@@ -1164,6 +1188,9 @@ async def handle_intent_classify(task: TaskRequest) -> TaskResult:
             if category in lower:
                 result["tool"] = category
                 break
+
+    result["_via"] = "model"
+    result["_model"] = model
 
     # Override: regex-detected past reference forces session scope
     from mycoswarm.solo import detect_past_reference
