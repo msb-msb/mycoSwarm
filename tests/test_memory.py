@@ -255,26 +255,25 @@ class TestPromptBuilder:
         assert "Previous conversations:" not in prompt
 
     def test_summaries_only(self):
+        """Stored summaries alone do NOT enter the prompt — there is no
+        chronological injection any more. Only semantic search puts session
+        context in context (see test_semantic_query_uses_session_search)."""
         memory.save_session_summary("s1", "m", "Talked about coffee", 5)
         prompt = memory.build_memory_system_prompt()
         assert prompt is not None
         assert "persistent memory across conversations" in prompt
-        assert "FACTS" in prompt
-        assert "SESSION HISTORY" in prompt
-        assert "Previous conversations:" in prompt
-        assert "Talked about coffee" in prompt
-        assert "Known facts" not in prompt
+        assert "Previous conversations:" not in prompt
+        assert "Talked about coffee" not in prompt
 
     def test_both(self):
+        """Facts still render unconditionally; summaries no longer do."""
         memory.add_fact("Likes coffee")
         memory.save_session_summary("s1", "m", "Discussed brewing methods", 5)
         prompt = memory.build_memory_system_prompt()
         assert prompt is not None
-        assert "persistent memory across conversations" in prompt
-        assert "FACTS" in prompt
-        assert "SESSION HISTORY" in prompt
         assert "Known facts about the user:" in prompt
-        assert "Previous conversations:" in prompt
+        assert "Likes coffee" in prompt
+        assert "Previous conversations:" not in prompt
 
     @patch("mycoswarm.library.search_sessions")
     def test_semantic_query_uses_session_search(self, mock_search):
@@ -290,12 +289,24 @@ class TestPromptBuilder:
         mock_search.assert_called_once_with("How do I use my GPU?", n_results=3)
 
     @patch("mycoswarm.library.search_sessions")
-    def test_falls_back_to_chronological_on_empty_search(self, mock_search):
+    def test_empty_search_injects_NOTHING(self, mock_search):
+        """The behaviour change. search_sessions applies a word-overlap gate and
+        returns [] when nothing is relevant; the old code overrode that verdict
+        and dumped ~500 tokens of chronological summaries — 9 of 10 of which
+        were test fixtures. An empty block is the honest state."""
         mock_search.return_value = []
         memory.save_session_summary("s1", "m", "Old session talk", 5)
-        prompt = memory.build_memory_system_prompt(query="random topic")
-        assert "Previous conversations:" in prompt
-        assert "Old session talk" in prompt
+        prompt = memory.build_memory_system_prompt(query="totally unrelated topic")
+        assert "Previous conversations:" not in prompt
+        assert "Old session talk" not in prompt
+
+    @patch("mycoswarm.library.search_sessions")
+    def test_search_error_injects_nothing_and_does_not_crash(self, mock_search):
+        mock_search.side_effect = RuntimeError("index unavailable")
+        memory.save_session_summary("s1", "m", "Old session talk", 5)
+        prompt = memory.build_memory_system_prompt(query="anything")
+        assert "Old session talk" not in prompt
+        assert "local AI assistant" in prompt  # rest of the prompt survives
 
     def test_session_memory_instructions(self):
         """Prompt instructs the model to cite dates and handle misses gracefully."""
@@ -308,11 +319,14 @@ class TestPromptBuilder:
         assert "FACTS" in prompt
         assert "SESSION HISTORY" in prompt
 
-    def test_no_query_uses_chronological(self):
+    def test_no_query_injects_no_session_context(self):
+        """query=None means no search ran, so there is no verdict to act on and
+        nothing is injected. The two such call sites (session bootstrap, /name)
+        are transient — the per-turn refresh repopulates with a real query."""
         memory.save_session_summary("s1", "m", "Chronological session", 5)
         prompt = memory.build_memory_system_prompt()
-        assert "Previous conversations:" in prompt
-        assert "Chronological session" in prompt
+        assert "Previous conversations:" not in prompt
+        assert "Chronological session" not in prompt
 
 
 # ---------------------------------------------------------------------------

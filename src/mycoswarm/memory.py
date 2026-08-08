@@ -15,6 +15,7 @@ Data stored in ~/.config/mycoswarm/memory/:
 
 import json
 import logging
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -179,6 +180,57 @@ _FACT_RENDER_ORDER = (
     FACT_TYPE_PROJECT,
     FACT_TYPE_EPHEMERAL,
 )
+
+
+# Identity facts are phrased "Monica's word for X: ..." — when they are, SHE is
+# the author. Anything else, we do not guess.
+_SELF_AUTHORED_RE = re.compile(r"(?i)\bmonica'?s (?:word|term|equivalent|phrase)\b")
+
+
+def build_origin_context(query: str) -> str:
+    """Provenance for a term, injected ONLY when the question is about origin.
+
+    Facts carry the definition but no date or author, and asked for the missing
+    half she invents it — "You named it on February 18th" for a word she coined
+    herself in March, the date lifted from an unrelated retrieved session.
+    Fabrication tracks the shape of the gap, so this fills that specific gap and
+    nothing else. Returns "" for every ordinary turn: zero standing cost.
+
+    When the date is missing or untrustworthy this says so explicitly. "Recorded
+    at an unknown time" is something true she can say; silence is a hole she
+    fills.
+    """
+    from mycoswarm.intent_rules import extract_origin_term, is_origin_question
+
+    if not is_origin_question(query):
+        return ""
+    term = extract_origin_term(query)
+    if not term:
+        return ""
+
+    hits = [f for f in load_facts()
+            if term.lower() in str(f.get("text", "")).lower()]
+    if not hits:
+        return (
+            f"PROVENANCE CHECK — the user is asking about the ORIGIN of "
+            f"'{term}'. There is NO stored fact for it. Say you have no record "
+            f"of coining or first using it. Do NOT supply a date; any date in "
+            f"your context belongs to something else."
+        )
+
+    lines = [f"PROVENANCE — the user is asking about the ORIGIN of '{term}'. "
+             f"Use ONLY these recorded details. Do not infer a date from any "
+             f"other item in your context:"]
+    for f in hits[:3]:
+        added = str(f.get("added") or "")
+        when = added[:10] if len(added) >= 10 else ""
+        author = ("you (Monica) coined it"
+                  if _SELF_AUTHORED_RE.search(str(f.get("text", "")))
+                  else "author not recorded")
+        when_txt = (f"first recorded {when}" if when
+                    else "recorded at an unknown time — say the date is not recorded")
+        lines.append(f"- {f.get('text')}\n  ({author}; {when_txt})")
+    return "\n".join(lines)
 
 
 def format_facts_for_prompt(
@@ -1141,7 +1193,26 @@ def build_memory_system_prompt(query: str | None = None) -> str:
             + facts_text
         )
 
-    # Try semantic session search first, fall back to chronological
+    # Session context: semantic search ONLY. There is deliberately no
+    # chronological fallback.
+    #
+    # search_sessions applies a word-overlap gate and returns [] when nothing in
+    # the store is relevant. The old code treated that as "search failed" and
+    # dumped the last 10 summaries instead — so the system decided nothing was
+    # relevant and then injected ~500 tokens of irrelevant material anyway,
+    # overriding its own correct verdict. Same failure family as the intent
+    # fallback that produced answer/chat/all and the sanitiser that repaired an
+    # invalid enum into the majority class: a fallback outranking a right answer.
+    #
+    # It was also actively harmful rather than merely wasteful — 9 of the 10
+    # summaries it injected were "test summary / Lesson: lesson1" fixtures. And
+    # it fed fabrication: asked whether she coined "weight", she answered
+    # "February 18th", a date welded on from an unrelated retrieved session.
+    # Fewer irrelevant dates in context, fewer dates available to weld.
+    #
+    # An empty block is the honest state. Callers with query=None (session
+    # bootstrap, /name) simply get no session context; the first real turn
+    # repopulates it via the per-turn refresh.
     session_text = ""
     if query:
         try:
@@ -1152,12 +1223,10 @@ def build_memory_system_prompt(query: str | None = None) -> str:
                 for h in hits:
                     lines.append(f"- [{h['date']}] {h['summary']}")
                 session_text = "\n".join(lines)
-        except Exception:
-            pass  # fall through to chronological
-
-    if not session_text:
-        summaries = load_session_summaries()
-        session_text = format_summaries_for_prompt(summaries)
+        except Exception as e:
+            # Do not silently degrade — say why there is no session context.
+            logger.debug("session search unavailable (%s: %s) — no session "
+                         "context this turn", type(e).__name__, e)
 
     if session_text:
         parts.append(session_text)

@@ -331,7 +331,20 @@ class TestSessionCap:
     @patch("mycoswarm.memory.extract_procedure_from_lesson")
     @patch("mycoswarm.memory.split_session_topics", return_value=[{"topic": "general", "summary": "test"}])
     @patch("mycoswarm.library.index_session_summary")
-    def test_max_3_candidates_per_session(self, mock_idx_sess, mock_split, mock_extract, mock_idx):
+    def test_max_3_candidates_per_session(self, mock_idx_sess, mock_split, mock_extract, mock_idx,
+                                          tmp_path, monkeypatch):
+        # ISOLATION: this test calls save_session_summary(), which appends to
+        # SESSIONS_PATH. That constant is bound at import time from MEMORY_DIR,
+        # so patching MEMORY_DIR alone does NOT redirect it — and this test did
+        # not request tmp_procedures either. Result: every suite run appended a
+        # "test summary" row to the REAL ~/.config/mycoswarm/memory/sessions.jsonl.
+        # 117 had accumulated by 2026-08-08, 48% of the store, and they were
+        # being injected into Monica's context every turn.
+        monkeypatch.setattr("mycoswarm.memory.SESSIONS_PATH",
+                            tmp_path / "sessions.jsonl")
+        monkeypatch.setattr("mycoswarm.memory.MEMORY_DIR", tmp_path)
+        monkeypatch.setattr("mycoswarm.memory.PROCEDURES_PATH",
+                            tmp_path / "procedures.jsonl")
         """Only 3 candidates should be created per session even with 6 lessons."""
         from mycoswarm.memory import save_session_summary
         mock_extract.return_value = {

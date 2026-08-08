@@ -2723,6 +2723,17 @@ def cmd_chat(args):
                     "Answer the time/date question using EXACTLY this value."
                 )
 
+            # --- Origin questions: attach fact provenance, adjacent to the ---
+            # question. Facts carry a definition but no date or author, and
+            # asked for the missing half she welds on whatever date is nearest
+            # in context ("You named it on February 18th" for a word she coined
+            # herself in March). Costs nothing on ordinary turns — the builder
+            # returns "" unless the question is about origin.
+            from mycoswarm.memory import build_origin_context
+            _origin = build_origin_context(user_input)
+            if _origin:
+                tool_context = (_origin + "\n\n" + tool_context) if tool_context else _origin
+
             classification = intent_result["tool"]
             past_ref = intent_result.get("scope") in ("personal", "session")
             # Secondary signal: regex check in case LLM missed it

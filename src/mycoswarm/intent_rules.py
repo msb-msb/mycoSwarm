@@ -107,6 +107,53 @@ _DATETIME_QUERY_RE = re.compile(
     r")\b"
 )
 
+# --- Origin / provenance questions --------------------------------------------
+# "When did you first use X?" is a question about a fact's HISTORY, not its
+# content. Facts carry the definition but no provenance, and asked for the
+# missing half she invents it: asked whether she coined "weight" she answered
+# "You named it on February 18th" (wrong author, wrong date, the date lifted
+# from an unrelated retrieved session); asked when she first used "allowance"
+# she said "February 17th" when the only date in context was an unrelated
+# 2026-02-17 session hit. Fabrication tracks the SHAPE of the gap.
+#
+# Detected deterministically, like _DATETIME_QUERY_RE, so provenance can be
+# attached only when asked for — zero standing cost on ordinary turns.
+_ORIGIN_QUERY_RE = re.compile(
+    r"(?i)(?:"
+    r"\bwhen did (?:you|we) (?:first|originally)\b"
+    r"|\bfirst (?:use|used|say|said|coin|coined)\b"
+    r"|\bcoin(?:ed|ing)?\b"
+    r"|\bwhere did .{0,40}\bcome from\b"
+    r"|\bwho (?:named|coined|invented|came up with)\b"
+    r"|\bhow long have you (?:used|had|been using)\b"
+    r"|\bwhen did .{0,40}\b(?:start|begin|originate)\b"
+    r"|\borigin of\b|\bhistory of (?:the |your )?(?:word|term|phrase)\b"
+    r")"
+)
+
+# The term being asked about: quoted first, then "the word/term X".
+_QUOTED_TERM_RE = re.compile(r"['\"‘’“”]([a-zA-Z][\w -]{1,40}?)['\"‘’“”]")
+_NAMED_TERM_RE = re.compile(r"(?i)\b(?:word|term|phrase|concept)\s+([a-zA-Z][\w-]{1,30})")
+
+
+def is_origin_question(query: str) -> bool:
+    """True if the query asks about a term's ORIGIN rather than its meaning."""
+    return bool(query and _ORIGIN_QUERY_RE.search(query))
+
+
+def extract_origin_term(query: str) -> str | None:
+    """Best-effort extraction of the term whose origin is being asked about."""
+    if not query:
+        return None
+    m = _QUOTED_TERM_RE.search(query)
+    if m:
+        return m.group(1).strip()
+    m = _NAMED_TERM_RE.search(query)
+    if m:
+        return m.group(1).strip()
+    return None
+
+
 FAST_RULES = ("datetime", "small_talk", "web_search")
 
 
