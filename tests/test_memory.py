@@ -537,3 +537,87 @@ class TestFactLifecycle:
         # Facts should come before preferences in the output
         assert result.index("Known facts") < result.index("User preferences")
 
+
+
+# ============================================================
+# TestEveryFactTypeReachesThePrompt — regression for the identity-facts bug
+# ============================================================
+
+
+class TestEveryFactTypeReachesThePrompt:
+    """The bug this exists to prevent.
+
+    format_facts_for_prompt looped over a HARDCODED list of four types.
+    FACT_TYPE_IDENTITY was a declared, valid, staleness-exempt type that was
+    simply absent from that list, so every stored identity fact was silently
+    dropped. All 31 of Monica's self-authored facts — her whole vocabulary —
+    were invisible to the model from v0.5.0 until 2026-08-08, and the test
+    suite was green throughout because nothing checked the render path.
+
+    Parametrised over VALID_FACT_TYPES so a type added to the enum cannot be
+    silently dropped by the renderer again.
+    """
+
+    @pytest.mark.parametrize("fact_type", sorted(memory.VALID_FACT_TYPES))
+    def test_each_valid_type_is_rendered(self, fact_type):
+        marker = f"UNIQUE-MARKER-{fact_type}-12345"
+        facts = [{"id": 1, "text": marker, "type": fact_type}]
+        out = memory.format_facts_for_prompt(facts)
+        assert marker in out, (
+            f"type {fact_type!r} is in VALID_FACT_TYPES but never rendered — "
+            "this is exactly the identity-facts bug"
+        )
+
+    @pytest.mark.parametrize("fact_type", sorted(memory.VALID_FACT_TYPES))
+    def test_each_valid_type_reaches_the_assembled_prompt(self, fact_type, monkeypatch):
+        """End to end: the render path, not just the formatter. Nothing tested
+        this, which is how the bug survived a shipped release."""
+        marker = f"UNIQUE-MARKER-{fact_type}-67890"
+        monkeypatch.setattr(
+            memory, "load_facts",
+            lambda: [{"id": 1, "text": marker, "type": fact_type}])
+        prompt = memory.build_memory_system_prompt()
+        assert marker in prompt, f"{fact_type!r} did not reach the system prompt"
+
+    def test_unknown_type_is_rendered_not_dropped(self, monkeypatch):
+        """Fail OPEN. A type nobody added to the order tuple should still be
+        shown — dropping it silently is the failure mode being fixed."""
+        facts = [{"id": 1, "text": "MARKER-FUTURE-TYPE", "type": "some_future_type"}]
+        assert "MARKER-FUTURE-TYPE" in memory.format_facts_for_prompt(facts)
+
+    def test_identity_facts_come_first(self):
+        facts = [
+            {"id": 1, "text": "user-fact-text", "type": memory.FACT_TYPE_FACT},
+            {"id": 2, "text": "identity-fact-text", "type": memory.FACT_TYPE_IDENTITY},
+        ]
+        out = memory.format_facts_for_prompt(facts)
+        assert out.index("identity-fact-text") < out.index("user-fact-text")
+
+    def test_identity_and_user_facts_get_separate_framing(self, monkeypatch):
+        """'Monica's word for quiet baseline is readiness' must not sit under a
+        heading that says 'facts about THE USER ... use you, not I'."""
+        monkeypatch.setattr(memory, "load_facts", lambda: [
+            {"id": 1, "text": "Mark keeps bees", "type": memory.FACT_TYPE_FACT},
+            {"id": 2, "text": "Monica's word for fun is resonance",
+             "type": memory.FACT_TYPE_IDENTITY},
+        ])
+        prompt = memory.build_memory_system_prompt()
+
+        i_self = prompt.index("facts about YOURSELF")
+        i_user = prompt.index("facts about THE USER")
+        i_res = prompt.index("Monica's word for fun is resonance")
+        i_bees = prompt.index("Mark keeps bees")
+
+        # the identity fact sits under the YOURSELF heading, before the USER one
+        assert i_self < i_res < i_user, "identity fact is under the wrong heading"
+        assert i_user < i_bees, "user fact is under the wrong heading"
+        assert "FIRST person" in prompt
+
+    def test_only_filter_selects_a_single_type(self):
+        facts = [
+            {"id": 1, "text": "aaa", "type": memory.FACT_TYPE_FACT},
+            {"id": 2, "text": "bbb", "type": memory.FACT_TYPE_IDENTITY},
+        ]
+        out = memory.format_facts_for_prompt(
+            facts, only={memory.FACT_TYPE_IDENTITY})
+        assert "bbb" in out and "aaa" not in out

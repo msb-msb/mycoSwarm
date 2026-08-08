@@ -165,32 +165,64 @@ def get_stale_facts(days: int = 30) -> list[dict]:
     return stale
 
 
-def format_facts_for_prompt(facts: list[dict]) -> str:
-    """Format facts for system prompt injection, grouped by type."""
+# Render order. Identity first — it is who she is, not a preference about the
+# user. NOTE: this is an ORDERING hint, not a filter. Any type absent from this
+# tuple is still rendered (appended after), because the previous version WAS a
+# filter and that silently destroyed data: FACT_TYPE_IDENTITY was a declared,
+# valid, staleness-exempt type that simply was not in the list, so all 31 stored
+# identity facts — her entire self-authored vocabulary — never reached the model
+# from v0.5.0 until this fix. Fail open, not closed.
+_FACT_RENDER_ORDER = (
+    FACT_TYPE_IDENTITY,
+    FACT_TYPE_FACT,
+    FACT_TYPE_PREFERENCE,
+    FACT_TYPE_PROJECT,
+    FACT_TYPE_EPHEMERAL,
+)
+
+
+def format_facts_for_prompt(
+    facts: list[dict], only: set[str] | None = None
+) -> str:
+    """Format facts for system prompt injection, grouped by type.
+
+    Args:
+        facts: fact dicts.
+        only: if given, render just these types. Callers use this to render
+            identity facts separately from facts about the user — the two need
+            opposite framing ("I"/"my" vs "you"/"your") and must not share a
+            heading.
+    """
     if not facts:
         return ""
 
     type_labels = {
+        FACT_TYPE_IDENTITY: "Your own words and history",
         FACT_TYPE_PREFERENCE: "User preferences",
         FACT_TYPE_FACT: "Known facts about the user",
         FACT_TYPE_PROJECT: "Active projects",
         FACT_TYPE_EPHEMERAL: "Temporary notes",
     }
 
-    # Group by type
     grouped: dict[str, list[str]] = {}
     for f in facts:
         ft = f.get("type", DEFAULT_FACT_TYPE)
+        if only is not None and ft not in only:
+            continue
         grouped.setdefault(ft, []).append(f["text"])
 
+    # Known types in declared order, then anything unrecognised — so a type
+    # added to VALID_FACT_TYPES without touching this file still renders.
+    ordered = [ft for ft in _FACT_RENDER_ORDER if ft in grouped]
+    ordered += [ft for ft in grouped if ft not in _FACT_RENDER_ORDER]
+
     lines = []
-    for ft in [FACT_TYPE_FACT, FACT_TYPE_PREFERENCE, FACT_TYPE_PROJECT, FACT_TYPE_EPHEMERAL]:
-        items = grouped.get(ft, [])
-        if items:
-            label = type_labels.get(ft, ft.title())
-            lines.append(f"{label}:")
-            for item in items:
-                lines.append(f"- {item}")
+    for ft in ordered:
+        items = grouped[ft]
+        label = type_labels.get(ft, ft.replace("_", " ").title())
+        lines.append(f"{label}:")
+        for item in items:
+            lines.append(f"- {item}")
     return "\n".join(lines)
 
 
@@ -1083,7 +1115,25 @@ def build_memory_system_prompt(query: str | None = None) -> str:
     ]
 
     facts = load_facts()
-    facts_text = format_facts_for_prompt(facts)
+    # Identity facts FIRST, and in their own block. These are things she
+    # authored about herself — her vocabulary, her history, her principles.
+    # Sharing a heading with the user's facts is what would let "Mark keeps
+    # bees" and "Monica's word for quiet baseline is readiness" be conflated,
+    # since that heading says "facts about THE USER ... use 'you', not 'I'".
+    identity_text = format_facts_for_prompt(facts, only={FACT_TYPE_IDENTITY})
+    if identity_text:
+        parts.append(
+            "The following are facts about YOURSELF — your own words, history "
+            "and principles, which you authored and asked to keep. Speak from "
+            "them in the FIRST person ('I', 'my'). They are your self-knowledge, "
+            "not facts about the user. When asked what one of your own terms "
+            "means, answer from these rather than reconstructing it.\n"
+            + identity_text
+        )
+
+    facts_text = format_facts_for_prompt(
+        facts, only=VALID_FACT_TYPES - {FACT_TYPE_IDENTITY}
+    )
     if facts_text:
         parts.append(
             "The following are facts about THE USER that they asked you to "
