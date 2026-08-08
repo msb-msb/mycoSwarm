@@ -53,6 +53,37 @@ def _datetime_string() -> str:
     return now.strftime(f"Current date and time: %A, %B {day}, %Y at {hour}:%M %p %Z")
 
 
+# Context windows we are willing to ask Ollama for, smallest first.
+_CTX_LADDER = (4096, 8192, 16384, 32768)
+_CTX_MAX = 32768
+
+
+def _fit_num_ctx(prompt_chars: int, num_predict: int) -> int:
+    """Pick a context window that fits the prompt AND leaves room to generate.
+
+    A fixed 4096 default silently destroyed answers: on a turn where retrieval
+    returned three fetched pages, tool_context alone was 19,970 chars (~5k
+    tokens). The prompt filled 4,091 of the 4,096-token window, Ollama had no
+    room left, emitted ONE token and stopped with done_reason="length". The
+    user saw the single word "Based" presented as a complete answer.
+
+    Reserving num_predict is the point: a window that merely fits the prompt
+    still leaves nothing to answer with.
+    """
+    # 2.5 chars/token, NOT the usual 4. Retrieved web text is dense with
+    # numbers, punctuation and markup and tokenizes far worse than prose:
+    # a measured 20,470-char tool_context came to >8,192 tokens, so a 4:1
+    # estimate picked an 8k window and the turn STILL truncated. Underestimating
+    # here reproduces the exact bug this function exists to prevent, so the
+    # divisor is deliberately pessimistic — a too-large window only costs VRAM.
+    approx_prompt = int(prompt_chars / 2.5)
+    needed = approx_prompt + num_predict + 512  # margin for template + drift
+    for size in _CTX_LADDER:
+        if needed <= size:
+            return size
+    return _CTX_MAX
+
+
 def _build_ollama_request(
     payload: dict,
 ) -> tuple[str, dict, bool]:
@@ -77,25 +108,29 @@ def _build_ollama_request(
             }
         else:
             msgs.insert(0, {"role": "system", "content": datetime_line})
+        _np = payload.get("max_tokens", 2048)
+        _chars = sum(len(m.get("content", "")) for m in msgs)
         ollama_payload: dict = {
             "model": model,
             "messages": msgs,
             "options": {
                 "temperature": payload.get("temperature", 0.7),
-                "num_predict": payload.get("max_tokens", 2048),
-                "num_ctx": payload.get("num_ctx", 4096),
+                "num_predict": _np,
+                "num_ctx": payload.get("num_ctx") or _fit_num_ctx(_chars, _np),
             },
         }
         is_chat = True
     else:
         endpoint = f"{OLLAMA_BASE}/api/generate"
+        _np = payload.get("max_tokens", 2048)
+        _full = f"{datetime_line}\n\n{prompt}"
         ollama_payload = {
             "model": model,
-            "prompt": f"{datetime_line}\n\n{prompt}",
+            "prompt": _full,
             "options": {
                 "temperature": payload.get("temperature", 0.7),
-                "num_predict": payload.get("max_tokens", 2048),
-                "num_ctx": payload.get("num_ctx", 4096),
+                "num_predict": _np,
+                "num_ctx": payload.get("num_ctx") or _fit_num_ctx(len(_full), _np),
             },
         }
         is_chat = False
@@ -113,9 +148,20 @@ def _build_ollama_request(
 
 
 def _metrics_from_ollama(data: dict, model: str) -> dict:
-    """Extract standard metrics from Ollama response JSON."""
+    """Extract standard metrics from Ollama response JSON.
+
+    ``truncated`` is the important field: Ollama reports done_reason="length"
+    when generation stopped because it ran out of context rather than because
+    the model finished. Without surfacing it, a one-token answer is returned
+    with status COMPLETED and the caller cannot tell it is a fragment.
+    """
+    _done_reason = data.get("done_reason")
+    _evals = data.get("eval_count", 0) or 0
     return {
         "model": model,
+        "done_reason": _done_reason,
+        "truncated": _done_reason == "length",
+        "context_exhausted": _done_reason == "length" and _evals <= 2,
         "total_duration_ms": data.get("total_duration", 0) / 1_000_000,
         "eval_count": data.get("eval_count", 0),
         "eval_duration_ms": data.get("eval_duration", 0) / 1_000_000,
@@ -239,6 +285,10 @@ async def _inference_stream(
                 "model": model,
                 "tokens_per_second": metrics["tokens_per_second"],
                 "duration_seconds": round(duration, 2),
+                # the caller needs these to know the answer is a fragment
+                "truncated": metrics.get("truncated", False),
+                "context_exhausted": metrics.get("context_exhausted", False),
+                "done_reason": metrics.get("done_reason"),
             },
         )
         # Sentinel — tells SSE generator to stop

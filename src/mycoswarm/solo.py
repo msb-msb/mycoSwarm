@@ -113,6 +113,7 @@ def ask_direct(prompt: str, model: str) -> None:
                     if chunk.get("done"):
                         eval_count = chunk.get("eval_count", 0)
                         eval_duration = chunk.get("eval_duration", 0)
+                        done_reason = chunk.get("done_reason")
 
     except httpx.ConnectError:
         print("❌ Cannot connect to Ollama. Is it running? Start with: ollama serve")
@@ -428,6 +429,7 @@ def chat_stream(
     tokens: list[str] = []
     eval_count = 0
     eval_duration = 0
+    done_reason = None
 
     try:
         with httpx.Client(timeout=httpx.Timeout(5.0, read=OLLAMA_TIMEOUT)) as client:
@@ -449,6 +451,7 @@ def chat_stream(
                     if chunk.get("done"):
                         eval_count = chunk.get("eval_count", 0)
                         eval_duration = chunk.get("eval_duration", 0)
+                        done_reason = chunk.get("done_reason")
 
     except httpx.ConnectError:
         print("❌ Cannot connect to Ollama. Is it running? Start with: ollama serve")
@@ -474,5 +477,10 @@ def chat_stream(
         "duration_seconds": round(duration, 2),
         "tokens_per_second": round(tps, 1),
         "model": model,
+        # done_reason="length" means we ran out of context, not that the model
+        # finished. Callers must not persist such a fragment as an answer.
+        "done_reason": done_reason,
+        "truncated": done_reason == "length",
+        "context_exhausted": done_reason == "length" and eval_count <= 2,
     }
     return full_text, metrics

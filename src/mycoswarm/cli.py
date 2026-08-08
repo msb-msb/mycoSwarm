@@ -347,6 +347,9 @@ def _stream_response(
                                 "tokens_per_second",
                                 "duration_seconds",
                                 "node_id",
+                                "truncated",
+                                "context_exhausted",
+                                "done_reason",
                             )
                             if k in event
                         }
@@ -1475,6 +1478,29 @@ def _check_draft_save(response_text: str) -> bool:
     except (EOFError, KeyboardInterrupt):
         print("\n   Draft not saved.")
     return False
+
+
+def _reject_truncated(full_text, metrics, messages):
+    """Return True if the generation is a fragment that must NOT be kept.
+
+    A run that stopped on done_reason="length" is a partial answer. Saving it
+    into session history poisons every later turn — a one-word reply ("Based")
+    was persisted as a complete assistant message and shown back as context.
+    A partial response stored as fact is the same failure class as a silent
+    classification fallback: it looks like success.
+    """
+    if not metrics:
+        return False
+    if not (metrics.get("truncated") or metrics.get("context_exhausted")):
+        return False
+    n_words = len((full_text or "").split())
+    print()
+    print("   \u26a0\ufe0f  Generation was cut off by the context window "
+          f"(done_reason=length, {n_words} words produced).")
+    print("      This answer is INCOMPLETE and has NOT been saved to the "
+          "conversation.")
+    print("      Retry, or narrow the question so less context is retrieved.")
+    return True
 
 
 def cmd_chat(args):
@@ -3047,6 +3073,9 @@ def cmd_chat(args):
                 continue
 
             # Strip internal citation tags before storing
+            if _reject_truncated(full_text, metrics, messages):
+                messages.pop()          # drop the user turn too — it got no answer
+                continue
             full_text = _strip_citation_tags(full_text)
             _asst_msg = {"role": "assistant", "content": full_text}
             messages.append(_asst_msg)
@@ -3182,6 +3211,9 @@ def cmd_chat(args):
             continue
 
         # Strip internal citation tags before storing
+        if _reject_truncated(full_text, metrics, messages):
+            messages.pop()              # drop the user turn too — it got no answer
+            continue
         full_text = _strip_citation_tags(full_text)
         _asst_msg = {"role": "assistant", "content": full_text}
         messages.append(_asst_msg)

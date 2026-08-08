@@ -1239,7 +1239,82 @@ Neither alone is sufficient.
   every node, so the drop-in is deployable — it was a no-op until this
   upgrade.
 
+### Phase 44: Intent gate + silent-failure sweep (2026-08-07/08)
+
+**Intent gate**
+- [x] `intent_rules.py` — deterministic short-circuits for unambiguous
+      web_search, small talk and date/time, running BEFORE the model and before
+      the daemon round-trip. Conservative by design: a false positive costs a
+      needless search, a false negative just defers. 2/89 bypassed on the eval
+      set, 0 of them incorrect.
+- [x] Classify LOCALLY by default. Shipping a ~650-token prompt across the LAN
+      for a ~20-token answer is poor economics and was timing out: a peer
+      answered at 15.5s against a 15s poll budget.
+- [x] Timeout collision fixed — worker read 20.0s vs CLI poll 30s, named
+      constants both sides.
+- [x] Failed classification no longer defaults to answer/chat/all (which meant
+      no RAG fired and the model confabulated). Retries locally, then falls back
+      to a RETRIEVAL-INCLUSIVE intent.
+- [x] Gate model surfaced in debug (`_via` / `_model`).
+- [x] gemma3:4b over gemma3:1b for the gate (identical accuracy p=1.000, 100%
+      vs 49% schema compliance, 1.7x faster); single shared
+      `bindings.GATE_MODEL_PREFERENCE` so solo and worker cannot drift again.
+
+**Context overflow (data loss)**
+- [x] `num_ctx` was a fixed 4096. A turn with three fetched pages built a
+      19,970-char tool_context; the prompt filled 4,091 of 4,096 tokens, Ollama
+      emitted ONE token and stopped with done_reason="length". The word "Based"
+      was shown as the answer AND saved into session history.
+- [x] Adaptive `_fit_num_ctx()` sizes the window to prompt + num_predict.
+      **Retrieved web text tokenises at ~2.5 chars/token, not the conventional
+      4** — a 4:1 estimate picked 8k and the turn truncated anyway.
+- [x] Truncation surfaced (`done_reason`/`truncated`/`context_exhausted`) and
+      fragments are refused rather than persisted.
+
+**The finding that generalises**
+- **Putting live numeric telemetry in a prompt is an implicit invitation to
+  recite it. No instruction reliably suppresses data that is present in
+  context.** Measured with gemma3:27b on "what time is it?": numbers + a
+  "don't report stats" instruction leaked 4/4; numbers removed, 0/4;
+  qualitative wording, 0/4. **Position was not the cause** — moving the
+  instruction adjacent to the user's question left it at 4/4. This is why the
+  March fix (0825094) reworded the instruction, left the numbers, and did not
+  hold.
+- [x] `build_body_prompt` emits qualitative state only (cool/warm/hot,
+      memory filling up / under pressure, N nodes present, N gone quiet).
+      Numbers stay in `get_body_state()` for the vitals system and the footer.
+      Abnormal states still surface — that was the original March intent.
+- [x] `_read_nodes` sends the swarm token. It never did, so `/status` and
+      `/peers` returned 403 and a bare `except: return []` turned a permission
+      error into "no nodes" — the body prompt had **never** contained a node
+      name. Exceptions are now typed and logged.
+
+**Silent-failure pattern — eight instances now**
+identity type with no router; write-only archive; unenforced quarantine file;
+resolve_model's unchecked fallback; the intent-classification default; the
+truncated generation saved as history; the body-prompt 403; and gemma3:1b's
+51% invalid-enum rate masked by the sanitiser. Every one looked like success.
+Worth a dedicated audit pass rather than fixing them as they surface.
+
 ## Next
+
+### Phase 45: Two open prompt-compliance bugs
+
+Both deliberately NOT fixed — the mechanism is not understood and a fix on a
+wrong theory is worse than leaving them documented.
+
+- [ ] **Vitals narration.** She wrote "My internal signals are… stable.
+      Calm: 0.6, Clarity: 0.7" with procedure #21 ("do not report vitals
+      mid-conversation") retrieved and in context. Did NOT reproduce in
+      isolation — 0/4 both with and without numeric vitals — so the body-prompt
+      explanation does not obviously transfer. Needs a fuller-context repro.
+- [ ] **Fabricated memory.** "I recall from February that you often ask for the
+      time alongside weather information" — untrue, not in her facts. The
+      anti-fabrication rule IS present in `build_memory_system_prompt` and
+      correct; the model ignores it. Another instruction will not help. The
+      structural lever is grounding (the retrieval-inclusive fallback above).
+      Also observed inventing node roles ("she handles complex pattern
+      recognition") when naming nodes correctly.
 
 ### Phase 42: Subnet drop-in + rolling restart
 

@@ -194,11 +194,17 @@ class TestBuildBodyPrompt:
 
         prompt = build_body_prompt("http://localhost:7890")
 
+        # Qualitative only since 2026-08-08: numeric telemetry in the prompt
+        # leaked 4/4 on an unrelated question despite an instruction not to
+        # report it, and 0/4 once the numbers came out. Names stay (she must be
+        # able to answer "what do you know about rushuna?"); specs do not.
         assert "[Your body:" in prompt
-        assert "Miu (RTX 3090, 58°C, 4.71/24.0GB VRAM)" in prompt
-        assert "rushuna (RTX 3060, online)" in prompt
-        assert "naru (online)" in prompt
+        assert "running cool" in prompt
+        assert "3 nodes present" in prompt
+        assert "Miu" in prompt and "rushuna" in prompt and "naru" in prompt
         assert "in the background" in prompt
+        for leaked in ("58", "4.71", "24.0GB", "RTX 3090", "°C"):
+            assert leaked not in prompt, leaked
 
     @patch("mycoswarm.body.get_body_state")
     def test_solo_mode_gpu_only(self, mock_state):
@@ -213,8 +219,10 @@ class TestBuildBodyPrompt:
         prompt = build_body_prompt()
 
         assert "[Your body:" in prompt
-        assert "local GPU (45°C, 2.0/24.0GB VRAM)" in prompt
+        assert "running cool" in prompt
         assert "in the background" in prompt
+        for leaked in ("45", "2.0/24.0", "°C", "VRAM"):
+            assert leaked not in prompt, leaked
 
     @patch("mycoswarm.body.get_body_state")
     def test_no_data_returns_empty(self, mock_state):
@@ -247,8 +255,8 @@ class TestBuildBodyPrompt:
         prompt = build_body_prompt("http://localhost:7890")
 
         assert "[Your body:" in prompt
-        assert "naru (online)" in prompt
-        assert "boa (online)" in prompt
+        assert "2 nodes present" in prompt
+        assert "naru" in prompt and "boa" in prompt
 
     @patch("mycoswarm.body.get_body_state")
     def test_offline_node(self, mock_state):
@@ -265,7 +273,11 @@ class TestBuildBodyPrompt:
 
         prompt = build_body_prompt("http://localhost:7890")
 
-        assert "naru (offline)" in prompt
+        # A node dropping is exactly the case she SHOULD speak up about, so it
+        # must survive the move to qualitative wording.
+        assert "gone quiet" in prompt
+        assert "naru" in prompt
+        assert "worth mentioning" in prompt
 
 
 class TestBodyPromptInjectionOrder:
