@@ -1,5 +1,198 @@
 # Changelog
 
+## v0.6.0 — Grounding Over Instruction (2026-08-09)
+
+Minor bump. Six changes alter what the assistant says rather than fixing a
+fault, so read "Behavior changes" before upgrading a node you care about.
+
+### The finding behind most of this release
+
+Instructions in context proved inert; data in context worked every time.
+
+The anti-fabrication rule fired zero times across every observed fabrication.
+The overfunction procedure tested at p=1.000 — indistinguishable from absent.
+Rewording did not help: the body-telemetry instruction had been rewritten three
+times since March and leaked 4/4 each time. Moving it adjacent to the user's
+question left it at 4/4 and made the output worse.
+
+Supplying data worked in every case tried: an authoritative clock, fact
+provenance, node roles, exertion telemetry, and — inverted — REMOVING numbers
+the model was reciting. Fabrication tracks the shape of the gap in what the
+model was given, not the strength of the instruction it was told.
+
+Every fix below follows from that. Where a rule was added, it is deterministic
+code, not prose in a prompt.
+
+### Identity facts reach the model — 31 facts that had never once been used
+
+* `format_facts_for_prompt` looped over a hardcoded list of four fact types
+  that omitted `FACT_TYPE_IDENTITY`. Every identity fact was silently dropped
+  at prompt-build time.
+* `/remember identity:` shipped in v0.5.0 and wrote into that bucket, so the
+  feature had never worked; it wrote to a store the prompt builder discarded.
+* 31 stored facts — the assistant's entire self-authored vocabulary — had never
+  reached the model.
+* The irony worth recording: the July restore re-typed those facts to
+  `identity` specifically to protect them from the staleness sweep. That is
+  exactly what guaranteed nothing would ever read them.
+* The loop now fails open — an unrecognised fact type renders rather than
+  vanishing. `_FACT_RENDER_ORDER` is an ordering hint only, never a filter.
+
+### Fact provenance on origin questions
+
+* Fixed "You named it on February 18th" for a word the assistant coined herself
+  in March — a confident, checkable, wrong claim.
+* A fact's recorded date and authorship now attach to the prompt only when the
+  question is about origin, detected deterministically in `intent_rules`.
+  Zero token cost on every other turn.
+
+### Node roles in the body prompt
+
+* Each node is described by what it does, not just named.
+* Role fabrication 37.5% → 2.5% (Fisher exact p=0.00012).
+* No recitation leak across 48 unrelated answers. Cost: +117 tokens.
+
+### Exertion sensing
+
+* Per-node task counts and CPU load, expressed qualitatively, smoothed over
+  120s so a single sample cannot swing the description.
+* Idle is stated explicitly rather than left implied — the absence of a signal
+  was being filled in with invention.
+* 19/20 correct on an idle swarm (previously 0/20). 12/12 correct attribution
+  under real load.
+
+### The body prompt no longer carries numbers
+
+* `build_body_prompt` emits qualitative state only: cool/warm/hot, memory
+  filling up, N nodes present, N gone quiet.
+* Node NAMES stay — "what do you know about rushuna?" must still work. Specs,
+  IPs and VRAM figures do not.
+* Measured with gemma3:27b on "what time is it?": numbers plus a
+  do-not-report instruction leaked 4/4; the same instruction with numbers
+  removed leaked 0/4; qualitative state leaked 0/4.
+* Numbers remain available in `get_body_state()` for the vitals path and for
+  operators.
+
+### Body display that cannot diverge from the prompt
+
+* New `/body` command and a `--debug` footer line, both rendering the exact
+  state recorded at prompt-build time rather than re-reading the hardware.
+* A readout that re-samples can disagree with what the model was told, which
+  makes it useless as a check on exactly the errors it exists to catch.
+
+### Intent classification — stop faking answers
+
+* A classification failure was indistinguishable from a real classification, so
+  it silently became a confident hallucination.
+* Root cause of the reported bug was NOT the gate model. Intent was routed to a
+  remote peer, timed out there, and the CLI substituted a default
+  (`answer/chat/all`) as though the model had chosen it. No model ever saw the
+  query. The debug line then reported "classified by: local" — the opposite of
+  the truth.
+* Two timeouts were set to collide: worker Ollama read 15.0s against a CLI poll
+  budget of 15s, so a classification that succeeded at 15.1s was discarded by
+  the caller that requested it. Now 20.0s and 30s.
+* New `src/mycoswarm/intent_rules.py`: deterministic short-circuits for
+  unambiguous web search, small talk, and date/time queries. These run before
+  the model and before the daemon round-trip, so this class of query cannot be
+  lost to a peer at all.
+* Written conservatively: a false positive costs an unnecessary search; a false
+  negative just defers to the model.
+* `_DATETIME_QUERY_RE` had existed only on the solo path — the daemon path never
+  checked it, so date questions were still shipped to a peer. Now shared by
+  `solo.py`, `worker.py` and `cli.py` so all three agree.
+* Truncated and failed classifications are rejected rather than substituted.
+
+### Gate model
+
+* The intent gate prefers `gemma3:4b`. `solo.py` and `worker.py` now read one
+  shared `GATE_MODEL_PREFERENCE`, so the CLI and the daemon cannot drift — they
+  had, with solo on `gemma3:1b` and worker on `gemma3:4b`.
+
+### Retrieval
+
+* **Ghost procedures are filtered at ranking time.** The Chroma index holds 95
+  rows against 42 live procedures. Orphans were being dropped silently *after*
+  ranking, so 22% of top-3 hits returned two results instead of three while
+  reporting success. Ranking now excludes them up front. This is a query-time
+  filter, not a reindex — the 62 orphan rows are still in the index, and
+  cleaning them is a follow-up task.
+* **Near-duplicate collapsing** at ratio 0.90, so one procedure restated three
+  ways cannot occupy the whole result set.
+* **Session-summary fallback removed.** `search_sessions` correctly returned 0
+  hits and the code dumped 10 chronological summaries anyway. 9 of the 10 were
+  test fixtures. A correct empty result was being overridden with noise.
+* **`vitals_defs` deleted** from the prompt.
+
+### Context window
+
+* `_fit_num_ctx` ladders 4k → 8k → 16k → 32k to fit the assembled prompt
+  instead of silently overflowing.
+* `done_reason`, `truncated` and `context_exhausted` are surfaced from Ollama. A
+  generation cut off mid-answer used to be indistinguishable from a complete
+  one.
+* Token estimation corrected to ~2.5 chars/token; the previous 4.0 divisor
+  under-counted retrieved web text badly enough to cause the overflow.
+
+### Debug output
+
+* `--debug` prints assembled prompt size with a per-block breakdown and the
+  selected `num_ctx`, so an oversized prompt is visible before it truncates.
+* The gate model and classification path are named in debug output.
+
+### Fleet updater (operator-facing)
+
+* **`--no-cache-dir` is now mandatory** on the venv pip install. pip's HTTP
+  cache served a stale index for minutes after the 0.5.0 upload. Without it a
+  node can resolve against that cache, reinstall the version it already had,
+  exit 0, and report success — a run summary showing every node green while
+  nothing changed. Pair with an explicit pin so a stale index fails loudly.
+* **The Miu block is verify-only again.** It had been changed to run
+  `pip install --upgrade` inside Miu's EDITABLE dev install, which silently
+  replaces it with a PyPI copy and detaches Miu from the working tree — every
+  later source edit stops taking effect, with no error.
+* **Fixed a false positive in that guard**, which is worse than no guard.
+  `pip show mycoswarm | grep -q "^Editable project location:"` under
+  `set -o pipefail` reports failure on success: `grep -q` exits 0 at the first
+  match, pip's stdout closes mid-write, pip exits 120 with BrokenPipeError, and
+  pipefail propagates 120 — so the guard asserted the destructive case.
+
+### Behavior changes
+
+* The assistant's self-authored vocabulary now appears in her answers. This is
+  the largest observable change in the release.
+* The body prompt no longer contains numeric telemetry. Anything parsing model
+  output for VRAM or temperature figures should read `get_body_state()` or
+  `/body` instead.
+* Date, time and unambiguous web-search queries are answered without consulting
+  the gate model.
+* Failed intent classification returns an error instead of a default.
+* Session summaries are no longer injected when session search returns nothing.
+
+### What did NOT change
+
+* **The chat binding stays `gemma3:27b`.** `gemma4:26b` measured 0/40
+  fabrication against gemma3's 42.5% — the best result of any model tested —
+  but 0/80 of its answers used any of the assistant's coined vocabulary. It was
+  accurate and characterless. Grounding closed the gap on the incumbent
+  instead, which is the better trade and the cheaper one.
+* No change to `TASK_MODEL_MAP` or `recommend_models`.
+* No change to the API bind address. It remains 0.0.0.0 by design; security
+  comes from the swarm token and LAN isolation.
+
+### Fleet operator notes
+
+* `MYCOSWARM_SWARM_SUBNET=192.168.50.0/24` is deployed as a systemd drop-in on
+  all seven nodes and verified in each live process environment. Soft-prefer: a
+  node with no `.50` address still announces `.1` rather than failing.
+* **Known open — peer addresses are resolved once at discovery and never
+  re-probed.** A node whose wired link is absent when its daemon starts pins its
+  entire peer registry to wifi and runs asymmetric indefinitely. It is invisible
+  from every other node's view, which will still show that node at its `.50`
+  address. `systemctl restart mycoswarm` clears it once wired is back. To
+  detect, compare each node's own `/peers` against the preferred subnet. See
+  PLAN.md Phase 46. **Check this before any benchmark run.**
+
 ## v0.5.0 — Declared Model Bindings (2026-08-06)
 
 Minor bump, not a patch: this release changes documented behavior in three
