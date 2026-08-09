@@ -1435,8 +1435,17 @@ the context WINS, which is a different problem from an instruction being ignored
       swarm` from Miu shows 7 nodes, all `.50.x`
 - [x] Announced list **leads** with `.50` on 7/7 (see the measurement caveat
       below — this is the check that distinguishes deterministic from lucky)
-- [ ] Still open: confirm it holds across an actual node reboot with wifi up
-      first. The restart test cannot prove this; only a real boot can.
+- [x] Wifi-first boot ordering — **closed as structurally unreachable**
+      (2026-08-09). Three independent reasons wired cannot lose the race while
+      it has carrier: wired is *statically* configured fleet-wide (no DHCP
+      round-trip, address exists at link setup, while wifi is the DHCP path and
+      therefore the slower one); `psutil` enumerates by ifindex and wired is 2
+      on all seven nodes against wifi's 3; and `wait-online` gates the daemon on
+      `eno1:degraded`. Confirmed by a **real cold boot already in the journal** —
+      boa, Jul 08, where wifi acquired `192.168.1.26` by DHCP *first* and boa
+      still announced `['192.168.50.12', '192.168.1.26']` with no variable set.
+      The scenario only arises when wired has no address at all, and then there
+      is no `.50` to prefer — soft-prefer correctly announces `.1`, as designed.
 
 **Soft-prefer, deliberately — so "all nodes on `.50`" is not guaranteed by this
 change, only strongly preferred.** A node with no `.50` address announces its
@@ -1483,6 +1492,84 @@ boa/uncho/naru and nothing at all on luvia/mai/rushuna. The version that matters
 is the one in the venv named by `ExecStart`
 (`/home/minotaur/mycoSwarm/.venv/bin/mycoswarm`), which is `0.5.0` on all seven.
 Checking the wrong interpreter would have read as "fleet not upgraded, abort".
+
+### Phase 46: Peer addresses are resolved once and never re-probed 🔴 OPEN
+
+**Found 2026-08-09** while closing Phase 42's last item. Distinct defect, not a
+Phase 42 regression — the subnet preference behaved correctly throughout.
+
+**Symptom.** A node whose wired interface is absent when its daemon starts pins
+its **entire peer registry to wifi, permanently**, and never recovers while the
+process lives.
+
+**Reproduced on boa** (no reboot needed — `eno1` down, `systemctl restart
+mycoswarm`, `eno1` up, observe):
+
+| behaviour after wired arrives late | result |
+|---|---|
+| own mDNS announcement | **self-heals** ✅ — `update_identity()` recomputes `_all_lan_addresses()`; announced set regained `192.168.50.12` |
+| own `/status` `lan_ip` | **stuck** ❌ at `192.168.1.26` |
+| own peer registry | **stuck** ❌ 6/6 peers on wifi |
+
+Miu, which never lost wired, held 0/6 on wifi throughout.
+
+**Mechanism, and why the variable cannot help.** With `eno1` down there is no
+route to any `192.168.50.x`, so `_pick_reachable_address` tried each peer's `.50`
+address first (correct soft-prefer), got no route, and fell back to `.1.x`.
+Correct behaviour — but peer addresses are resolved **once, at discovery**, and
+never revisited. The fallback becomes permanent. `prefer_subnet` only orders
+candidates; it does not re-probe.
+
+**Why this is worse than it looks.** The failure is invisible from every other
+node. Miu kept showing boa at `192.168.50.12` the entire time — *correct by
+staleness*, since `/peers` has no re-resolution and boa's record was never
+rewritten. So `mycoswarm swarm` from Miu looked perfect while boa routed all
+swarm traffic over wifi through the internet router. Traffic was **asymmetric**:
+Miu→boa wired, boa→Miu wifi. Benchmarking such a node measures the wrong fabric
+— exactly what Phase 42 set out to prevent, reached by a different route. This
+must be checked before any Paper 1 measurement.
+
+**Detection, until it is fixed:** compare each node's own `/peers` against the
+preferred subnet. Any node reporting peers on `192.168.1.x` has this condition.
+A `systemctl restart mycoswarm` clears it once wired is back (verified: boa
+returned to `lan_ip=192.168.50.12`, 6/6 peers on `.50`).
+
+- [ ] Make it self-healing: have the refresh loop re-run
+      `_pick_reachable_address` for any peer whose recorded address sits outside
+      `MYCOSWARM_SWARM_SUBNET`. **Deliberately deferred** — wanted, but to land
+      as its own isolated commit *after* the release, not bundled. It touches the
+      discovery path, which is the layer that produced three wrong measurements
+      in this phase (see below), so it should not ride along with other changes.
+- [ ] Decide whether `/status` `lan_ip` should be served from the refreshed
+      identity rather than the startup one — same root cause as the known
+      "orchestrator identity is not updated by the refresh loop" note.
+
+### Note: three measurement instruments reported confidently and wrongly (2026-08-09)
+
+Not three separate slips — one pattern, worth recording as such. Every one of
+these produced a clean, plausible, **stable** wrong answer, and each was caught
+only by cross-checking against a second source:
+
+1. **mDNS browse order.** Reported `.50` leading on 4/7 nodes, identical across
+   three repeat browses, so it did not look like noise. A DNS A-record *set* is
+   unordered; the resolver reconstructs an order of its own. The nodes' own logs
+   showed 7/7. → Browse is valid for address **membership**, never for order.
+2. **The `📡 Announcing:` log line.** Read six times over 90s to test for
+   convergence; never changed. It is emitted only at *initial registration* —
+   `update_identity()` logs at debug level instead — so it was frozen by
+   construction and could not have moved. It made a self-healed announcement
+   look permanently stuck.
+3. **`grep -o '"lan_ip":"[^"]*"'`.** Returned empty for every sample because
+   `/status` pretty-prints as `"lan_ip": "…"`, with a space. Read as a missing
+   field rather than a failed pattern.
+
+Common shape: **an instrument that cannot change is indistinguishable from a
+value that did not change.** Before trusting a negative result, confirm the
+instrument is capable of showing a positive one. Two of these three would have
+been caught by asking "what would this have printed if it *had* worked?"
+
+This sits alongside the silent-failure catalogue — same family, different layer:
+there the *code* failed quietly, here the *measurement* did.
 
 ### Phase 43: Light-node model bindings
 
