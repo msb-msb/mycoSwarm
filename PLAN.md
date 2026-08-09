@@ -1419,16 +1419,70 @@ the context WINS, which is a different problem from an instruction being ignored
       moment they happened, by reading her words against the `/body` line
       directly above them. That is the argument for having built it.
 
-### Phase 42: Subnet drop-in + rolling restart
+### Phase 42: Subnet drop-in + rolling restart ✅ (2026-08-09)
 
 **Goal:** Make the `.50.x` fabric deterministic rather than lucky.
 
-- [ ] systemd drop-in setting `MYCOSWARM_SWARM_SUBNET=192.168.50.0/24`
-      on all nodes
-- [ ] Rolling restart (not simultaneous — verify it holds per node rather
-      than relying on a whole-fleet flush)
-- [ ] Confirm announced addresses stay `.50.x` across an individual node
-      reboot with wifi available
+- [x] systemd drop-in setting `MYCOSWARM_SWARM_SUBNET=192.168.50.0/24` on all
+      seven nodes — `/etc/systemd/system/mycoswarm.service.d/subnet.conf`, a
+      drop-in rather than a base-unit edit so it survives pip upgrades and
+      `mycoswarm-update-nodes.sh` (2026-08-09)
+- [x] Rolling restart, one pass, verified per node (2026-08-09)
+- [x] Verified in the **process environment** (`/proc/$MainPID/environ`), not
+      just the file on disk — a drop-in that failed to load looks identical
+      on the filesystem. 7/7.
+- [x] Authenticated `/status` cached `lan_ip` is `.50.x` on 7/7; `mycoswarm
+      swarm` from Miu shows 7 nodes, all `.50.x`
+- [x] Announced list **leads** with `.50` on 7/7 (see the measurement caveat
+      below — this is the check that distinguishes deterministic from lucky)
+- [ ] Still open: confirm it holds across an actual node reboot with wifi up
+      first. The restart test cannot prove this; only a real boot can.
+
+**Soft-prefer, deliberately — so "all nodes on `.50`" is not guaranteed by this
+change, only strongly preferred.** A node with no `.50` address announces its
+`.1.x` address rather than failing. That is the intended trade: the reachability
+probe is a 0.5s TCP connect and is genuinely flaky, so a node whose fabric probe
+momentarily misses stays reachable over wifi instead of dropping out of the
+swarm. A malformed CIDR logs a warning and degrades to no preference. The
+exclusive variant was **not** set.
+
+**The preference is load-bearing, not decorative.** Verified by replaying real
+announced address lists through `_pick_reachable_address()` with and without the
+variable:
+
+| peer (announced order as received) | without var | with var |
+|---|---|---|
+| boa `['192.168.1.26','192.168.50.12']` | `192.168.1.26` | `192.168.50.12` |
+| uncho `['192.168.1.25','192.168.50.13']` | `192.168.1.25` | `192.168.50.13` |
+| Miu `['172.17.0.1',…]` | `172.17.0.1` | `192.168.50.1` |
+
+`prefer_subnet` is applied in **three** places, not one: `lan_ip` (what `/status`
+caches), `_all_lan_addresses` (the announced list), and `_pick_reachable_address`
+(how an *observer* records a peer). The third means the variable helps even on a
+node whose own addressing is already fine, by fixing how it records everyone
+else — which is why restart order genuinely does not matter.
+
+**Measurement caveat — mDNS browse order is not authoritative.** The first
+attempt at the announced-list check browsed `_mycoswarm._tcp.local.` from Miu and
+read `ServiceInfo.addresses`. It reported `.50` leading on only **4/7**, with
+boa, uncho and Miu appearing to lead with `.1.x`/`172.17.0.1`. Stable across
+three repeat browses, so not cache noise — but wrong. Miu's own daemon log for
+the same instance reads `📡 Announcing: … on ['192.168.50.1', '192.168.1.29',
+'172.17.0.1']`, `.50` first. A DNS A-record *set* is unordered; the resolver
+reconstructs an order of its own and it need not match the sender's. **Use the
+daemon's own `📡 Announcing:` log line, or call `_all_lan_addresses()` on the
+node itself.** Both agree: 7/7 lead with `.50`.
+
+**The premise held.** Journal for Aug 7–8, before the change, shows Miu had
+already recorded all six peers at `.50.x` — the fabric really was correct by
+luck, and nothing was silently on wifi. This phase is insurance that converts
+luck into design, exactly as scoped, not a repair of a live fault.
+
+**Fleet-version trap, worth remembering.** System `python3` reports `0.3.0` on
+boa/uncho/naru and nothing at all on luvia/mai/rushuna. The version that matters
+is the one in the venv named by `ExecStart`
+(`/home/minotaur/mycoSwarm/.venv/bin/mycoswarm`), which is `0.5.0` on all seven.
+Checking the wrong interpreter would have read as "fleet not upgraded, abort".
 
 ### Phase 43: Light-node model bindings
 
