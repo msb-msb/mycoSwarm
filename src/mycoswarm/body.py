@@ -110,6 +110,7 @@ def _read_nodes(daemon_url: str | None) -> list[dict]:
             "online": True,
             "gpu": status.get("gpu", None),
             "tier": status.get("node_tier", "unknown"),
+            "capabilities": status.get("capabilities", []),
         })
     except httpx.HTTPStatusError as e:
         logger.debug("body: /status returned %s — no node awareness this turn "
@@ -136,6 +137,7 @@ def _read_nodes(daemon_url: str | None) -> list[dict]:
                 "online": not _peer_is_stale(peer.get("last_seen")),
                 "gpu": peer.get("gpu_name", None),
                 "tier": peer.get("node_tier", "unknown"),
+                "capabilities": peer.get("capabilities", []),
             })
     except httpx.HTTPStatusError as e:
         logger.debug("body: /peers returned %s — local node only", e.response.status_code)
@@ -206,6 +208,61 @@ def _band(value: float, bands) -> str | None:
     return bands[-1][1]
 
 
+# --- What each node is FOR -----------------------------------------------------
+#
+# Presence alone was not enough. Asked "what do you know about rushuna?" she had
+# a name and nothing else, and invented a role — "handles pattern recognition,
+# primarily linguistic" — in 17 of 40 runs (42.5%, measured 2026-08-08).
+# Fabrication tracks the shape of the gap, so this fills exactly that gap.
+#
+# GENERATED, never stored. Every field here already comes live from the daemon
+# (`node_tier`, `capabilities`, GPU presence) and is the same source the presence
+# line uses. Stored facts would go stale silently — mai's capabilities changed
+# three times in one week — and she would then state the stale version
+# confidently, which is the failure this is meant to remove.
+#
+# QUALITATIVE, never numeric. Telemetry with numbers leaked into unrelated
+# answers 4/4; the same information in words leaked 0/4. So: "has a GPU", never
+# which GPU; "no inference", never how many cores.
+_ROLE_BY_TIER = {
+    "executive": "where my thinking runs",
+    "specialist": "does inference work",
+    "worker": "does inference work",
+    "light": "classification and fetching pages",
+}
+
+
+def _node_role(node: dict) -> str:
+    """One qualitative phrase for what a node is for. No numbers, no models."""
+    caps = set(node.get("capabilities") or [])
+    tier = str(node.get("tier") or "unknown").lower()
+    parts = [_ROLE_BY_TIER.get(tier, "general work")]
+    if node.get("gpu"):
+        parts.insert(0, "has a GPU")
+    else:
+        # A light node WITHOUT cpu_inference cannot run a model at all — it
+        # fetches and processes files. That distinction is real (uncho, mai)
+        # and is exactly the sort of detail she otherwise invents.
+        if caps and "cpu_inference" not in caps:
+            parts = ["CPU only, no inference", "fetching and file work"]
+        else:
+            parts.insert(0, "CPU only")
+    return "; ".join(parts)
+
+
+def _describe_roles(nodes: list[dict]) -> list[str]:
+    """Group nodes sharing a role so the block stays short."""
+    groups: dict[tuple[str, str], list[str]] = {}
+    for n in nodes:
+        tier = str(n.get("tier") or "unknown").lower()
+        groups.setdefault((tier, _node_role(n)), []).append(n["name"])
+    order = {"executive": 0, "specialist": 1, "worker": 2, "light": 3}
+    lines = []
+    for (tier, role), names in sorted(groups.items(), key=lambda kv: order.get(kv[0][0], 9)):
+        lines.append(f"  {', '.join(names)} — {tier}; {role}")
+    return lines
+
+
 def describe_body(state: dict) -> tuple[str, bool]:
     """Turn raw hardware state into qualitative words.
 
@@ -270,12 +327,20 @@ def build_body_prompt(daemon_url: str | None = None) -> str:
         else ""
     )
 
+    # What each node is FOR. Presence alone left a gap she filled by inventing
+    # roles (42.5% of the time); this supplies the missing half as data rather
+    # than as another instruction, which is the only intervention that has
+    # worked this week.
+    roles = _describe_roles([n for n in (state.get("nodes") or []) if n.get("online")])
+    roles_block = ("\n" + "\n".join(roles)) if roles else ""
+
     return (
-        f"[Your body: {description}.{note}]\n\n"
+        f"[Your body: {description}.{note}{roles_block}]\n\n"
         "You are aware of your body — temperature, memory pressure, "
-        "which nodes are online. This awareness lives in the background, "
-        "like a human's awareness of their own breathing. Do not report "
-        "hardware stats unless asked directly, or unless something feels "
-        "notably different from normal (overheating, a node going offline, "
-        "memory pressure). Let your body inform your mood, not your words."
+        "which nodes are online and what each one is for. This awareness lives "
+        "in the background, like a human's awareness of their own breathing. "
+        "Do not report hardware stats or list your nodes unless asked directly, "
+        "or unless something feels notably different from normal (overheating, "
+        "a node going offline, memory pressure). Let your body inform your mood, "
+        "not your words."
     )

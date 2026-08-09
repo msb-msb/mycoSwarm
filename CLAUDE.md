@@ -67,6 +67,14 @@ from eBay and a borrowed gaming PC should be a working swarm.
 - Don't break the zero-config promise
 - Don't import heavy frameworks (no torch, no transformers)
 - Don't rely on the bind address for access control — the daemon intentionally binds 0.0.0.0 (all interfaces) and depends on the swarm token + LAN isolation for security. To confine swarm traffic to a specific fabric, set MYCOSWARM_SWARM_SUBNET (soft-prefer), don't change the bind.
+- **Don't `ollama pull` a model just to try it.** Ollama's store is on the 916 GB root filesystem and is the space constraint (it hit 180 GB / 77% before the 2026-08-08 prune). Models go to the LIBRARY as raw GGUFs — see below.
+
+## Model storage: library vs Ollama
+**`/media/minotaur/Storage_Disk_1/LLM_repo` is the archive. Ollama is the working set.**
+- Pull models there as raw GGUFs (3.2 TB free, one directory per model, README with source repo, quant, exact bytes, sha256, licence).
+- Import into Ollama **only if the model will actually be routed** — a binding, a fallback, the gate, or the pipeline. Benchmarking with llama.cpp needs no import.
+- **An Ollama build is often NOT the same file as the library GGUF.** Measured: Ollama's `gemma3:4b` is 849 MB larger than bartowski's and is the multimodal (`vision`) build. For benchmarks, reproducing a measurement, or node deployment, **the library copy is canonical** — it has a recorded sha256 and a named source.
+- Full policy, the current working set, and the exact tags of everything pruned (for unambiguous recovery): `LLM_repo/README.md`.
 
 ## Updating PLAN.md
 After completing work, update PLAN.md:

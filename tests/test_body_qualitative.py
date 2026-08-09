@@ -164,3 +164,81 @@ class TestAuthenticatedNodeRead:
         assert out == []
         # the point: the cause is visible, not swallowed into an empty list
         assert any("403" in r.getMessage() for r in caplog.records), caplog.text
+
+
+class TestNodeRoles:
+    """Role data closed the role-fabrication gap: 37.5% -> 2.5% unsupported
+    claims on the rushuna probe (n=40 each, Fisher p=0.00012), with 0/48
+    recitation on unrelated questions. Data, not another instruction."""
+
+    NODES = [
+        {"name": "Miu", "online": True, "tier": "executive",
+         "gpu": "NVIDIA GeForce RTX 3090",
+         "capabilities": ["gpu_inference", "cpu_inference", "cpu_worker"]},
+        {"name": "rushuna", "online": True, "tier": "specialist",
+         "gpu": "NVIDIA GeForce RTX 3060",
+         "capabilities": ["gpu_inference", "cpu_inference", "cpu_worker"]},
+        {"name": "boa", "online": True, "tier": "light", "gpu": None,
+         "capabilities": ["cpu_inference", "cpu_worker", "file_processing"]},
+        {"name": "naru", "online": True, "tier": "light", "gpu": None,
+         "capabilities": ["cpu_inference", "cpu_worker", "file_processing"]},
+        {"name": "uncho", "online": True, "tier": "light", "gpu": None,
+         "capabilities": ["cpu_worker", "file_processing"]},
+    ]
+
+    def _prompt(self, nodes=None):
+        with patch("mycoswarm.body.get_body_state",
+                   return_value=_state(50.0, 20.0, nodes if nodes is not None else self.NODES)):
+            return build_body_prompt("http://x")
+
+    def test_roles_are_present(self):
+        p = self._prompt()
+        assert "executive" in p and "specialist" in p and "light" in p
+
+    def test_no_numbers_leak_into_roles(self):
+        """The 4/4-vs-0/4 finding: numeric telemetry gets recited, words do not.
+        GPU presence, never which GPU. No core counts, no VRAM, no IPs."""
+        p = self._prompt()
+        role_block = p.split("]")[0]
+        for banned in ("3090", "3060", "RTX", "GeForce", "NVIDIA", "GB", "°C"):
+            assert banned not in role_block, banned
+
+    def test_gpu_nodes_say_has_a_gpu(self):
+        p = self._prompt()
+        assert "has a GPU" in p
+
+    def test_light_node_without_cpu_inference_is_distinguished(self):
+        """uncho/mai genuinely lack cpu_inference — a real distinction she
+        would otherwise invent. Derived from live capability flags, not
+        assumed."""
+        p = self._prompt()
+        assert "no inference" in p
+        # role lines are the indented ones; the presence line also names every
+        # node, so select on the indent or the assertion tests the wrong line
+        roles = [l for l in p.split("\n") if l.startswith("  ")]
+        unc = [l for l in roles if "uncho" in l][0]
+        assert "no inference" in unc
+        other = [l for l in roles if "boa" in l][0]
+        assert "no inference" not in other
+
+    def test_nodes_sharing_a_role_are_grouped(self):
+        """Seven nodes must not cost seven lines."""
+        p = self._prompt()
+        line = [l for l in p.split("\n") if "boa" in l][0]
+        assert "naru" in line, "boa and naru share a role and should share a line"
+
+    def test_offline_nodes_are_not_given_roles(self):
+        nodes = self.NODES + [{"name": "ghost", "online": False, "tier": "light",
+                               "gpu": None, "capabilities": ["cpu_worker"]}]
+        p = self._prompt(nodes)
+        role_lines = [l for l in p.split("\n") if l.startswith("  ")]
+        assert not any("ghost" in l for l in role_lines)
+
+    def test_roles_are_generated_not_stored(self):
+        """Regression guard: role text must come from live daemon fields, so a
+        tier change is reflected immediately rather than going stale."""
+        changed = [dict(self.NODES[2], tier="specialist",
+                        gpu="NVIDIA GeForce RTX 4090")]
+        p = self._prompt(changed)
+        assert "specialist" in p
+        assert "4090" not in p
