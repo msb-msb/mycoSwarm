@@ -111,6 +111,8 @@ def _read_nodes(daemon_url: str | None) -> list[dict]:
             "gpu": status.get("gpu", None),
             "tier": status.get("node_tier", "unknown"),
             "capabilities": status.get("capabilities", []),
+            "tasks": (status.get("tasks_pending", 0) or 0) + (status.get("tasks_active", 0) or 0),
+            "cpu": status.get("cpu_usage_percent", 0.0) or 0.0,
         })
     except httpx.HTTPStatusError as e:
         logger.debug("body: /status returned %s — no node awareness this turn "
@@ -138,7 +140,13 @@ def _read_nodes(daemon_url: str | None) -> list[dict]:
                 "gpu": peer.get("gpu_name", None),
                 "tier": peer.get("node_tier", "unknown"),
                 "capabilities": peer.get("capabilities", []),
+                # needed by _attach_peer_activity; /peers is the only place
+                # ip/port appear, and without them the fan-out KeyErrors into
+                # the catch-all and every peer silently reads "unknown"
+                "ip": peer.get("ip"),
+                "port": peer.get("port"),
             })
+        _attach_peer_activity(nodes[1:], headers)
     except httpx.HTTPStatusError as e:
         logger.debug("body: /peers returned %s — local node only", e.response.status_code)
     except (httpx.ConnectError, httpx.TimeoutException) as e:
@@ -150,6 +158,43 @@ def _read_nodes(daemon_url: str | None) -> list[dict]:
                        type(e).__name__, e)
 
     return nodes
+
+
+
+def _attach_peer_activity(peers: list[dict], headers: dict) -> None:
+    """Fill in tasks/cpu per peer. Mutates in place; never raises.
+
+    /peers carries no activity data — task counts and CPU live only on each
+    node's own /status — so this fans out. Concurrent with a tight per-request
+    timeout: sequential would let one unreachable peer stall a chat turn for the
+    full timeout, and this runs on EVERY turn. Measured 6/6 peers in 0.06s.
+
+    A peer that does not answer keeps tasks/cpu None, which reads downstream as
+    "unknown", not as "idle" — claiming a node is idle when we simply could not
+    reach it is the same class of error this whole change exists to remove.
+    """
+    if not peers:
+        return
+    from concurrent.futures import ThreadPoolExecutor
+
+    def one(p):
+        if not p.get("ip") or not p.get("port"):
+            logger.warning("body: peer %s has no ip/port — cannot read activity",
+                           p.get("name"))
+            return
+        try:
+            r = httpx.get(f"http://{p['ip']}:{p['port']}/status",
+                          headers=headers, timeout=1.0)
+            r.raise_for_status()
+            d = r.json()
+            p["tasks"] = (d.get("tasks_pending", 0) or 0) + (d.get("tasks_active", 0) or 0)
+            p["cpu"] = d.get("cpu_usage_percent", 0.0) or 0.0
+        except Exception as e:
+            logger.debug("body: no activity from %s (%s) — reported as unknown",
+                         p.get("hostname") or p.get("name"), type(e).__name__)
+
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        list(ex.map(one, peers))
 
 
 def get_body_state(daemon_url: str | None = None) -> dict:
@@ -263,6 +308,100 @@ def _describe_roles(nodes: list[dict]) -> list[str]:
     return lines
 
 
+# --- Exertion: what each node is DOING right now --------------------------------
+#
+# The roles fix grounded IDENTITY (37.5% -> 2.5% invented roles) and thereby
+# moved the gap rather than closing it. Asked "which node is doing the most work
+# right now?" she reasoned from role to activity — "rushuna does inference,
+# inference is happening, therefore rushuna is working hard" — while rushuna was
+# idle. Plausible and wrong. There was no load data in context at all.
+#
+# This lives in the BODY layer, not the vitals. The 8 C's are IFS Self-energy
+# qualities; exertion is no more psychological than temperature or memory
+# pressure, which is why those FLOOR Calm rather than being vitals. Deliberately
+# NOT wired into Calm yet: Calm is already a composite (response stability, tool
+# complexity, GPU-temp floor) and a third input would make "I feel unsettled"
+# untraceable to a cause.
+#
+# TWO SIGNALS, kept distinguishable, because they mean different things:
+#   tasks_pending/active — work SHE dispatched. Answers "did I send anything
+#       here?", which is what makes "rushuna is idle" derivable rather than
+#       guessable, and is the direct fix for the observed failure.
+#   cpu_usage_percent    — ambient exertion. A node at 40% because apt is
+#       running is NOT Monica working, so it is never reported as her work.
+#
+# Neither is in /peers; both are on each node's own /status, so this fans out.
+_EXERTION_WINDOW_S = 120.0     # samples older than this are dropped
+_EXERTION_MAX_SAMPLES = 6
+_exertion_history: dict[str, list[tuple[float, int, float]]] = {}
+
+
+def _record_exertion(name: str, tasks: int, cpu: float) -> tuple[int, float]:
+    """Add a sample and return the smoothed (tasks, cpu) for this node.
+
+    Smoothing is required, not cosmetic: the body prompt is a snapshot taken at
+    assembly time, and an instantaneous read is already stale by the time she
+    answers. Window is 120s / 6 samples.
+
+    MAX for tasks, MEAN for cpu — deliberately different. A task that starts and
+    finishes between two turns would vanish from a mean, and "she dispatched work
+    here recently" is the fact worth keeping; whereas CPU is spiky and a mean is
+    what makes it meaningful.
+    """
+    now = time.time()
+    hist = _exertion_history.setdefault(name, [])
+    hist.append((now, tasks, cpu))
+    fresh = [s for s in hist if now - s[0] <= _EXERTION_WINDOW_S][-_EXERTION_MAX_SAMPLES:]
+    _exertion_history[name] = fresh
+    return max(s[1] for s in fresh), sum(s[2] for s in fresh) / len(fresh)
+
+
+# Dispatched-task bands. 1 task is real work; the queue only builds when she is
+# sending faster than a node drains.
+_TASK_BANDS = ((1, None), (3, "working"), (6, "working hard"), (10**9, "strained"))
+# Ambient-CPU bands, used ONLY when no tasks are dispatched — otherwise her own
+# work would get double-counted as ambient noise.
+_CPU_BANDS = ((15.0, "idle"), (50.0, "ticking over"), (90.0, "busy with something else"),
+              (10**9, "under heavy load of its own"))
+
+
+def _exertion_phrase(tasks: int, cpu: float) -> tuple[str, bool]:
+    """Qualitative exertion for one node. Returns (phrase, is_abnormal).
+
+    No numbers, per the 2026-08-08 finding: numeric telemetry leaked into
+    unrelated answers 4/4, the same information in words leaked 0/4.
+    """
+    if tasks >= 1:
+        phrase = _band(float(tasks), _TASK_BANDS) or "working"
+        return phrase, phrase == "strained"
+    phrase = _band(float(cpu), _CPU_BANDS) or "idle"
+    return phrase, phrase == "under heavy load of its own"
+
+
+def describe_exertion(nodes: list[dict]) -> tuple[str, bool]:
+    """One line naming who is doing what. Idle is stated, never implied.
+
+    Silence about a node reads as absence of data, which is precisely what she
+    fills in — so "everything else idle" is said out loud.
+    """
+    busy, idle, abnormal = [], [], False
+    for n in nodes:
+        if not n.get("online"):
+            continue
+        t, c = _record_exertion(n["name"], int(n.get("tasks") or 0),
+                                float(n.get("cpu") or 0.0))
+        phrase, abn = _exertion_phrase(t, c)
+        abnormal = abnormal or abn
+        (idle if phrase == "idle" else busy).append((n["name"], phrase))
+    if not busy and not idle:
+        return "", False
+    if not busy:
+        return "Right now: nothing dispatched anywhere; every node idle.", False
+    parts = "; ".join(f"{n} {p}" for n, p in busy)
+    tail = f"; everything else idle ({', '.join(n for n, _ in idle)})" if idle else ""
+    return f"Right now: {parts}{tail}.", abnormal
+
+
 def describe_body(state: dict) -> tuple[str, bool]:
     """Turn raw hardware state into qualitative words.
 
@@ -307,6 +446,82 @@ def describe_body(state: dict) -> tuple[str, bool]:
     return ", ".join(fragments) if fragments else "", abnormal
 
 
+# The exact state that went into the most recent prompt. The display layer reads
+# THIS rather than calling get_body_state() again — a second call happens at a
+# different moment in the turn and can disagree with what she was actually given,
+# and a readout that can diverge from the prompt is worse than no readout. Same
+# principle as exporting worker.estimate_tokens so the prompt-size line and the
+# requested context window cannot contradict each other.
+_LAST_RENDER: dict | None = None
+
+
+def last_body_render() -> dict | None:
+    """The state, bands and abnormal flag from the most recent prompt build.
+
+    Returns None if no body prompt has been built this session.
+    """
+    return _LAST_RENDER
+
+
+def format_body_status(numbers: bool = True, multiline: bool = False) -> str:
+    """Human-facing view of the body state SHE WAS GIVEN.
+
+    Numbers are shown here on purpose. The qualitative bands exist because
+    numeric telemetry in her PROMPT leaked into unrelated answers 4/4; that
+    constraint is about her context, not the operator's terminal, where the
+    figure behind the band is what makes the band checkable.
+    """
+    r = _LAST_RENDER
+    if not r:
+        return "🫀 no body state yet"
+    st = r["state"]
+    warn = "⚠ " if r["abnormal"] else ""
+    temp, vram = st.get("gpu_temp"), st.get("vram_percent")
+    bits = []
+    band = r["description"].split(",")[0].replace("running ", "")
+    bits.append(f"{band} {temp:.0f}°C" if (numbers and temp is not None) else band)
+    if vram is not None:
+        mem = "mem " + (f"{vram:.0f}%" if numbers else "ok")
+        bits.append(mem)
+    online = [n for n in (st.get("nodes") or []) if n.get("online")]
+    quiet = [n for n in (st.get("nodes") or []) if not n.get("online")]
+    bits.append(f"{len(online)} nodes" + (f" (⚠{len(quiet)} quiet)" if quiet else ""))
+
+    active = []
+    for n in online:
+        t, c = n.get("tasks"), n.get("cpu")
+        if t is None and c is None:
+            active.append(f"{n['name']} unknown")
+            continue
+        phrase, _ = _exertion_phrase(int(t or 0), float(c or 0.0))
+        if phrase == "idle":
+            continue
+        detail = ""
+        if numbers:
+            detail = f" {c:.0f}%" if not t else f" {t}t"
+        active.append(f"{n['name']} {phrase}{detail}")
+    bits.append(", ".join(active) + (", rest idle" if active else "all idle"))
+
+    if not multiline:
+        return f"🫀 {warn}" + " | ".join(bits)
+
+    lines = [f"🫀 {warn}Body — the state given to her this turn"]
+    lines.append(f"   thermal   {band}" + (f"  ({temp:.0f}°C)" if numbers and temp is not None else ""))
+    if vram is not None:
+        lines.append(f"   memory    {'pressure' if vram >= 80 else 'ok'}" + (f"  ({vram:.0f}%)" if numbers else ""))
+    lines.append(f"   nodes     {len(online)} present" + (f", {len(quiet)} gone quiet" if quiet else ""))
+    for n in online:
+        t, c = n.get("tasks"), n.get("cpu")
+        if t is None and c is None:
+            lines.append(f"     {n['name']:<9} unknown (unreachable)")
+            continue
+        phrase, _ = _exertion_phrase(int(t or 0), float(c or 0.0))
+        num = f"  (cpu {c:.0f}%, {t} task{'s' if t != 1 else ''})" if numbers else ""
+        lines.append(f"     {n['name']:<9} {phrase}{num}")
+    lines.append(f"   prompt    {r['exertion'] or '(no exertion line)'}")
+    return "\n".join(lines)
+
+
 def build_body_prompt(daemon_url: str | None = None) -> str:
     """Format hardware state as a system prompt section.
 
@@ -334,8 +549,26 @@ def build_body_prompt(daemon_url: str | None = None) -> str:
     roles = _describe_roles([n for n in (state.get("nodes") or []) if n.get("online")])
     roles_block = ("\n" + "\n".join(roles)) if roles else ""
 
+    # What each node is DOING. Roles grounded identity and moved the gap to
+    # activity — she reasoned "rushuna does inference, so rushuna is busy" while
+    # rushuna was idle. Idle is stated explicitly because silence about a node
+    # reads as missing data, which is the thing she fills in.
+    exertion, exertion_abnormal = describe_exertion(state.get("nodes") or [])
+    exertion_block = ("\n  " + exertion) if exertion else ""
+    if exertion_abnormal and not note:
+        note = " Something is off — this is worth mentioning."
+
+    global _LAST_RENDER
+    _LAST_RENDER = {
+        "state": state,
+        "description": description,
+        "abnormal": abnormal or exertion_abnormal,
+        "exertion": exertion,
+        "roles": roles,
+    }
+
     return (
-        f"[Your body: {description}.{note}{roles_block}]\n\n"
+        f"[Your body: {description}.{note}{roles_block}{exertion_block}]\n\n"
         "You are aware of your body — temperature, memory pressure, "
         "which nodes are online and what each one is for. This awareness lives "
         "in the background, like a human's awareness of their own breathing. "

@@ -242,3 +242,169 @@ class TestNodeRoles:
         p = self._prompt(changed)
         assert "specialist" in p
         assert "4090" not in p
+
+
+class TestExertion:
+    """Activity signal. Roles grounded IDENTITY and moved the gap to ACTIVITY:
+    asked which node was busiest she reasoned role->activity ("rushuna does
+    inference, so rushuna is working hard") while rushuna was idle. Measured
+    after this change: correctly-says-idle 0/20 -> 19/20, and 12/12 correct
+    attribution with real load on luvia."""
+
+    def setup_method(self):
+        from mycoswarm import body
+        body._exertion_history.clear()
+
+    def _nodes(self, spec):
+        return [{"name": n, "online": True, "tasks": t, "cpu": c} for n, t, c in spec]
+
+    def test_all_idle_is_stated_explicitly(self):
+        """Silence about a node reads as missing data — which is what she
+        fills in. Idle must be sayable."""
+        from mycoswarm.body import describe_exertion
+        line, abn = describe_exertion(self._nodes([("Miu", 0, 1.0), ("rushuna", 0, 0.5)]))
+        assert "every node idle" in line
+        assert abn is False
+
+    def test_dispatched_work_is_named(self):
+        from mycoswarm.body import describe_exertion
+        line, _ = describe_exertion(self._nodes([("Miu", 0, 1.0), ("boa", 2, 5.0)]))
+        assert "boa working" in line
+        assert "everything else idle" in line and "Miu" in line
+
+    def test_ambient_load_is_not_reported_as_her_work(self):
+        """A node at 60% because apt is running is NOT Monica working."""
+        from mycoswarm.body import describe_exertion
+        line, _ = describe_exertion(self._nodes([("luvia", 0, 60.0)]))
+        assert "busy with something else" in line
+        assert "working" not in line
+
+    def test_no_numbers_in_the_exertion_line(self):
+        from mycoswarm.body import describe_exertion
+        line, _ = describe_exertion(self._nodes([("Miu", 3, 47.5), ("boa", 0, 88.2)]))
+        for banned in ("47", "88", "%", "3 task"):
+            assert banned not in line, banned
+
+    def test_strain_sets_the_abnormal_flag(self):
+        """Sustained strain must reach the same 'something is off' path as
+        thermal and memory pressure."""
+        from mycoswarm.body import describe_exertion
+        _, abn = describe_exertion(self._nodes([("boa", 9, 5.0)]))
+        assert abn is True
+
+    def test_offline_nodes_are_omitted(self):
+        from mycoswarm.body import describe_exertion
+        nodes = self._nodes([("Miu", 0, 1.0)]) + [
+            {"name": "ghost", "online": False, "tasks": 0, "cpu": 0.0}]
+        line, _ = describe_exertion(nodes)
+        assert "ghost" not in line
+
+    def test_task_burst_survives_smoothing(self):
+        """MAX over the window, not mean: a task that starts and finishes
+        between two turns must not vanish."""
+        from mycoswarm.body import describe_exertion
+        describe_exertion(self._nodes([("boa", 4, 2.0)]))   # burst
+        line, _ = describe_exertion(self._nodes([("boa", 0, 2.0)]))  # now quiet
+        assert "idle" not in line.split("everything else")[0]
+        assert "boa" in line
+
+    def test_cpu_is_averaged_not_maxed(self):
+        """CPU is spiky; a single transient must not pin the band high."""
+        from mycoswarm.body import describe_exertion
+        describe_exertion(self._nodes([("boa", 0, 95.0)]))  # one spike
+        for _ in range(4):
+            describe_exertion(self._nodes([("boa", 0, 1.0)]))
+        line, abn = describe_exertion(self._nodes([("boa", 0, 1.0)]))
+        # mean is ~16%, so it reads as mild activity — NOT the heavy band the
+        # spike alone would have produced, and not an abnormal-state alarm
+        assert "under heavy load" not in line
+        assert abn is False
+
+    def test_unreachable_peer_is_not_called_idle(self):
+        """A peer we could not reach has tasks/cpu absent. Reporting it as idle
+        would be the same class of error this change removes."""
+        from mycoswarm.body import _attach_peer_activity
+        peers = [{"name": "boa", "ip": None, "port": None}]
+        _attach_peer_activity(peers, {})
+        assert "tasks" not in peers[0] and "cpu" not in peers[0]
+
+
+class TestBodyDisplay:
+    """Operator-facing readout. The week's method has been comparing what she
+    says against what is true; the ground truth was never on screen."""
+
+    def _build(self, nodes, temp=57.0, vram=16.0):
+        from mycoswarm import body
+        with patch.object(body, "get_body_state",
+                          return_value=_state(temp, vram, nodes)):
+            body.build_body_prompt("http://x")
+
+    NODES = [{"name": "Miu", "online": True, "tier": "executive",
+              "gpu": "RTX 3090", "capabilities": ["gpu_inference"],
+              "tasks": 0, "cpu": 23.0},
+             {"name": "luvia", "online": True, "tier": "light", "gpu": None,
+              "capabilities": ["cpu_inference"], "tasks": 0, "cpu": 75.0}]
+
+    def test_display_cannot_diverge_from_the_prompt(self):
+        """THE requirement. The readout must show the state she was GIVEN, not a
+        fresh sample — a second reading happens at a different moment in the turn
+        and could disagree, which is worse than showing nothing."""
+        from mycoswarm import body
+
+        self._build(self.NODES)
+        snap = body.last_body_render()
+        assert snap is not None
+        # the exertion text in the snapshot is the exact string in the prompt
+        assert "luvia" in snap["exertion"]
+        # now the underlying hardware changes — the display must NOT follow it
+        with patch.object(body, "get_body_state",
+                          return_value=_state(90.0, 99.0, [])):
+            out = body.format_body_status()
+        assert "90" not in out and "99" not in out
+        assert "57" in out
+
+    def test_numbers_are_shown_to_the_operator(self):
+        """Bands exist because numbers in HER prompt leaked 4/4. That constraint
+        is about her context, not the terminal, where the figure is what makes
+        the band checkable."""
+        self._build(self.NODES)
+        from mycoswarm.body import format_body_status
+        out = format_body_status(numbers=True)
+        assert "57°C" in out and "75" in out
+
+    def test_numbers_can_be_suppressed(self):
+        self._build(self.NODES)
+        from mycoswarm.body import format_body_status
+        out = format_body_status(numbers=False)
+        assert "°C" not in out and "%" not in out
+
+    def test_abnormal_is_visually_obvious(self):
+        self._build(self.NODES, temp=91.0, vram=96.0)
+        from mycoswarm.body import format_body_status
+        assert "⚠" in format_body_status()
+
+    def test_healthy_has_no_warning_glyph(self):
+        self._build(self.NODES)
+        from mycoswarm.body import format_body_status
+        assert "⚠" not in format_body_status()
+
+    def test_unreachable_peer_shows_unknown_not_idle(self):
+        nodes = self.NODES + [{"name": "boa", "online": True, "tier": "light",
+                               "gpu": None, "capabilities": [],
+                               "tasks": None, "cpu": None}]
+        self._build(nodes)
+        from mycoswarm.body import format_body_status
+        out = format_body_status()
+        assert "boa unknown" in out
+
+    def test_no_state_yet_is_handled(self):
+        from mycoswarm import body
+        body._LAST_RENDER = None
+        assert "no body state yet" in body.format_body_status()
+
+    def test_multiline_lists_every_node(self):
+        self._build(self.NODES)
+        from mycoswarm.body import format_body_status
+        out = format_body_status(multiline=True)
+        assert "Miu" in out and "luvia" in out
+        assert "prompt" in out          # shows the exact line she received

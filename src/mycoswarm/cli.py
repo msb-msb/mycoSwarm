@@ -1720,9 +1720,9 @@ def cmd_chat(args):
         print(f"   resumed: history from {resumed_from} (last ran on {resumed_model})")
         print(f"   running: {model} ({_how_label})")
     if daemon_up:
-        print("   /model /peers /rag /library /auto /write /drafts /remember /memories /stale /forget /identity /name /vitals /timing /access /clear /quit")
+        print("   /model /peers /rag /library /auto /write /drafts /remember /memories /stale /forget /identity /name /vitals /body /timing /access /clear /quit")
     else:
-        print("   /model /rag /library /auto /write /drafts /remember /memories /stale /forget /identity /name /vitals /timing /access /clear /quit")
+        print("   /model /rag /library /auto /write /drafts /remember /memories /stale /forget /identity /name /vitals /body /timing /access /clear /quit")
     print(f"{'─' * 50}")
 
     auto_tools = True  # agentic tool routing on by default
@@ -2096,6 +2096,17 @@ def cmd_chat(args):
                     print(f"   {_last_vitals.detailed_display(_vname)}")
                 else:
                     print("   No vitals yet — ask me something first.")
+                continue
+
+            elif cmd == "/body":
+                # Shows the state SHE WAS GIVEN this turn, not a fresh reading —
+                # the point is checking her words against her input, so a second
+                # sample taken now could disagree with what she actually saw.
+                from mycoswarm.body import format_body_status, last_body_render
+                if last_body_render() is None:
+                    print("   No body state yet — ask me something first.")
+                else:
+                    print(format_body_status(numbers=True, multiline=True))
                 continue
 
             elif cmd == "/timing":
@@ -3207,6 +3218,9 @@ def cmd_chat(args):
             for _a in _alerts:
                 print(f"  💭 {_a}")
             print(f"  {_vitals.status_bar()}")
+            if debug:
+                from mycoswarm.body import format_body_status
+                print(f"  {format_body_status(numbers=True)}")
             _last_vitals = _vitals
             _asst_msg["vitals"] = _vitals.to_dict()
             if _last_vitals and _last_vitals.overall() < 0.3:
