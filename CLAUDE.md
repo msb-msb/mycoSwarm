@@ -74,6 +74,7 @@ from eBay and a borrowed gaming PC should be a working swarm.
 - Pull models there as raw GGUFs (3.2 TB free, one directory per model, README with source repo, quant, exact bytes, sha256, licence).
 - Import into Ollama **only if the model will actually be routed** — a binding, a fallback, the gate, or the pipeline. Benchmarking with llama.cpp needs no import.
 - **An Ollama build is often NOT the same file as the library GGUF.** Measured: Ollama's `gemma3:4b` is 849 MB larger than bartowski's and is the multimodal (`vision`) build. For benchmarks, reproducing a measurement, or node deployment, **the library copy is canonical** — it has a recorded sha256 and a named source.
+- **`ollama rm` does not reclaim blobs for Modelfile-imported models** — only for pulled ones. Measured 2026-08-09: removing two imported tags left 33.82 GiB of orphaned blobs on disk. After removing any imported tag, compare `du -sh /usr/share/ollama/.ollama/models` against the `ollama list` total; if they diverge, find blobs unreferenced by any manifest and delete them by hand (root, they are `ollama`-owned).
 - Full policy, the current working set, and the exact tags of everything pruned (for unambiguous recovery): `LLM_repo/README.md`.
 
 ## Updating PLAN.md
