@@ -1298,10 +1298,12 @@ Worth a dedicated audit pass rather than fixing them as they surface.
 
 ## Next
 
-### Phase 45: Two open prompt-compliance bugs
+### Phase 45: Open grounding and context-precedence bugs
 
-Both deliberately NOT fixed — the mechanism is not understood and a fix on a
-wrong theory is worse than leaving them documented.
+All deliberately NOT fixed — in each case the mechanism is not understood well
+enough, and a fix built on a wrong theory is worse than a documented bug. Note
+they are no longer all "prompt-compliance": the last one is about which part of
+the context WINS, which is a different problem from an instruction being ignored.
 
 - [ ] **Vitals narration.** She wrote "My internal signals are… stable.
       Calm: 0.6, Clarity: 0.7" with procedure #21 ("do not report vitals
@@ -1346,6 +1348,76 @@ wrong theory is worse than leaving them documented.
       option, noted but NOT built: store coinage date/author as fact *metadata*
       (already have `added` timestamps) and surface it only when the question is
       about origin. Costs nothing on ordinary turns.
+
+- [ ] **Within-session history outranks fresh body data** (2026-08-09).
+
+      The exertion work measured 12/12 correct attribution, but every scripted
+      run started clean. A live session found what those tests structurally
+      could not see.
+
+      Identical load both times — 4 `yes` processes on naru, load average 3.85.
+
+      **Contaminated session (3 prior turns).** Body prompt said:
+      `Right now: naru ticking over; everything else idle (Miu, luvia, mai, boa,
+      rushuna, uncho).` She answered:
+
+      > "Miu is processing our conversation — she's handling the core thought
+      > work, so she's most active right now. Rushuna is supporting that with
+      > inference."
+
+      naru not mentioned at all; rushuna called active while the body line said
+      idle. The cause is in the message history — turns 4, 6 and 8 each carried
+      her own earlier claims, made BEFORE the load started, when everything
+      genuinely was idle and she confabulated:
+
+          turn 4: "Rushuna is assisting with inference."
+          turn 6: "She's currently active, assisting Miu."
+          turn 8: "Rushuna is supporting that with inference."
+
+      Turn 10 was a near-verbatim repeat of turn 8.
+
+      **Fresh session (0 prior turns), same load:**
+
+      > "Miu is handling most of the processing... The others — luvia, mai, boa,
+      > uncho, naru — are mostly idle except for naru, which is occupied with
+      > something I don't immediately recognize."
+
+      Correct, and correctly framed as ambient rather than her dispatched work —
+      the tasks-vs-CPU distinction landing in her own words.
+
+      **So: grounding beats invention, but conversation history beats
+      grounding.** Once she has asserted something it persists in the message
+      history and outranks fresh body data on every subsequent turn.
+
+      **Why this is a DISTINCT bug.** The poison-loop machinery from Phase 21g
+      (`_detect_poison_loops`, contradiction detection, grounding gates) guards
+      SESSION SUMMARIES entering retrieval. None of it touches within-session
+      message history, which is passed through verbatim. A false claim made in
+      turn 4 is indistinguishable from a true one by turn 10.
+
+      It also only became VISIBLE because the grounding fixes worked. While she
+      was fabricating fresh every turn there was nothing stable enough to
+      recognise as contamination.
+
+      **Residual, same family:** role→activity inference survives even in a
+      clean session, just weaker — "rushuna is doing some inference work" when
+      the body line read `rushuna idle (cpu 2%)`. First sentence correct, second
+      invented. Activity data reduces reasoning from role to behaviour without
+      eliminating it.
+
+      **Untested hypothesis, NOT implemented — record as the next experiment.**
+      The body block sits in the SYSTEM prompt; her prior claims sit in recent
+      message history, much closer to the question. Same positional logic as the
+      datetime fix, which only began working once the authoritative value moved
+      out of the long system prompt and adjacent to the user's message. Worth
+      testing whether injecting current body state next to the user's turn beats
+      her own history. Note the caveat: position made NO difference for the body
+      telemetry leak (FAR 4/4 vs NEAR 4/4), so positional logic has succeeded
+      once and failed once — this is a hypothesis, not an expectation.
+
+      **The display earned itself here.** Both errors were visible on screen the
+      moment they happened, by reading her words against the `/body` line
+      directly above them. That is the argument for having built it.
 
 ### Phase 42: Subnet drop-in + rolling restart
 
