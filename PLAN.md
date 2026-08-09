@@ -1534,6 +1534,56 @@ preferred subnet. Any node reporting peers on `192.168.1.x` has this condition.
 A `systemctl restart mycoswarm` clears it once wired is back (verified: boa
 returned to `lan_ip=192.168.50.12`, 6/6 peers on `.50`).
 
+#### Measured in production during the v0.6.0 fleet upgrade (2026-08-09)
+
+First time the upgrade path has been run with the defect known. It is
+substantially more common than the original reproduction suggested.
+
+**The trigger is a rolling restart, not a missing cable.** Every one of the 12
+initially-wrong records named a peer that restarted *later* than the observer —
+12 of 12, no counterexamples:
+
+| observer (restart order) | peers it recorded on wifi |
+|---|---|
+| rushuna (1) | Miu(7), luvia(5), naru(3), uncho(4) |
+| boa (2) | Miu(7), luvia(5), naru(3) |
+| naru (3) | Miu(7) |
+| uncho (4) | Miu(7) |
+| luvia (5) | Miu(7) |
+| mai (6) | — |
+| Miu (7) | — |
+
+Severity scales with how early a node restarts; the last two to restart were
+untouched. A rolling upgrade manufactures the required condition — a peer
+briefly unreachable on `.50` while the observer is already up — exactly once per
+node, so **this fires on every upgrade**. 5 of 7 nodes, 12 of 42 peer records,
+from one routine upgrade.
+
+**Convergent, but not self-limiting.** Each corrective pass is itself a fresh
+opportunity to break something:
+
+| pass | wrong records | detail |
+|---|---|---|
+| after upgrade | **12 / 42** | rushuna 4, boa 3, naru/uncho/luvia 1 each |
+| after parallel restart of the 5 | **3 / 42** | fixed 9, created 3 — all naming naru, which came up slowest in the batch |
+| after restarting only those 3 | **0 / 42** ✅ | naru held up throughout |
+
+**Operational rule that reached zero: restart only the observers, never the peer
+they are wrong about.** Restarting the peer re-opens the window that caused the
+error. Until the re-probe fix lands, every upgrade needs this iterative
+sweep-and-correct cycle rather than a single restart pass.
+
+**The fleet view is actively misleading here, not merely blind.** Throughout all
+three passes `mycoswarm swarm` from Miu showed all six peers at `.50.x`, and the
+updater printed "All nodes updated successfully" while five nodes routed over
+wifi. It reads *identically* now that the fleet is genuinely clean. It cannot
+distinguish the two states by construction, because the defect lives in what
+each node records about everyone else. Never use it to check for this.
+
+This measurement is the strongest argument for the deferred fix below: without
+it, correctness after an upgrade depends on restart luck plus a manual
+convergence loop.
+
 - [ ] Make it self-healing: have the refresh loop re-run
       `_pick_reachable_address` for any peer whose recorded address sits outside
       `MYCOSWARM_SWARM_SUBNET`. **Deliberately deferred** — wanted, but to land
