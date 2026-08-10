@@ -1,8 +1,8 @@
 {
   "_meta": {
-    "version": "1.1.0",
+    "version": "1.2.0",
     "description": "Canonical GPU, system RAM, and NVMe storage reference for InsiderLLM pipeline. Verified specs are ground truth — models may add to but never contradict these values.",
-    "last_updated": "2026-08-04",
+    "last_updated": "2026-08-10",
     "maintainer": "mark@insiderllm.com",
     "notes": [
       "used_price_usd: manually updated from eBay sold listings",
@@ -18,7 +18,10 @@
       "ebay_sold_url field added for one-click sold-listing access during quarterly updates",
       "2026-07-27: used_price_status normalized to a three-value enum (verified/researched/unverified) and per-card prose moved to used_price_note. rx-7800-xt-16gb re-priced from firsthand eBay sold listings ($400-465-550), superseding the March research figure.",
       "2026-07-27: rtx-4090-24gb re-priced from firsthand eBay sold listings ($2,100-2,250-2,550), superseding the May 2026 research figure of $2,200-2,400-2,600. Fourth verified card.",
-      "2026-08-04: added `storage` — 2TB NVMe price bands from firsthand eBay sold listings, keyed by host interface generation following the system_ram precedent. storage._host_interface_rule is BOARD-CONDITIONAL and carries an explicit quotation_warning; it is false if quoted without the PCIe 3.0 host condition. No consumer reads `storage` — GPU_PROSE_CARDS was deliberately not extended, so the drift checker does not scan storage prices."
+      "2026-08-04: added `storage` — 2TB NVMe price bands from firsthand eBay sold listings, keyed by host interface generation following the system_ram precedent. storage._host_interface_rule is BOARD-CONDITIONAL and carries an explicit quotation_warning; it is false if quoted without the PCIe 3.0 host condition. No consumer reads `storage` — GPU_PROSE_CARDS was deliberately not extended, so the drift checker does not scan storage prices.",
+      "listed_price_* vs used_price_*: TWO DIFFERENT CLASSES OF EVIDENCE, never interchangeable. used_price_usd with used_price_status='verified' is firsthand SOLD data — what buyers actually paid — and is the ground truth the drift checker and the prose rules are built on. listed_price_usd is firsthand ACTIVE-LISTING asks — what sellers want, which no buyer has agreed to. A card carrying listed_price_usd and no used_price_usd has NOT been priced in the sense the rest of this file means. Do not promote a listed band into a sold band, do not average the two, and do not let a listed figure satisfy a rule that asks for a verified price.",
+      "2026-08-10: Intel Arc Pro series added (B70 32GB, B60 24GB, B60 Dual 48GB, B50 16GB) — the first Intel entries and the first cards in this file priced from listed asks rather than sold listings. All four carry used_price_status='unverified' with null used_price_usd, deliberately, so the sold-price machinery treats them as unpriced. Specs are verified: each bandwidth figure was checked by arithmetic against bus width and memory clock (B70 256-bit x 19 Gbps = 608, B60 192-bit x 19 = 456, B50 128-bit x 14 = 224) rather than taken from a spec-sheet summary. Three release dates left null rather than guessed.",
+      "arc-pro-b60-dual-48gb records PER-GPU bandwidth and bus width against a BOARD-TOTAL vram_gb, because it is two 24GB devices on one card. Any consumer of this file that assumes vram_gb is one addressable pool will size models wrong on that entry, and only that entry."
     ]
   },
   "gpus": {
@@ -1354,6 +1357,194 @@
       "ebay_search_query": "RTX 2080 Ti 22GB",
       "benchmarks": {},
       "ebay_sold_url": "https://www.ebay.com/sch/i.html?_nkw=RTX+2080+Ti+22GB+-broken+-parts+-repair+-%22parts+only%22+-%22not+working%22+-%22for+parts%22+-damaged+-faulty+-%22box+only%22+-shroud+-mining&LH_Sold=1&LH_Complete=1&_sop=13&_sacat=27386"
+    },
+    "arc-pro-b70-32gb": {
+      "name": "Intel Arc Pro B70",
+      "vendor": "intel",
+      "architecture": "Xe2-HPG (Battlemage)",
+      "gpu_chip": "BMG-G31",
+      "release_date": "2026-03-25",
+      "status": "current",
+      "msrp_usd": 949,
+      "memory": {
+        "vram_gb": 32,
+        "vram_type": "GDDR6 ECC",
+        "bus_width_bit": 256,
+        "bandwidth_gbs": 608
+      },
+      "compute": {
+        "xe_cores": 32,
+        "xmx_engines": 256,
+        "fp16_tflops": null
+      },
+      "power": {
+        "tdp_watts": 230,
+        "psu_recommended_watts": 650
+      },
+      "ai_notes": "32GB for roughly the price of a used 3090, at 608 GB/s against the 3090's 936 — capacity per dollar is the reason to buy it, bandwidth is the reason not to. Bandwidth confirmed by arithmetic, not just reporting: 256-bit at 19 Gbps = 608 GB/s. llama.cpp reaches this card through the SYCL backend, which is the practical difference against non-CUDA accelerators that have no GGUF path at all. The vLLM path is less settled — StorageReview's March 2026 review calls Intel's vLLM support beta-grade with limited model coverage and quantization paths that should work but do not. Buy on VRAM, expect to troubleshoot.",
+      "used_price_usd": {
+        "low": null,
+        "mid": null,
+        "high": null
+      },
+      "used_price_updated": null,
+      "used_price_source": null,
+      "used_price_status": "unverified",
+      "used_price_note": "No firsthand SOLD-listing data exists for this card. Left null deliberately rather than derived from asking prices. See listed_price_* for active-listing asks, which are what sellers want and not what buyers paid — a weaker class of evidence than every used_price_usd band in this file, and not interchangeable with one.",
+      "listed_price_usd": {
+        "low": 1360,
+        "high": 1440
+      },
+      "listed_price_basis": "active_listings_not_sold",
+      "listed_price_source": "firsthand eBay ACTIVE listings, Graphics/Video Cards category, pulled 2026-08-10 (19 Arc Pro B70 results)",
+      "listed_price_updated": "2026-08-10",
+      "listed_price_note": "US new band. Cheapest US new was $1,361.49 (ASRock), then $1,375.43 and $1,440.50. One US open-box at $1,250 sits below the band and is excluded from it. Non-US and boutique listings ran $1,734-$2,489 and are excluded as implausible against domestic, the same exclusion applied to the RTX 5090 sold data. THESE ARE ASKS. No sale is evidenced at any of these numbers.",
+      "msrp_vs_street_note": "$949 MSRP against a $1,360-1,440 US street band — 1.43x to 1.52x MSRP. See rules.msrp_vs_street; this is the second recorded instance of the gap after the RTX 5090.",
+      "benchmarks": {},
+      "tier": "high",
+      "ebay_search_query": "Intel Arc Pro B70",
+      "ebay_sold_url": "https://www.ebay.com/sch/i.html?_nkw=Intel+Arc+Pro+B70+-broken+-parts+-repair+-%22parts+only%22+-%22not+working%22+-%22for+parts%22+-damaged+-faulty+-%22box+only%22+-shroud+-mining&LH_Sold=1&LH_Complete=1&_sop=13&_sacat=27386"
+    },
+    "arc-pro-b60-24gb": {
+      "name": "Intel Arc Pro B60",
+      "vendor": "intel",
+      "architecture": "Xe2-HPG (Battlemage)",
+      "gpu_chip": "BMG-G21",
+      "release_date": null,
+      "status": "current",
+      "msrp_usd": 599,
+      "memory": {
+        "vram_gb": 24,
+        "vram_type": "GDDR6",
+        "bus_width_bit": 192,
+        "bandwidth_gbs": 456
+      },
+      "compute": {
+        "xe_cores": 20,
+        "xmx_engines": 160,
+        "fp16_tflops": null
+      },
+      "power": {
+        "tdp_watts": 200,
+        "psu_recommended_watts": 600
+      },
+      "ai_notes": "24GB at 456 GB/s (192-bit at 19 Gbps). Matches a 3090 on capacity and gives up roughly half its bandwidth, so it loads what a 3090 loads and decodes slower. Cheapest route to 24GB that is new with a warranty. release_date left null — announced at Computex 2025 and widely reported as shipping September 2025, but no exact date verified firsthand.",
+      "used_price_usd": {
+        "low": null,
+        "mid": null,
+        "high": null
+      },
+      "used_price_updated": null,
+      "used_price_source": null,
+      "used_price_status": "unverified",
+      "used_price_note": "No firsthand SOLD-listing data exists for this card. Left null deliberately rather than derived from asking prices. See listed_price_* for active-listing asks, which are what sellers want and not what buyers paid — a weaker class of evidence than every used_price_usd band in this file, and not interchangeable with one.",
+      "listed_price_usd": {
+        "low": 744,
+        "high": 793
+      },
+      "listed_price_basis": "active_listings_not_sold",
+      "listed_price_source": "firsthand eBay ACTIVE listings, Graphics/Video Cards category, pulled 2026-08-10 (19 Arc Pro B70 results)",
+      "listed_price_updated": "2026-08-10",
+      "listed_price_note": "US new band from two listings: $744.14 (ARKN, free shipping, 21 watchers) and $792.68 (ASRock B60CT24G). A $929 listing shipping from China is excluded as non-US. Two observations is a thin basis for a band — treat as indicative. THESE ARE ASKS, not sales.",
+      "msrp_vs_street_note": "$599 MSRP against $744-793 asks — 1.24x to 1.32x MSRP. Same direction as the B70 and smaller. See rules.msrp_vs_street.",
+      "benchmarks": {},
+      "tier": "high",
+      "ebay_search_query": "Intel Arc Pro B60 -Dual",
+      "ebay_sold_url": "https://www.ebay.com/sch/i.html?_nkw=Intel+Arc+Pro+B60+-Dual+-broken+-parts+-repair+-%22parts+only%22+-%22not+working%22+-%22for+parts%22+-damaged+-faulty+-%22box+only%22+-shroud+-mining&LH_Sold=1&LH_Complete=1&_sop=13&_sacat=27386"
+    },
+    "arc-pro-b60-dual-48gb": {
+      "name": "Intel Arc Pro B60 Dual 48GB",
+      "vendor": "intel",
+      "architecture": "Xe2-HPG (Battlemage)",
+      "gpu_chip": "BMG-G21 x2",
+      "release_date": null,
+      "status": "current",
+      "msrp_usd": 1200,
+      "memory": {
+        "vram_gb": 48,
+        "vram_type": "GDDR6",
+        "bus_width_bit": 192,
+        "bandwidth_gbs": 456
+      },
+      "compute": {
+        "xe_cores": 40,
+        "xmx_engines": 320,
+        "fp16_tflops": null
+      },
+      "power": {
+        "tdp_watts": null,
+        "psu_recommended_watts": null
+      },
+      "ai_notes": "READ THE MEMORY FIELDS CAREFULLY. This is two B60 GPUs on one board, not one 48GB device. vram_gb is the board total; bus_width_bit and bandwidth_gbs are PER GPU, because that is what a model actually sees. A 48GB model does not fit — it must be split across two 24GB devices, with the split traffic crossing PCIe. Anything that treats 48GB as one pool will size models wrong. MSRP is the Maxsun Dual 48G Turbo at $1,200. Power left null; no verified TBP.",
+      "used_price_usd": {
+        "low": null,
+        "mid": null,
+        "high": null
+      },
+      "used_price_updated": null,
+      "used_price_source": null,
+      "used_price_status": "unverified",
+      "used_price_note": "No firsthand SOLD-listing data exists for this card. Left null deliberately rather than derived from asking prices. See listed_price_* for active-listing asks, which are what sellers want and not what buyers paid — a weaker class of evidence than every used_price_usd band in this file, and not interchangeable with one.",
+      "listed_price_usd": {
+        "low": 1925,
+        "high": 1925
+      },
+      "listed_price_basis": "active_listings_not_sold",
+      "listed_price_source": "firsthand eBay ACTIVE listings, Graphics/Video Cards category, pulled 2026-08-10 (19 Arc Pro B70 results)",
+      "listed_price_updated": "2026-08-10",
+      "listed_price_note": "Single US open-box listing at $1,925. A $2,684 new listing shipping from Australia is excluded as non-US. One observation is not a band — low and high are the same number because there is only one number, not because the market is tight. THIS IS AN ASK, not a sale.",
+      "msrp_vs_street_note": "$1,200 MSRP against a single $1,925 open-box ask — 1.60x MSRP, the widest gap of the four, on the thinnest evidence. See rules.msrp_vs_street.",
+      "benchmarks": {},
+      "tier": "flagship",
+      "ebay_search_query": "Intel Arc Pro B60 Dual 48GB",
+      "ebay_sold_url": "https://www.ebay.com/sch/i.html?_nkw=Intel+Arc+Pro+B60+Dual+48GB+-broken+-parts+-repair+-%22parts+only%22+-%22not+working%22+-%22for+parts%22+-damaged+-faulty+-%22box+only%22+-shroud+-mining&LH_Sold=1&LH_Complete=1&_sop=13&_sacat=27386"
+    },
+    "arc-pro-b50-16gb": {
+      "name": "Intel Arc Pro B50",
+      "vendor": "intel",
+      "architecture": "Xe2-HPG (Battlemage)",
+      "gpu_chip": "BMG-G21",
+      "release_date": null,
+      "status": "current",
+      "msrp_usd": 349,
+      "memory": {
+        "vram_gb": 16,
+        "vram_type": "GDDR6",
+        "bus_width_bit": 128,
+        "bandwidth_gbs": 224
+      },
+      "compute": {
+        "xe_cores": 16,
+        "xmx_engines": 128,
+        "fp16_tflops": null
+      },
+      "power": {
+        "tdp_watts": 70,
+        "psu_recommended_watts": 450
+      },
+      "ai_notes": "16GB at 224 GB/s (128-bit at 14 Gbps) on 70W with no external power connector, so it drops into a small-form-factor box that cannot take anything else. Bandwidth is the constraint: 224 GB/s is a quarter of a 3090's, so it holds a 30B at Q3 and decodes it slowly. Announced at $299 at Computex 2025 and launched at $349; msrp_usd carries the launch figure, not the announcement.",
+      "used_price_usd": {
+        "low": null,
+        "mid": null,
+        "high": null
+      },
+      "used_price_updated": null,
+      "used_price_source": null,
+      "used_price_status": "unverified",
+      "used_price_note": "No firsthand SOLD-listing data exists for this card. Left null deliberately rather than derived from asking prices. See listed_price_* for active-listing asks, which are what sellers want and not what buyers paid — a weaker class of evidence than every used_price_usd band in this file, and not interchangeable with one.",
+      "listed_price_usd": {
+        "low": 676,
+        "high": 676
+      },
+      "listed_price_basis": "active_listings_not_sold",
+      "listed_price_source": "firsthand eBay ACTIVE listings, Graphics/Video Cards category, pulled 2026-08-10 (19 Arc Pro B70 results)",
+      "listed_price_updated": "2026-08-10",
+      "listed_price_note": "Single US new listing at $675.98, free shipping. One observation, so low and high are the same number. THIS IS AN ASK, not a sale.",
+      "msrp_vs_street_note": "$349 MSRP against a single $676 ask — 1.94x MSRP, the largest multiple of the four on a single data point. Do not quote this ratio without the sample size. See rules.msrp_vs_street.",
+      "benchmarks": {},
+      "tier": "mid",
+      "ebay_search_query": "Intel Arc Pro B50",
+      "ebay_sold_url": "https://www.ebay.com/sch/i.html?_nkw=Intel+Arc+Pro+B50+-broken+-parts+-repair+-%22parts+only%22+-%22not+working%22+-%22for+parts%22+-damaged+-faulty+-%22box+only%22+-shroud+-mining&LH_Sold=1&LH_Complete=1&_sop=13&_sacat=27386"
     }
   },
   "system_ram": {
@@ -1614,6 +1805,32 @@
     "bandwidth_impact": "For models that fit entirely in VRAM, memory bandwidth is the primary predictor of tok/s. Double the bandwidth ≈ double the tok/s for memory-bound inference.",
     "offload_penalty": "Each layer offloaded to CPU RAM runs at system RAM bandwidth instead of VRAM bandwidth. DDR4-3200 (25.6 GB/s) vs GDDR6X (936 GB/s) = ~37x slower per offloaded layer.",
     "power_budget": "Budget builds often reuse old PSUs. Cards over 250W TDP need PSU upgrade. Factor $40-80 for a used 750W PSU.",
-    "rocm_caveat": "AMD ROCm support is improving but not all models/frameworks work. Always verify ROCm compatibility for your specific use case before buying AMD for AI."
+    "rocm_caveat": "AMD ROCm support is improving but not all models/frameworks work. Always verify ROCm compatibility for your specific use case before buying AMD for AI.",
+    "msrp_vs_street": {
+      "id": "msrp_is_not_the_buy_in_on_constrained_cards",
+      "claim": "MSRP is not what a buyer pays. On supply-constrained or recently launched cards it can sit far below street, and quoting it next to another card's street price compares two different kinds of number.",
+      "mechanism": "MSRP is the vendor's launch figure and never moves. Street is set by the market and moves with supply. Where the two diverge, a comparison built on MSRP understates the buy-in by whatever the gap is.",
+      "instances": [
+        {
+          "card": "rtx-5090-32gb",
+          "msrp_usd": 1999,
+          "street_usd": "3000-4700",
+          "street_basis": "firsthand eBay SOLD listings",
+          "street_verified": "2026-07-31",
+          "gap_vs_msrp": "1.50x-2.35x"
+        },
+        {
+          "card": "arc-pro-b70-32gb",
+          "msrp_usd": 949,
+          "street_usd": "1360-1440",
+          "street_basis": "firsthand eBay ACTIVE listings — asks, not sales",
+          "street_verified": "2026-08-10",
+          "gap_vs_msrp": "1.43x-1.52x"
+        }
+      ],
+      "editorial_rule": "Label every price with what it is. Write 'MSRP' when that is all you have, and never present it as the buy-in. When both are known, lead with street.",
+      "cross_reference": "dated-markers.md 2026-08-14, '5090 MSRP-vs-street editorial sweep'. The B70 is the second recorded instance and it is neither NVIDIA-specific nor scarcity-specific — one is an anecdote, two across different vendors and different causes is the case for a house convention rather than per-card notes. All four Arc Pro cards show the gap in the same direction, which makes it five instances if the thin-evidence three are counted.",
+      "occasion": "Newsletter #17 (2026-08-10) cited the B70 at its $949 MSRP against the Tenstorrent p150a's $1,399 street price, which made Intel read as cheaper when it is the same money. Corrected in commit 2af9478 before the blog page was built."
+    }
   }
 }
