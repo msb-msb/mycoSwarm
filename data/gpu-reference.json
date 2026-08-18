@@ -1,8 +1,8 @@
 {
   "_meta": {
-    "version": "1.2.0",
+    "version": "1.3.0",
     "description": "Canonical GPU, system RAM, and NVMe storage reference for InsiderLLM pipeline. Verified specs are ground truth — models may add to but never contradict these values.",
-    "last_updated": "2026-08-10",
+    "last_updated": "2026-08-18",
     "maintainer": "mark@insiderllm.com",
     "notes": [
       "used_price_usd: manually updated from eBay sold listings",
@@ -21,7 +21,8 @@
       "2026-08-04: added `storage` — 2TB NVMe price bands from firsthand eBay sold listings, keyed by host interface generation following the system_ram precedent. storage._host_interface_rule is BOARD-CONDITIONAL and carries an explicit quotation_warning; it is false if quoted without the PCIe 3.0 host condition. No consumer reads `storage` — GPU_PROSE_CARDS was deliberately not extended, so the drift checker does not scan storage prices.",
       "listed_price_* vs used_price_*: TWO DIFFERENT CLASSES OF EVIDENCE, never interchangeable. used_price_usd with used_price_status='verified' is firsthand SOLD data — what buyers actually paid — and is the ground truth the drift checker and the prose rules are built on. listed_price_usd is firsthand ACTIVE-LISTING asks — what sellers want, which no buyer has agreed to. A card carrying listed_price_usd and no used_price_usd has NOT been priced in the sense the rest of this file means. Do not promote a listed band into a sold band, do not average the two, and do not let a listed figure satisfy a rule that asks for a verified price.",
       "2026-08-10: Intel Arc Pro series added (B70 32GB, B60 24GB, B60 Dual 48GB, B50 16GB) — the first Intel entries and the first cards in this file priced from listed asks rather than sold listings. All four carry used_price_status='unverified' with null used_price_usd, deliberately, so the sold-price machinery treats them as unpriced. Specs are verified: each bandwidth figure was checked by arithmetic against bus width and memory clock (B70 256-bit x 19 Gbps = 608, B60 192-bit x 19 = 456, B50 128-bit x 14 = 224) rather than taken from a spec-sheet summary. Three release dates left null rather than guessed.",
-      "arc-pro-b60-dual-48gb records PER-GPU bandwidth and bus width against a BOARD-TOTAL vram_gb, because it is two 24GB devices on one card. Any consumer of this file that assumes vram_gb is one addressable pool will size models wrong on that entry, and only that entry."
+      "arc-pro-b60-dual-48gb records PER-GPU bandwidth and bus width against a BOARD-TOTAL vram_gb, because it is two 24GB devices on one card. Any consumer of this file that assumes vram_gb is one addressable pool will size models wrong on that entry, and only that entry.",
+      "2026-08-18: rtx-5090-32gb re-priced from firsthand eBay sold listings (n=89 single cards over 2026-08-08..08-18; used band $3,900/$4,220/$4,400 p25/median/p75), superseding the 2026-07-31 figures. MSRP re-verified at $1,999 against NVIDIA's own CES launch release, not a secondary source. Band is stated as an interquartile range and the note says so, because the full min-max included two sub-$2,700 listings that are almost certainly mislistings. rules.msrp_vs_street instance updated to match."
     ]
   },
   "gpus": {
@@ -1269,16 +1270,16 @@
         "tdp_watts": 575,
         "psu_recommended_watts": 1000
       },
-      "ai_notes": "32GB flagship with NVFP4 support, 1792 GB/s bandwidth. Ongoing supply constraints since launch — street prices inflated above $1,999 MSRP.",
+      "ai_notes": "32GB flagship with NVFP4 support, 1792 GB/s bandwidth. Ongoing supply constraints since launch - street sits at roughly 2.1x the $1,999 MSRP (used median $4,220, 2026-08-18) and the card is not sustainably available at MSRP from any major retailer.",
       "used_price_usd": {
-        "low": 3000,
-        "mid": 3800,
-        "high": 4700
+        "low": 3900,
+        "mid": 4220,
+        "high": 4400
       },
-      "used_price_updated": "2026-07-31",
+      "used_price_updated": "2026-08-18",
       "used_price_source": "firsthand eBay sold listings",
       "used_price_status": "verified",
-      "used_price_note": "Working cards only, US sellers, July 2026. Bulk of sales $3,500-4,100. Excluded: parts-only/broken ($55-3,599 — broken FE cards sold at $3,099-3,599), 5-card lots (~$19K), overseas listings at $999-2,399 (implausible against domestic), a repeated $2,250 TUF bait listing, and MSI Lightning Z halo SKUs ($5,500-6,180). Still selling well above the $1,999 MSRP.",
+      "used_price_note": "Pulled 2026-08-18 from eBay SOLD + completed, Buy It Now, US only, _sacat=27386, window 2026-08-08 to 2026-08-18. n=89 single cards: 61 used/open-box/refurb, 28 new/sealed. Band is the USED subset stated as p25 / median / p75 = $3,900 / $4,220 / $4,400, i.e. the interquartile range rather than the full min-max, because two low outliers are not market prices (a $2,600 SUPRIM LIQUID and a $2,150 ROG Astral, both listed Brand New with best offer accepted, read as mislistings or scams). Full used range was $2,868-4,800. New/sealed ran $4,025 / $4,500 / $4,787 (p25/median/p75, range $2,600-8,495); all 89 single cards median $4,250. THE NEW-OVER-USED PREMIUM IS ONLY ~$280, which points at supply constraint rather than a condition premium - on an unconstrained card new sits far above used. Excluded: multi-card lots, parts-only, eGPU units, and one NO CORE listing. Against the verified $1,999 MSRP this is 1.95x-2.20x used (2.11x at the median) and 2.25x at the new median. Supersedes the 2026-07-31 figures ($3,000/$3,800/$4,700); the median moved up and the band tightened considerably. Cross-check on the same date: retail NEW asks sit ABOVE this used median - Amazon $4,598.90 in stock per videocardprices.com, Newegg median ~$4,700 - so the secondary market was the cheaper route, which is the same supply-constraint signal from the other side.",
       "tier": "flagship",
       "ebay_search_query": "RTX 5090",
       "benchmarks": {},
@@ -1814,10 +1815,10 @@
         {
           "card": "rtx-5090-32gb",
           "msrp_usd": 1999,
-          "street_usd": "3000-4700",
-          "street_basis": "firsthand eBay SOLD listings",
-          "street_verified": "2026-07-31",
-          "gap_vs_msrp": "1.50x-2.35x"
+          "street_usd": "3900-4400",
+          "street_basis": "firsthand eBay SOLD listings, used subset p25-p75, n=61",
+          "street_verified": "2026-08-18",
+          "gap_vs_msrp": "1.95x-2.20x"
         },
         {
           "card": "arc-pro-b70-32gb",
