@@ -1,8 +1,8 @@
 {
   "_meta": {
-    "version": "1.3.0",
+    "version": "1.6.0",
     "description": "Canonical GPU, system RAM, and NVMe storage reference for InsiderLLM pipeline. Verified specs are ground truth — models may add to but never contradict these values.",
-    "last_updated": "2026-08-18",
+    "last_updated": "2026-09-02",
     "maintainer": "mark@insiderllm.com",
     "notes": [
       "used_price_usd: manually updated from eBay sold listings",
@@ -22,7 +22,9 @@
       "listed_price_* vs used_price_*: TWO DIFFERENT CLASSES OF EVIDENCE, never interchangeable. used_price_usd with used_price_status='verified' is firsthand SOLD data — what buyers actually paid — and is the ground truth the drift checker and the prose rules are built on. listed_price_usd is firsthand ACTIVE-LISTING asks — what sellers want, which no buyer has agreed to. A card carrying listed_price_usd and no used_price_usd has NOT been priced in the sense the rest of this file means. Do not promote a listed band into a sold band, do not average the two, and do not let a listed figure satisfy a rule that asks for a verified price.",
       "2026-08-10: Intel Arc Pro series added (B70 32GB, B60 24GB, B60 Dual 48GB, B50 16GB) — the first Intel entries and the first cards in this file priced from listed asks rather than sold listings. All four carry used_price_status='unverified' with null used_price_usd, deliberately, so the sold-price machinery treats them as unpriced. Specs are verified: each bandwidth figure was checked by arithmetic against bus width and memory clock (B70 256-bit x 19 Gbps = 608, B60 192-bit x 19 = 456, B50 128-bit x 14 = 224) rather than taken from a spec-sheet summary. Three release dates left null rather than guessed.",
       "arc-pro-b60-dual-48gb records PER-GPU bandwidth and bus width against a BOARD-TOTAL vram_gb, because it is two 24GB devices on one card. Any consumer of this file that assumes vram_gb is one addressable pool will size models wrong on that entry, and only that entry.",
-      "2026-08-18: rtx-5090-32gb re-priced from firsthand eBay sold listings (n=89 single cards over 2026-08-08..08-18; used band $3,900/$4,220/$4,400 p25/median/p75), superseding the 2026-07-31 figures. MSRP re-verified at $1,999 against NVIDIA's own CES launch release, not a secondary source. Band is stated as an interquartile range and the note says so, because the full min-max included two sub-$2,700 listings that are almost certainly mislistings. rules.msrp_vs_street instance updated to match."
+      "2026-08-18: rtx-5090-32gb re-priced from firsthand eBay sold listings (n=89 single cards over 2026-08-08..08-18; used band $3,900/$4,220/$4,400 p25/median/p75), superseding the 2026-07-31 figures. MSRP re-verified at $1,999 against NVIDIA's own CES launch release, not a secondary source. Band is stated as an interquartile range and the note says so, because the full min-max included two sub-$2,700 listings that are almost certainly mislistings. rules.msrp_vs_street instance updated to match.",
+      "2026-08-19: rtx-3090-24gb re-priced from firsthand eBay sold listings (n=68 single cards — 52 used/open-box, 16 eBay Refurbished), superseding the 2026-07-25 band of $1,000/$1,200/$1,400. New band $1,200/$1,300/$1,400. The old $1,000 low was unreachable: nothing sold below $1,099. Banded on the POOLED used-plus-refurbished market rather than the used subset, because the 3090 is EOL and has no new tier — the 5090's used-only convention exists to separate new from used and does not apply here. The pooled IQR was not used directly: the distribution is bimodal and its IQR falls between the two modes. See used_price_note. Fifth verified card. rtx-3090-ti-24gb was NOT touched — it is a different card, still 'researched' from bestvaluegpu.com May 2026, and wants its own pull.",
+      "2026-08-19: added rules.as_purchased_is_history_not_market. As-purchased costs in firsthand narratives are historical facts, not market claims, and the drift check cannot tell them apart from stale prices. The fix is a DATE LABEL, not a skip term — see the rule's do_not field, and note its cross_reference to invariant (v), whose proposed fix would break this convention unless purchase-tense verbs are added to the historical pattern."
     ]
   },
   "gpus": {
@@ -410,13 +412,13 @@
         "tdp_watts": 350,
         "psu_recommended_watts": 750
       },
-      "ai_notes": "24GB at 936 GB/s. Best price-per-VRAM-GB for 24GB, but appreciating through 2026 as local AI demand outruns gaming depreciation. Median used ~$1,200; the 2026 memory shortage pushed the whole band up.",
+      "ai_notes": "24GB at 936 GB/s. Best price-per-VRAM-GB for 24GB, but appreciating through 2026 as local AI demand outruns gaming depreciation. Pooled used/refurbished median ~$1,300 (2026-08-19); nothing sold below $1,099, so there is no sub-$1,100 3090.",
       "used_price_usd": {
-        "low": 1000,
-        "mid": 1200,
+        "low": 1200,
+        "mid": 1300,
         "high": 1400
       },
-      "used_price_updated": "2026-07-25",
+      "used_price_updated": "2026-08-19",
       "used_price_source": "firsthand eBay sold listings",
       "used_price_status": "verified",
       "benchmarks": {
@@ -453,7 +455,8 @@
       },
       "tier": "flagship",
       "ebay_search_query": "RTX 3090 -Ti",
-      "ebay_sold_url": "https://www.ebay.com/sch/i.html?_nkw=RTX+3090+-Ti+-broken+-parts+-repair+-%22parts+only%22+-%22not+working%22+-%22for+parts%22+-damaged+-faulty+-%22box+only%22+-shroud+-mining&LH_Sold=1&LH_Complete=1&_sop=13&_sacat=27386"
+      "ebay_sold_url": "https://www.ebay.com/sch/i.html?_nkw=RTX+3090+-Ti+-broken+-parts+-repair+-%22parts+only%22+-%22not+working%22+-%22for+parts%22+-damaged+-faulty+-%22box+only%22+-shroud+-mining&LH_Sold=1&LH_Complete=1&_sop=13&_sacat=27386",
+      "used_price_note": "Pulled 2026-08-19 from eBay SOLD + completed, Buy It Now, US only, single cards. n=68: 52 used/open-box, 16 eBay Refurbished. Used subset p25/median/p75 = $1,200 / $1,275 / $1,300 (range $1,099-1,420); refurbished $1,399 / $1,400 / $1,494 (range $1,300-1,800); all 68 pooled $1,249 / $1,300 / $1,374 (range $1,099-1,800). BAND IS THE POOLED USED-PLUS-REFURBISHED MARKET, not the used subset alone — unlike the 5090 there is no new tier to separate out. The card is EOL, every unit a buyer can get is secondhand, and eBay Refurbished is a seller grade inside that same market rather than a distinct product, so both grades come back in one search. THE POOLED IQR ITSELF WAS NOT USED as the band: the distribution is bimodal (used mode ~$1,275, refurbished mode ~$1,400) and the pooled IQR of $1,249-$1,374 falls in the valley between them, excluding the entire refurbished mode. Band is therefore used p25 ($1,200) to refurbished median ($1,400) with the pooled median ($1,300) as mid, which covers both modes. The refurbished upper tail ($1,400-1,800) sits ABOVE the band by design — a page quoting $1,500+ should flag and be checked, not auto-accepted. THE $1,000 FLOOR WAS UNREACHABLE: nothing sold below $1,099 across 52 used cards, so the previous low was $100 under the cheapest real sale and roughly $200 under the used p25. Supersedes the 2026-07-25 band ($1,000/$1,200/$1,400). The median moved +8.3% ($1,200 -> $1,300) in 25 days while the high held, so the band tightened and shifted up. Spread is $200 against the 5090's $500 on a comparable IQR — a settled market, not a constrained one. Excluded: 3090 Ti, 4090, 7900 XTX, Quadro/workstation variants, parts-only, multi-card bundles, and one broken-fan card."
     },
     "rtx-4060-8gb": {
       "name": "NVIDIA RTX 4060",
@@ -1007,19 +1010,20 @@
         "tdp_watts": 450,
         "psu_recommended_watts": 1000
       },
-      "ai_notes": "Slightly faster than 3090 (~10-15%) with same 24GB. NVLink removed vs vanilla 3090 — less attractive for dual-card AI setups. Higher power draw (450W vs 350W).",
+      "ai_notes": "Slightly faster than 3090 (~10-15%) with same 24GB. NVLink removed vs vanilla 3090 — less attractive for dual-card AI setups. Higher power draw (450W vs 350W). Used/open-box median $1,400 (2026-09-02), a $100 premium over the vanilla 3090's $1,300 measured in the same pull.",
       "used_price_usd": {
-        "low": 1150,
-        "mid": 1199,
-        "high": 1400
+        "low": 1300,
+        "mid": 1400,
+        "high": 1499
       },
-      "used_price_updated": "2026-05-18",
-      "used_price_source": "bestvaluegpu.com May 2026",
-      "used_price_status": "researched",
+      "used_price_updated": "2026-09-02",
+      "used_price_source": "firsthand eBay sold listings",
+      "used_price_status": "verified",
       "tier": "flagship",
       "ebay_search_query": "RTX 3090 Ti",
       "benchmarks": {},
-      "ebay_sold_url": "https://www.ebay.com/sch/i.html?_nkw=RTX+3090+Ti+-broken+-parts+-repair+-%22parts+only%22+-%22not+working%22+-%22for+parts%22+-damaged+-faulty+-%22box+only%22+-shroud+-mining&LH_Sold=1&LH_Complete=1&_sop=13&_sacat=27386"
+      "ebay_sold_url": "https://www.ebay.com/sch/i.html?_nkw=RTX+3090+Ti+-broken+-parts+-repair+-%22parts+only%22+-%22not+working%22+-%22for+parts%22+-damaged+-faulty+-%22box+only%22+-shroud+-mining&LH_Sold=1&LH_Complete=1&_sop=13&_sacat=27386",
+      "used_price_note": "Pulled 2026-09-02 from eBay SOLD + completed, Buy It Now, US only, single cards, window ~2026-08-23 to 09-02 (pages 1-2 of sold listings). n=46: 41 used/open-box, 5 eBay Refurbished. Used subset p25/median/p75 = $1,300 / $1,400 / $1,499 (range $1,100-1,750); refurbished $1,469 / $1,499 / $1,589 (range $1,449-1,599). FILTERED ON \"Ti\" IN THE TITLE, NOT eBay's CHIPSET FIELD, which is seller-entered and is wrong for this card constantly. Some sellers omit \"Ti\" from the title, so this sample UNDER-counts rather than over-counts — the direction of the error is known and is the safe one. BAND FOLLOWS THE 2026-08-19 VANILLA 3090 METHOD: used p25 as the low, and a high that two independent statistics agree on — used p75 and the refurbished median are BOTH $1,499. That agreement is what carries the high, because n=5 refurbished is far too small for its median to bound anything on its own. Mid is the USED median, not a pooled median: the pooled figure was not computed in this pull, and with refurbished at 11% of the sample it would sit between $1,400 and roughly $1,440 — stated as a range rather than written into the field, because an estimate does not belong in a verified entry. MEDIAN IS STABLE ACROSS SAMPLE SIZE: $1,400 on page 1 alone (n=19) and $1,400 again at n=41. The used upper tail ($1,500-1,750) sits ABOVE the band by design, as on the vanilla card — a page quoting $1,500+ should flag and be checked, not auto-accepted. SUPERSEDES the 2026-05-18 bestvaluegpu.com researched figure ($1,150 / $1,199 / $1,400), which was low by $150 at the floor and by $200 at the mid. That entry was a cited third-party figure; this one is firsthand sold data on the same method as the vanilla 3090. PREMIUM OVER THE VANILLA CARD, measured in the same pull: vanilla n=88, p25/median/p75 = $1,200 / $1,300 / $1,400, so the Ti premium is exactly $100 at the median. Excluded: vanilla 3090s, 4090, parts-only, multi-card bundles."
     },
     "rtx-4070-12gb": {
       "name": "NVIDIA RTX 4070",
@@ -1308,19 +1312,20 @@
         "tdp_watts": 250,
         "psu_recommended_watts": 600
       },
-      "ai_notes": "24GB at $180-250 used was historically the budget AI bargain. But: Pascal arch lost CUDA support in CUDA 13 (Oct 2025). No tensor cores. Vulkan/llama.cpp only now. Skip for new builds.",
+      "ai_notes": "24GB at a measured $230 median bare / $288 with cooling (2026-09-02). The card is PASSIVELY COOLED and gets no airflow in a desktop, so the bare price is not the usable price — budget the cooled figure, ~$58 more at the median. But: Pascal arch lost CUDA support in CUDA 13 (Oct 2025). No tensor cores. Vulkan/llama.cpp only now. Skip for new builds.",
       "used_price_usd": {
-        "low": 190,
-        "mid": 270,
-        "high": 350
+        "low": 220,
+        "mid": 230,
+        "high": 288
       },
-      "used_price_updated": "2026-05-19",
-      "used_price_source": "eBay sold listings May 2026",
-      "used_price_status": "researched",
+      "used_price_updated": "2026-09-02",
+      "used_price_source": "firsthand eBay sold listings",
+      "used_price_status": "verified",
       "tier": "flagship",
       "ebay_search_query": "Tesla P40 -M40",
       "benchmarks": {},
-      "ebay_sold_url": "https://www.ebay.com/sch/i.html?_nkw=Tesla+P40+-M40+-broken+-parts+-repair+-%22parts+only%22+-%22not+working%22+-%22for+parts%22+-damaged+-faulty+-%22box+only%22+-shroud+-mining&LH_Sold=1&LH_Complete=1&_sop=13&_sacat=27386"
+      "ebay_sold_url": "https://www.ebay.com/sch/i.html?_nkw=Tesla+P40+-M40+-broken+-parts+-repair+-%22parts+only%22+-%22not+working%22+-%22for+parts%22+-damaged+-faulty+-%22box+only%22+-shroud+-mining&LH_Sold=1&LH_Complete=1&_sop=13&_sacat=27386",
+      "used_price_note": "Pulled 2026-09-02 from eBay SOLD + completed, Buy It Now, US only, single cards, window 2026-06-09 to 09-02 (single page, three months of sales). n=78, and it is BIMODAL ON COOLING rather than on seller grade: bare card n=60, p25/median/p75 = $220 / $230 / $250 (range $190-360); with fan/shroud/adapter n=18, $250 / $288 / $326 (range $240-349). THE COOLING SPLIT IS A FINDING, NOT NOISE, AND THE TWO FIGURES MUST NOT BE COLLAPSED. The P40 is passively cooled and has no fan of its own, so it gets no airflow in an ordinary desktop; a bare card is not a usable card for our readers. The gap is ~$58 at the median. HOW THE SPLIT IS REPRESENTED HERE: low $220 = bare p25, high $288 = cooled median, so the band SPANS BOTH MODES and a page quoting either a bare or a cooled price is accepted without a false flag. Mid $230 is the BARE median — deliberately not an average of the two modes, which would describe no card that actually exists and would be wrong in both directions at once. Bare is 60 of 78 cards (77%), so it is the honest single figure, and the shortcode renders low-mid-high to readers, which is a second reason not to put a synthetic number in it. Carry BOTH figures wherever this card appears in prose. The cooled upper tail ($289-349) sits above the band by design; so does the bare tail to $360. SUPERSEDES the 2026-05-19 researched figure ($190 / $270 / $350). That mid sat between the two modes — above every bare quartile and below the cooled median — which is exactly the collapse this entry avoids. Excluded: a 5-card lot at $895, a 2-card lot at $325, a $1,299.95 P40/P41 mislisting, a $115 AS-IS non-working card, and a $405 \"Brand New\" outlier."
     },
     "rtx-2080-ti-22gb": {
       "name": "NVIDIA RTX 2080 Ti 22GB (modded)",
@@ -1832,6 +1837,23 @@
       "editorial_rule": "Label every price with what it is. Write 'MSRP' when that is all you have, and never present it as the buy-in. When both are known, lead with street.",
       "cross_reference": "dated-markers.md 2026-08-14, '5090 MSRP-vs-street editorial sweep'. The B70 is the second recorded instance and it is neither NVIDIA-specific nor scarcity-specific — one is an anecdote, two across different vendors and different causes is the case for a house convention rather than per-card notes. All four Arc Pro cards show the gap in the same direction, which makes it five instances if the thin-evidence three are counted.",
       "occasion": "Newsletter #17 (2026-08-10) cited the B70 at its $949 MSRP against the Tenstorrent p150a's $1,399 street price, which made Intel read as cheaper when it is the same money. Corrected in commit 2af9478 before the blog page was built."
+    },
+    "as_purchased_is_history_not_market": {
+      "id": "as_purchased_costs_are_history_not_market",
+      "claim": "A price someone actually paid, in a firsthand narrative, is a fact about a transaction, not a claim about the current market. It never goes stale — it is simply about a different date.",
+      "mechanism": "The drift check compares every money figure near a card name against the current store band. It cannot tell 'this is what the market is' from 'this is what I paid'. Repricing an as-purchased figure falsifies the account, and where several sum to a stated total, repricing one breaks the arithmetic of the piece as well.",
+      "editorial_rule": "Label the date wherever the figure stands without narrative tense to carry it. Past-tense prose ('the card cost $850') already reads as history; a bare figure in a table cell or a quick_answer does not. Label once per block — a table header ('Cost paid (early 2026)') covers every row under it.",
+      "do_not": "Do NOT add a GPU_PRICE_SKIP_ term for this shape. A skip term silences the figure for the checker and leaves the READER with an unlabelled number that looks stale, which is the wrong half of the problem. The label fixes both halves — and a correctly worded label already satisfies GPU_PRICE_SKIP_HISTORICAL on its own merits, because the figure genuinely is historical.",
+      "instances": [
+        {
+          "page": "blog/rescued-hardware-rescued-bees",
+          "figures": "$850 RTX 3090, $85 ThinkCentre M710Q, $35 Raspberry Pi, $970 stated total",
+          "purchased": "early 2026",
+          "labelled": "2026-08-19 — table header 'Cost paid (early 2026)' plus an explicit clause in quick_answer"
+        }
+      ],
+      "cross_reference": "open-threads invariant (v). The fix direction proposed there demotes date-only tokens to corroboration and requires a tense marker to trigger the historical skip. GPU_PRICE_SKIP_HISTORICAL's tense list carries no 'paid', 'bought' or 'cost', so that fix WOULD silently un-protect every as-purchased figure on the site unless purchase-tense verbs are added to it. Decide the two together.",
+      "occasion": "The 2026-08-19 3090 repricing flagged rescued-hardware-rescued-bees:7 alongside three genuine stale prices. The other three were repriced; this one could not be, because $850 is what Mark paid and it is one of three figures summing to the $970 the piece is built around."
     }
   }
 }
