@@ -1,6 +1,6 @@
 {
   "_meta": {
-    "version": "1.8.0",
+    "version": "1.9.0",
     "description": "Canonical GPU, system RAM, and NVMe storage reference for InsiderLLM pipeline. Verified specs are ground truth — models may add to but never contradict these values.",
     "last_updated": "2026-09-25",
     "maintainer": "mark@insiderllm.com",
@@ -25,7 +25,8 @@
       "2026-08-18: rtx-5090-32gb re-priced from firsthand eBay sold listings (n=89 single cards over 2026-08-08..08-18; used band $3,900/$4,220/$4,400 p25/median/p75), superseding the 2026-07-31 figures. MSRP re-verified at $1,999 against NVIDIA's own CES launch release, not a secondary source. Band is stated as an interquartile range and the note says so, because the full min-max included two sub-$2,700 listings that are almost certainly mislistings. rules.msrp_vs_street instance updated to match.",
       "2026-08-19: rtx-3090-24gb re-priced from firsthand eBay sold listings (n=68 single cards — 52 used/open-box, 16 eBay Refurbished), superseding the 2026-07-25 band of $1,000/$1,200/$1,400. New band $1,200/$1,300/$1,400. The old $1,000 low was unreachable: nothing sold below $1,099. Banded on the POOLED used-plus-refurbished market rather than the used subset, because the 3090 is EOL and has no new tier — the 5090's used-only convention exists to separate new from used and does not apply here. The pooled IQR was not used directly: the distribution is bimodal and its IQR falls between the two modes. See used_price_note. Fifth verified card. rtx-3090-ti-24gb was NOT touched — it is a different card, still 'researched' from bestvaluegpu.com May 2026, and wants its own pull.",
       "2026-08-19: added rules.as_purchased_is_history_not_market. As-purchased costs in firsthand narratives are historical facts, not market claims, and the drift check cannot tell them apart from stale prices. The fix is a DATE LABEL, not a skip term — see the rule's do_not field, and note its cross_reference to invariant (v), whose proposed fix would break this convention unless purchase-tense verbs are added to the historical pattern.",
-      "2026-09-25: rtx-3060-12gb re-priced from firsthand eBay sold listings (n=107 single 12 GB cards, sold 2026-09-21 to 09-25, DELIVERED price), superseding the 2026-07-25 band of $200/$300/$400. New band $275/$300/$325: the median is unchanged and the band is the interquartile range, replacing a spread that was 27% too low at the bottom and 23% too high at the top. FIRST ENTRY IN THIS FILE PRICED ON DELIVERED PRICE rather than item price, and the first on a five-day window — both deltas are stated in used_price_note and neither is cosmetic when comparing this card to the 5090/3090/P40 bands. rx-7800-xt-16gb was NOT touched: it is still on its 2026-07-25 figures and wants its own pull."
+      "2026-09-25: rtx-3060-12gb re-priced from firsthand eBay sold listings (n=107 single 12 GB cards, sold 2026-09-21 to 09-25, DELIVERED price), superseding the 2026-07-25 band of $200/$300/$400. New band $275/$300/$325: the median is unchanged and the band is the interquartile range, replacing a spread that was 27% too low at the bottom and 23% too high at the top. FIRST ENTRY IN THIS FILE PRICED ON DELIVERED PRICE rather than item price, and the first on a five-day window — both deltas are stated in used_price_note and neither is cosmetic when comparing this card to the 5090/3090/P40 bands. rx-7800-xt-16gb was NOT touched: it is still on its 2026-07-25 figures and wants its own pull.",
+      "2026-09-25: rx-7800-xt-16gb re-priced from firsthand eBay sold listings (n=93, sold 2026-08-26 to 09-24, DELIVERED price), superseding the 2026-07-25 band of $400/$465/$550. New band $465/$500/$535, the interquartile range. The old mid is the new low: the whole band moved up about 7% at the middle and tightened. Carries a 60-day cross-check (n=185, median $486) — the first entry here to state a second window, because a 30-day band invites the question. Both verified cards outstanding on 2026-09-25 are now current; no verified entry in this file is older than 60 days."
     ]
   },
   "gpus": {
@@ -688,16 +689,16 @@
         "tdp_watts": 263,
         "psu_recommended_watts": 700
       },
-      "ai_notes": "16GB VRAM + 624 GB/s bandwidth makes this AMD's best AI value if ROCm works for you. Competes with RTX 3080 12GB in bandwidth territory.",
+      "ai_notes": "16GB VRAM + 624 GB/s bandwidth makes this AMD's best AI value if ROCm works for you. Competes with RTX 3080 12GB in bandwidth territory. Median $500 delivered as of 2026-09-25, middle half $465-535.",
       "used_price_usd": {
-        "low": 400,
-        "mid": 465,
-        "high": 550
+        "low": 465,
+        "mid": 500,
+        "high": 535
       },
-      "used_price_updated": "2026-07-25",
+      "used_price_updated": "2026-09-25",
       "used_price_source": "firsthand eBay sold listings",
       "used_price_status": "verified",
-      "used_price_note": "Working cards only; thickest band $440-490, premium AIBs and refurbs $500-550. Excluded from the range: parts-only listings ($125-280), bundles, and three scam listings at $44.99. New retail runs $600-700, so the used-vs-new spread is unusually thin - memory-shortage compression is holding new prices down toward used.",
+      "used_price_note": "Pulled 2026-09-25 from eBay SOLD + completed, US, category 27386, condition used, exact-phrase query \"rx 7800 xt\", 240 per page, sorted by recently ended; window 2026-08-26 to 2026-09-24 (the last 30 days). n=93 after excluding \"as is\" sales, a bundle that included a Ryzen CPU, one duplicate listing, and listings with no price. Band is the INTERQUARTILE RANGE stated as p25 / median / p75 = $463 / $498 / $533, rounded to $465 / $500 / $535 — the same convention as the 3060, 5090, 3090, 3090 Ti and P40 entries. Full spread $400-831. STABILITY CROSS-CHECK: the same query over 60 days gives n=185 and a median of $486, within 2.5% of the 30-day median, so this is a settled price rather than a one-month excursion. First entry in this file to carry a second-window check. SUPERSEDES the 2026-07-25 band of $400 / $465 / $550, which was read off the thickest cluster rather than quartiles. The whole band moved up and the old MID ($465) is now the new LOW, so a page quoting $400-465 was describing the bottom quartile as the middle of the market. METHOD DELTAS, the same two the 3060 entry carries: these are DELIVERED prices (item plus shipping) where the 5090 / 3090 / 3090 Ti / P40 pulls recorded item price alone, so this band is NOT strictly comparable to those at the dollar; and the window is 30 days rather than one to three months. The $831 maximum was left in the sample rather than hand-excluded — it sits well above p75 and does not move it, and removing tail outliers by eye is what the quartile convention exists to avoid. The previous note's claim that new retail runs $600-700 was NOT re-checked in this pull and is carried over unverified.",
       "benchmarks": {
         "llama3_8b_q4": {
           "tok_s": 39,
