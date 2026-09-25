@@ -1,8 +1,8 @@
 {
   "_meta": {
-    "version": "1.7.0",
+    "version": "1.8.0",
     "description": "Canonical GPU, system RAM, and NVMe storage reference for InsiderLLM pipeline. Verified specs are ground truth — models may add to but never contradict these values.",
-    "last_updated": "2026-09-02",
+    "last_updated": "2026-09-25",
     "maintainer": "mark@insiderllm.com",
     "notes": [
       "used_price_usd: manually updated from eBay sold listings",
@@ -24,7 +24,8 @@
       "arc-pro-b60-dual-48gb records PER-GPU bandwidth and bus width against a BOARD-TOTAL vram_gb, because it is two 24GB devices on one card. Any consumer of this file that assumes vram_gb is one addressable pool will size models wrong on that entry, and only that entry.",
       "2026-08-18: rtx-5090-32gb re-priced from firsthand eBay sold listings (n=89 single cards over 2026-08-08..08-18; used band $3,900/$4,220/$4,400 p25/median/p75), superseding the 2026-07-31 figures. MSRP re-verified at $1,999 against NVIDIA's own CES launch release, not a secondary source. Band is stated as an interquartile range and the note says so, because the full min-max included two sub-$2,700 listings that are almost certainly mislistings. rules.msrp_vs_street instance updated to match.",
       "2026-08-19: rtx-3090-24gb re-priced from firsthand eBay sold listings (n=68 single cards — 52 used/open-box, 16 eBay Refurbished), superseding the 2026-07-25 band of $1,000/$1,200/$1,400. New band $1,200/$1,300/$1,400. The old $1,000 low was unreachable: nothing sold below $1,099. Banded on the POOLED used-plus-refurbished market rather than the used subset, because the 3090 is EOL and has no new tier — the 5090's used-only convention exists to separate new from used and does not apply here. The pooled IQR was not used directly: the distribution is bimodal and its IQR falls between the two modes. See used_price_note. Fifth verified card. rtx-3090-ti-24gb was NOT touched — it is a different card, still 'researched' from bestvaluegpu.com May 2026, and wants its own pull.",
-      "2026-08-19: added rules.as_purchased_is_history_not_market. As-purchased costs in firsthand narratives are historical facts, not market claims, and the drift check cannot tell them apart from stale prices. The fix is a DATE LABEL, not a skip term — see the rule's do_not field, and note its cross_reference to invariant (v), whose proposed fix would break this convention unless purchase-tense verbs are added to the historical pattern."
+      "2026-08-19: added rules.as_purchased_is_history_not_market. As-purchased costs in firsthand narratives are historical facts, not market claims, and the drift check cannot tell them apart from stale prices. The fix is a DATE LABEL, not a skip term — see the rule's do_not field, and note its cross_reference to invariant (v), whose proposed fix would break this convention unless purchase-tense verbs are added to the historical pattern.",
+      "2026-09-25: rtx-3060-12gb re-priced from firsthand eBay sold listings (n=107 single 12 GB cards, sold 2026-09-21 to 09-25, DELIVERED price), superseding the 2026-07-25 band of $200/$300/$400. New band $275/$300/$325: the median is unchanged and the band is the interquartile range, replacing a spread that was 27% too low at the bottom and 23% too high at the top. FIRST ENTRY IN THIS FILE PRICED ON DELIVERED PRICE rather than item price, and the first on a five-day window — both deltas are stated in used_price_note and neither is cosmetic when comparing this card to the 5090/3090/P40 bands. rx-7800-xt-16gb was NOT touched: it is still on its 2026-07-25 figures and wants its own pull."
     ]
   },
   "gpus": {
@@ -125,13 +126,13 @@
         "tdp_watts": 170,
         "psu_recommended_watts": 550
       },
-      "ai_notes": "The entry-level workhorse. 12GB fits 13B Q4 models. Bandwidth is the bottleneck — half the 3080's speed. Still the cheapest honest 12GB, though the 2026 memory shortage lifted the floor off ~$170.",
+      "ai_notes": "The entry-level workhorse. 12GB fits 13B Q4 models. Bandwidth is the bottleneck — half the 3080's speed. Still the cheapest honest 12GB: median $300 delivered as of 2026-09-25, with the middle half of sales $275-325. Sub-$200 cards still turn up (a $150 sale in that pull) but they are the tail, not the market.",
       "used_price_usd": {
-        "low": 200,
+        "low": 275,
         "mid": 300,
-        "high": 400
+        "high": 325
       },
-      "used_price_updated": "2026-07-25",
+      "used_price_updated": "2026-09-25",
       "used_price_source": "firsthand eBay sold listings",
       "used_price_status": "verified",
       "benchmarks": {
@@ -180,7 +181,8 @@
       },
       "tier": "mid",
       "ebay_search_query": "RTX 3060 12GB -Ti -8GB",
-      "ebay_sold_url": "https://www.ebay.com/sch/i.html?_nkw=RTX+3060+12GB+-Ti+-8GB+-broken+-parts+-repair+-%22parts+only%22+-%22not+working%22+-%22for+parts%22+-damaged+-faulty+-%22box+only%22+-shroud+-mining&LH_Sold=1&LH_Complete=1&_sop=13&_sacat=27386"
+      "ebay_sold_url": "https://www.ebay.com/sch/i.html?_nkw=RTX+3060+12GB+-Ti+-8GB+-broken+-parts+-repair+-%22parts+only%22+-%22not+working%22+-%22for+parts%22+-damaged+-faulty+-%22box+only%22+-shroud+-mining&LH_Sold=1&LH_Complete=1&_sop=13&_sacat=27386",
+      "used_price_note": "Pulled 2026-09-25 from eBay SOLD + completed, US, category 27386, condition Pre-Owned, query \"rtx 3060 12gb\", sorted by recently ended; sales dated 2026-09-21 to 2026-09-25. 120 sold results, 13 excluded (8 GB 3060 variants, RTX 3050s, one 3070 Ti, a two-card lot, and listings with no title), leaving n=107 single 12 GB cards. Band is the INTERQUARTILE RANGE stated as p25 / median / p75 = $275 / $300 / $326, rounded to $275 / $300 / $325 — the same convention as the 5090, 3090, 3090 Ti and P40 entries. Full spread $150-383. SUPERSEDES the 2026-07-25 band of $200 / $300 / $400. The median is unchanged at $300; what moved is the width. The old low sat 27% below p25 and the old high 23% above p75, so a page could quote $200 or $400, pass the drift check, and describe a price almost nobody actually paid — the same over-wide-band failure invariant (o) documents. TWO METHOD DELTAS from the earlier verified pulls, recorded because they are not cosmetic. (1) These are DELIVERED prices, item plus shipping, where the 5090 / 3090 / 3090 Ti / P40 pulls recorded item price alone; on a card this size shipping is typically $0-20, so this band reads slightly high against those and is NOT strictly comparable to them at the dollar. (2) The window is five days rather than the one to three months those pulls used, trading seasonal smoothing for a sharp read of the current market; n=107 inside five days is a denser sample than any earlier pull here. Condition filter was Pre-Owned, so no refurbished or new tier is pooled in, unlike the 3090 entry. The $150 minimum is real and in-window, not excluded — it is the tail, and p25 is the honest floor for prose."
     },
     "rtx-3060-ti-8gb": {
       "name": "NVIDIA RTX 3060 Ti",
