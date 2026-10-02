@@ -1,8 +1,8 @@
 {
   "_meta": {
-    "version": "1.9.0",
+    "version": "1.10.0",
     "description": "Canonical GPU, system RAM, and NVMe storage reference for InsiderLLM pipeline. Verified specs are ground truth — models may add to but never contradict these values.",
-    "last_updated": "2026-09-25",
+    "last_updated": "2026-10-02",
     "maintainer": "mark@insiderllm.com",
     "notes": [
       "used_price_usd: manually updated from eBay sold listings",
@@ -26,7 +26,8 @@
       "2026-08-19: rtx-3090-24gb re-priced from firsthand eBay sold listings (n=68 single cards — 52 used/open-box, 16 eBay Refurbished), superseding the 2026-07-25 band of $1,000/$1,200/$1,400. New band $1,200/$1,300/$1,400. The old $1,000 low was unreachable: nothing sold below $1,099. Banded on the POOLED used-plus-refurbished market rather than the used subset, because the 3090 is EOL and has no new tier — the 5090's used-only convention exists to separate new from used and does not apply here. The pooled IQR was not used directly: the distribution is bimodal and its IQR falls between the two modes. See used_price_note. Fifth verified card. rtx-3090-ti-24gb was NOT touched — it is a different card, still 'researched' from bestvaluegpu.com May 2026, and wants its own pull.",
       "2026-08-19: added rules.as_purchased_is_history_not_market. As-purchased costs in firsthand narratives are historical facts, not market claims, and the drift check cannot tell them apart from stale prices. The fix is a DATE LABEL, not a skip term — see the rule's do_not field, and note its cross_reference to invariant (v), whose proposed fix would break this convention unless purchase-tense verbs are added to the historical pattern.",
       "2026-09-25: rtx-3060-12gb re-priced from firsthand eBay sold listings (n=107 single 12 GB cards, sold 2026-09-21 to 09-25, DELIVERED price), superseding the 2026-07-25 band of $200/$300/$400. New band $275/$300/$325: the median is unchanged and the band is the interquartile range, replacing a spread that was 27% too low at the bottom and 23% too high at the top. FIRST ENTRY IN THIS FILE PRICED ON DELIVERED PRICE rather than item price, and the first on a five-day window — both deltas are stated in used_price_note and neither is cosmetic when comparing this card to the 5090/3090/P40 bands. rx-7800-xt-16gb was NOT touched: it is still on its 2026-07-25 figures and wants its own pull.",
-      "2026-09-25: rx-7800-xt-16gb re-priced from firsthand eBay sold listings (n=93, sold 2026-08-26 to 09-24, DELIVERED price), superseding the 2026-07-25 band of $400/$465/$550. New band $465/$500/$535, the interquartile range. The old mid is the new low: the whole band moved up about 7% at the middle and tightened. Carries a 60-day cross-check (n=185, median $486) — the first entry here to state a second window, because a 30-day band invites the question. Both verified cards outstanding on 2026-09-25 are now current; no verified entry in this file is older than 60 days."
+      "2026-09-25: rx-7800-xt-16gb re-priced from firsthand eBay sold listings (n=93, sold 2026-08-26 to 09-24, DELIVERED price), superseding the 2026-07-25 band of $400/$465/$550. New band $465/$500/$535, the interquartile range. The old mid is the new low: the whole band moved up about 7% at the middle and tightened. Carries a 60-day cross-check (n=185, median $486) — the first entry here to state a second window, because a 30-day band invites the question. Both verified cards outstanding on 2026-09-25 are now current; no verified entry in this file is older than 60 days.",
+      "2026-10-02: four cards re-priced from Mark's firsthand eBay sold pulls (US, sold+completed, used, category 27386, quoted model query, DELIVERED price, IQR rounded to $5 — the 2026-09-25 convention): rtx-3060-ti-8gb $150/$210/$260 -> $235/$250/$270 (n=211); rtx-4060-ti-16gb $380/$430/$480 researched -> $470/$505/$550 VERIFIED, its first firsthand band (n=52; 60-day n=98 median $507); rtx-4070-ti-super-16gb $650/$750/$900 -> $800/$830/$875 (n=72; 60-day n=171 median $803, rising); rtx-4090-24gb $2,100/$2,250/$2,550 -> $2,575/$2,860/$3,010 (n=216; 48 GB modded cards excluded). rtx-4060-ti-8gb was NOT touched: still researched (2026-03-02), and the drift check's \"4060 Ti\" band is the union of the two, so it now runs $240-550."
     ]
   },
   "gpus": {
@@ -208,15 +209,15 @@
         "tdp_watts": 200,
         "psu_recommended_watts": 600
       },
-      "ai_notes": "Faster than the 3060 12GB at gaming and 25% more bandwidth, but 8GB caps it at 7B-class models. The used market now prices it BELOW the 3060 12GB despite the higher tier badge — VRAM, not gaming performance, sets the price. Same $/GB as the 3060 12GB with a third less memory.",
+      "ai_notes": "Faster than the 3060 12GB at gaming and 25% more bandwidth, but 8GB caps it at 7B-class models. The used market still prices it BELOW the 3060 12GB despite the higher tier badge (median $250 against $300, 2026-10-02) — VRAM, not gaming performance, sets the price. Per GB it now costs more: about $31/GB against the 3060 12GB's $25/GB.",
       "used_price_usd": {
-        "low": 150,
-        "mid": 210,
-        "high": 260
+        "low": 235,
+        "mid": 250,
+        "high": 270
       },
-      "used_price_updated": "2026-07-27",
+      "used_price_updated": "2026-10-02",
       "used_price_source": "firsthand eBay sold listings",
-      "used_price_note": "Working cards; bulk of sales $190-230. Excluded: parts-only ($50-132), Canada-based auctions ($163-172, currency), and a $555 Yeston outlier.",
+      "used_price_note": "Pulled by Mark 2026-10-02 from eBay US, SOLD + completed, condition used, category 27386, quoted model query \"rtx 3060 ti\", 240 per page, sorted by recently ended; sales dated 2026-09-15 to 2026-10-02. DELIVERED price (item plus shipping). Excluded: parts, \"as is\", bundles, lots, empty boxes and other models. n=211. Band is the INTERQUARTILE RANGE stated as p25 / median / p75 = $235 / $250 / $270, rounded to $5 = $235 / $250 / $270, the same convention as the 2026-09-25 rtx-3060-12gb and rx-7800-xt-16gb entries. SUPERSEDES the 2026-07-27 band of $150 / $210 / $260 (item price, ~a dozen listings). The median rose $40 and the band tightened from $110 wide to $35.",
       "used_price_status": "verified",
       "benchmarks": {},
       "tier": "entry",
@@ -567,13 +568,13 @@
       },
       "ai_notes": "16GB VRAM is great for model capacity but 128-bit bus caps bandwidth at 288 GB/s. Runs bigger models than 3060 but slower token generation. Trade VRAM for speed vs the 3080 12GB.",
       "used_price_usd": {
-        "low": 380,
-        "mid": 430,
-        "high": 480
+        "low": 470,
+        "mid": 505,
+        "high": 550
       },
-      "used_price_updated": "2026-03-02",
-      "used_price_source": "ebay sold auctions",
-      "used_price_status": "researched",
+      "used_price_updated": "2026-10-02",
+      "used_price_source": "firsthand eBay sold listings",
+      "used_price_status": "verified",
       "benchmarks": {
         "llama3_8b_q4": {
           "tok_s": 48,
@@ -590,7 +591,8 @@
       },
       "tier": "mid",
       "ebay_search_query": "RTX 4060 Ti 16GB -8GB",
-      "ebay_sold_url": "https://www.ebay.com/sch/i.html?_nkw=RTX+4060+Ti+16GB+-8GB+-broken+-parts+-repair+-%22parts+only%22+-%22not+working%22+-%22for+parts%22+-damaged+-faulty+-%22box+only%22+-shroud+-mining&LH_Sold=1&LH_Complete=1&_sop=13&_sacat=27386"
+      "ebay_sold_url": "https://www.ebay.com/sch/i.html?_nkw=RTX+4060+Ti+16GB+-8GB+-broken+-parts+-repair+-%22parts+only%22+-%22not+working%22+-%22for+parts%22+-damaged+-faulty+-%22box+only%22+-shroud+-mining&LH_Sold=1&LH_Complete=1&_sop=13&_sacat=27386",
+      "used_price_note": "Pulled by Mark 2026-10-02 from eBay US, SOLD + completed, condition used, category 27386, quoted model query \"rtx 4060 ti 16gb\", 240 per page, sorted by recently ended; sales dated 2026-09-03 to 2026-10-01. DELIVERED price (item plus shipping). Excluded: parts, \"as is\", bundles, lots, empty boxes and other models, and 8 GB 4060 Tis. n=52. Band is the INTERQUARTILE RANGE stated as p25 / median / p75 = $470 / $504 / $550, rounded to $5 = $470 / $505 / $550, the same convention as the 2026-09-25 rtx-3060-12gb and rx-7800-xt-16gb entries. SUPERSEDES the 2026-03-02 researched band of $380 / $430 / $480, which was never a firsthand pull. 60-day cross-check: n=98, median $507, so the 30-day band is not a short-window artefact. FIRST VERIFIED BAND FOR THIS CARD."
     },
     "rx-7600-8gb": {
       "name": "AMD Radeon RX 7600",
@@ -1090,13 +1092,13 @@
       },
       "ai_notes": "16GB at 672 GB/s makes this a solid AI card for 30B-class models. Better value than 4080 in many cases.",
       "used_price_usd": {
-        "low": 650,
-        "mid": 750,
-        "high": 900
+        "low": 800,
+        "mid": 830,
+        "high": 875
       },
-      "used_price_updated": "2026-07-27",
+      "used_price_updated": "2026-10-02",
       "used_price_source": "firsthand eBay sold listings",
-      "used_price_note": "Working cards; bulk of sales $700-800. Excluded: parts-only ($139-520), China-based new listings ($1,098-1,499), and a STALKER special edition at $1,150.",
+      "used_price_note": "Pulled by Mark 2026-10-02 from eBay US, SOLD + completed, condition used, category 27386, quoted model query \"rtx 4070 ti super\", 240 per page, sorted by recently ended; sales dated 2026-09-02 to 2026-10-01. DELIVERED price (item plus shipping). Excluded: parts, \"as is\", bundles, lots, empty boxes and other models. n=72. Band is the INTERQUARTILE RANGE stated as p25 / median / p75 = $800 / $830 / $875, rounded to $5 = $800 / $830 / $875, the same convention as the 2026-09-25 rtx-3060-12gb and rx-7800-xt-16gb entries. SUPERSEDES the 2026-07-27 band of $650 / $750 / $900 (item price). 60-day cross-check: n=171, median $803 against the 30-day $830, so the price is RISING through the window; expect the next pull to land higher.",
       "used_price_status": "verified",
       "tier": "high",
       "ebay_search_query": "RTX 4070 Ti Super",
@@ -1163,16 +1165,16 @@
         "tdp_watts": 450,
         "psu_recommended_watts": 850
       },
-      "ai_notes": "24GB, 1008 GB/s, FP8 support. Fastest 24GB consumer card. Used market data conflicted as of 2026-05-18 — verify before populating prices.",
+      "ai_notes": "24GB, 1008 GB/s, FP8 support. Fastest 24GB consumer card. Used median $2,860 delivered as of 2026-10-02 (middle half $2,575-3,010), about 1.8x its $1,599 MSRP and 2.2x a used 3090.",
       "used_price_usd": {
-        "low": 2100,
-        "mid": 2250,
-        "high": 2550
+        "low": 2575,
+        "mid": 2860,
+        "high": 3010
       },
-      "used_price_updated": "2026-07-27",
+      "used_price_updated": "2026-10-02",
       "used_price_source": "firsthand eBay sold listings",
       "used_price_status": "verified",
-      "used_price_note": "Working cards only, ~16 clean listings clustering $2,100-2,250. Excluded: parts-only ($98-1,950), a $1,600 waterblock bundle, and a $1,425 parts-only that drew 30 bids.",
+      "used_price_note": "Pulled by Mark 2026-10-02 from eBay US, SOLD + completed, condition used, category 27386, quoted model query \"rtx 4090\", 240 per page, sorted by recently ended; sales dated 2026-09-05 to 2026-10-02. DELIVERED price (item plus shipping). Excluded: parts, \"as is\", bundles, lots, empty boxes and other models, and 48 GB modded 4090s. n=216. Band is the INTERQUARTILE RANGE stated as p25 / median / p75 = $2,575 / $2,859 / $3,010, rounded to $5 = $2,575 / $2,860 / $3,010, the same convention as the 2026-09-25 rtx-3060-12gb and rx-7800-xt-16gb entries. SUPERSEDES the 2026-07-27 band of $2,100 / $2,250 / $2,550 (item price, ~16 clean listings). Up about $450-475 at each edge and $610 at the median in ten weeks; above the 3090 Ti and well above MSRP ($1,599).",
       "tier": "flagship",
       "ebay_search_query": "RTX 4090",
       "benchmarks": {},
