@@ -1,8 +1,8 @@
 {
   "_meta": {
-    "version": "1.10.0",
+    "version": "1.12.0",
     "description": "Canonical GPU, system RAM, and NVMe storage reference for InsiderLLM pipeline. Verified specs are ground truth — models may add to but never contradict these values.",
-    "last_updated": "2026-10-02",
+    "last_updated": "2026-10-15",
     "maintainer": "mark@insiderllm.com",
     "notes": [
       "used_price_usd: manually updated from eBay sold listings",
@@ -27,7 +27,9 @@
       "2026-08-19: added rules.as_purchased_is_history_not_market. As-purchased costs in firsthand narratives are historical facts, not market claims, and the drift check cannot tell them apart from stale prices. The fix is a DATE LABEL, not a skip term — see the rule's do_not field, and note its cross_reference to invariant (v), whose proposed fix would break this convention unless purchase-tense verbs are added to the historical pattern.",
       "2026-09-25: rtx-3060-12gb re-priced from firsthand eBay sold listings (n=107 single 12 GB cards, sold 2026-09-21 to 09-25, DELIVERED price), superseding the 2026-07-25 band of $200/$300/$400. New band $275/$300/$325: the median is unchanged and the band is the interquartile range, replacing a spread that was 27% too low at the bottom and 23% too high at the top. FIRST ENTRY IN THIS FILE PRICED ON DELIVERED PRICE rather than item price, and the first on a five-day window — both deltas are stated in used_price_note and neither is cosmetic when comparing this card to the 5090/3090/P40 bands. rx-7800-xt-16gb was NOT touched: it is still on its 2026-07-25 figures and wants its own pull.",
       "2026-09-25: rx-7800-xt-16gb re-priced from firsthand eBay sold listings (n=93, sold 2026-08-26 to 09-24, DELIVERED price), superseding the 2026-07-25 band of $400/$465/$550. New band $465/$500/$535, the interquartile range. The old mid is the new low: the whole band moved up about 7% at the middle and tightened. Carries a 60-day cross-check (n=185, median $486) — the first entry here to state a second window, because a 30-day band invites the question. Both verified cards outstanding on 2026-09-25 are now current; no verified entry in this file is older than 60 days.",
-      "2026-10-02: four cards re-priced from Mark's firsthand eBay sold pulls (US, sold+completed, used, category 27386, quoted model query, DELIVERED price, IQR rounded to $5 — the 2026-09-25 convention): rtx-3060-ti-8gb $150/$210/$260 -> $235/$250/$270 (n=211); rtx-4060-ti-16gb $380/$430/$480 researched -> $470/$505/$550 VERIFIED, its first firsthand band (n=52; 60-day n=98 median $507); rtx-4070-ti-super-16gb $650/$750/$900 -> $800/$830/$875 (n=72; 60-day n=171 median $803, rising); rtx-4090-24gb $2,100/$2,250/$2,550 -> $2,575/$2,860/$3,010 (n=216; 48 GB modded cards excluded). rtx-4060-ti-8gb was NOT touched: still researched (2026-03-02), and the drift check's \"4060 Ti\" band is the union of the two, so it now runs $240-550."
+      "2026-10-02: four cards re-priced from Mark's firsthand eBay sold pulls (US, sold+completed, used, category 27386, quoted model query, DELIVERED price, IQR rounded to $5 — the 2026-09-25 convention): rtx-3060-ti-8gb $150/$210/$260 -> $235/$250/$270 (n=211); rtx-4060-ti-16gb $380/$430/$480 researched -> $470/$505/$550 VERIFIED, its first firsthand band (n=52; 60-day n=98 median $507); rtx-4070-ti-super-16gb $650/$750/$900 -> $800/$830/$875 (n=72; 60-day n=171 median $803, rising); rtx-4090-24gb $2,100/$2,250/$2,550 -> $2,575/$2,860/$3,010 (n=216; 48 GB modded cards excluded). rtx-4060-ti-8gb was NOT touched: still researched (2026-03-02), and the drift check's \"4060 Ti\" band is the union of the two, so it now runs $240-550.",
+      "2026-10-15: rtx-5090-32gb and rtx-3090-24gb re-priced from Mark's eBay sold pulls (US, sold+completed, used condition, US location, category 27386; band = sold-price quartiles, not rounded). rtx-5090-32gb $3,900/$4,220/$4,400 -> $5,899/$6,000/$6,355 (14d 10-01..10-15, n=119; 30d n=215 $5,555/$5,950/$6,200; 45 of 215 best-offer-accepted at list price, 30d median $5,899 without them). rtx-3090-24gb $1,200/$1,300/$1,400 -> $1,397/$1,499/$1,552 (10-08..10-15, n=161; used only, where 08-19 pooled used+refurbished). Record: InsiderLLM docs/bench-results/gpu-prices-2026-10-15.md. Site mirror re-copied.",
+      "2026-10-15 (second pass): basis stated for the 3090 and 5090 entries, SOLD PRICE EXCLUDING SHIPPING (sources now say 'excl. shipping'; shipping-included quartiles in each used_price_note). This differs from the 2026-09-25 and 10-02 entries, which are DELIVERED price. rtx-4090-24gb re-priced: $2,575/$2,860/$3,010 (delivered, 10-02) -> $2,900/$3,000/$3,100 (excl. shipping, 14d 10-02..10-15, n=81; 30d n=200 $2,800/$2,999/$3,099; shipping-included $2,905/$3,016/$3,123). 4090/3090 median ratio 2.0x."
     ]
   },
   "gpus": {
@@ -416,14 +418,14 @@
         "tdp_watts": 350,
         "psu_recommended_watts": 750
       },
-      "ai_notes": "24GB at 936 GB/s. Best price-per-VRAM-GB for 24GB, but appreciating through 2026 as local AI demand outruns gaming depreciation. Pooled used/refurbished median ~$1,300 (2026-08-19); nothing sold below $1,099, so there is no sub-$1,100 3090.",
+      "ai_notes": "24GB at 936 GB/s. Best price-per-VRAM-GB for 24GB, but appreciating through 2026 as local AI demand outruns gaming depreciation. Used median $1,499 (2026-10-15, n=161), up from a pooled used/refurbished ~$1,300 on 2026-08-19.",
       "used_price_usd": {
-        "low": 1200,
-        "mid": 1300,
-        "high": 1400
+        "low": 1397,
+        "mid": 1499,
+        "high": 1552
       },
-      "used_price_updated": "2026-08-19",
-      "used_price_source": "firsthand eBay sold listings",
+      "used_price_updated": "2026-10-15",
+      "used_price_source": "eBay US sold, used, excl. shipping, n=161",
       "used_price_status": "verified",
       "benchmarks": {
         "llama3_8b_q4": {
@@ -460,7 +462,7 @@
       "tier": "flagship",
       "ebay_search_query": "RTX 3090 -Ti",
       "ebay_sold_url": "https://www.ebay.com/sch/i.html?_nkw=RTX+3090+-Ti+-broken+-parts+-repair+-%22parts+only%22+-%22not+working%22+-%22for+parts%22+-damaged+-faulty+-%22box+only%22+-shroud+-mining&LH_Sold=1&LH_Complete=1&_sop=13&_sacat=27386",
-      "used_price_note": "Pulled 2026-08-19 from eBay SOLD + completed, Buy It Now, US only, single cards. n=68: 52 used/open-box, 16 eBay Refurbished. Used subset p25/median/p75 = $1,200 / $1,275 / $1,300 (range $1,099-1,420); refurbished $1,399 / $1,400 / $1,494 (range $1,300-1,800); all 68 pooled $1,249 / $1,300 / $1,374 (range $1,099-1,800). BAND IS THE POOLED USED-PLUS-REFURBISHED MARKET, not the used subset alone — unlike the 5090 there is no new tier to separate out. The card is EOL, every unit a buyer can get is secondhand, and eBay Refurbished is a seller grade inside that same market rather than a distinct product, so both grades come back in one search. THE POOLED IQR ITSELF WAS NOT USED as the band: the distribution is bimodal (used mode ~$1,275, refurbished mode ~$1,400) and the pooled IQR of $1,249-$1,374 falls in the valley between them, excluding the entire refurbished mode. Band is therefore used p25 ($1,200) to refurbished median ($1,400) with the pooled median ($1,300) as mid, which covers both modes. The refurbished upper tail ($1,400-1,800) sits ABOVE the band by design — a page quoting $1,500+ should flag and be checked, not auto-accepted. THE $1,000 FLOOR WAS UNREACHABLE: nothing sold below $1,099 across 52 used cards, so the previous low was $100 under the cheapest real sale and roughly $200 under the used p25. Supersedes the 2026-07-25 band ($1,000/$1,200/$1,400). The median moved +8.3% ($1,200 -> $1,300) in 25 days while the high held, so the band tightened and shifted up. Spread is $200 against the 5090's $500 on a comparable IQR — a settled market, not a constrained one. Excluded: 3090 Ti, 4090, 7900 XTX, Quadro/workstation variants, parts-only, multi-card bundles, and one broken-fan card."
+      "used_price_note": "Pulled by Mark 2026-10-15 from eBay US, SOLD + completed, condition used (LH_ItemCondition=3000), US location (LH_PrefLoc=1), category 27386, query \"rtx 3090\", sorted by recently ended; sales 2026-10-08..10-15, n=161. Basis: SOLD PRICE EXCLUDING SHIPPING; shipping-included quartiles for reference $1,407 / $1,500 / $1,579 (about 70% of sales charged shipping, median $21). Excluded: Ti, Quadro/other cards, parts, box-only, waterblocks, PCs, adapters, eGPU. Band is the quartiles p25 / median / p75 = $1,397 / $1,499 / $1,552. METHOD CHANGE vs 2026-08-19: that band pooled used and eBay Refurbished (n=68, $1,200 / $1,300 / $1,400); this one is the USED condition filter only, so refurbished units are out. SUPERSEDES the 2026-08-19 band; the median is up $199 (15%). Record: InsiderLLM docs/bench-results/gpu-prices-2026-10-15.md."
     },
     "rtx-4060-8gb": {
       "name": "NVIDIA RTX 4060",
@@ -1165,16 +1167,16 @@
         "tdp_watts": 450,
         "psu_recommended_watts": 850
       },
-      "ai_notes": "24GB, 1008 GB/s, FP8 support. Fastest 24GB consumer card. Used median $2,860 delivered as of 2026-10-02 (middle half $2,575-3,010), about 1.8x its $1,599 MSRP and 2.2x a used 3090.",
+      "ai_notes": "24GB, 1008 GB/s, FP8 support. Fastest 24GB consumer card. Used median $3,000 excluding shipping as of 2026-10-15 (middle half $2,900-3,100), about $1,400 over its $1,599 MSRP and 2.0x a used 3090.",
       "used_price_usd": {
-        "low": 2575,
-        "mid": 2860,
-        "high": 3010
+        "low": 2900,
+        "mid": 3000,
+        "high": 3100
       },
-      "used_price_updated": "2026-10-02",
-      "used_price_source": "firsthand eBay sold listings",
+      "used_price_updated": "2026-10-15",
+      "used_price_source": "eBay US sold, used, excl. shipping, n=81",
       "used_price_status": "verified",
-      "used_price_note": "Pulled by Mark 2026-10-02 from eBay US, SOLD + completed, condition used, category 27386, quoted model query \"rtx 4090\", 240 per page, sorted by recently ended; sales dated 2026-09-05 to 2026-10-02. DELIVERED price (item plus shipping). Excluded: parts, \"as is\", bundles, lots, empty boxes and other models, and 48 GB modded 4090s. n=216. Band is the INTERQUARTILE RANGE stated as p25 / median / p75 = $2,575 / $2,859 / $3,010, rounded to $5 = $2,575 / $2,860 / $3,010, the same convention as the 2026-09-25 rtx-3060-12gb and rx-7800-xt-16gb entries. SUPERSEDES the 2026-07-27 band of $2,100 / $2,250 / $2,550 (item price, ~16 clean listings). Up about $450-475 at each edge and $610 at the median in ten weeks; above the 3090 Ti and well above MSRP ($1,599).",
+      "used_price_note": "Pulled by Mark 2026-10-15 from eBay US, SOLD + completed, condition used, US location, category 27386, query \"rtx 4090\" -3090 -3080 -4080 -5090 -4070, sorted by recently ended. Basis: SOLD PRICE EXCLUDING SHIPPING. Excluded: parts, box-only, coolers/heatsinks, 48 GB modded cards, 4090D, eGPU/XG Mobile/docks, pairs. Band is the 14-day window 2026-10-02..10-15, n=81, quartiles p25 / median / p75 = $2,900 / $3,000 / $3,100. 30-day cross-check 09-15..10-15, n=200: $2,800 / $2,999 / $3,099. Shipping-included 14-day quartiles, for reference: $2,905 / $3,016 / $3,123. Weekly medians from the week of 09-14: $2,879 / $2,950 / $3,000 / $2,999 / $3,025, i.e. flat to slightly rising. 4090/3090 median ratio 3,000 / 1,499 = 2.0x. SUPERSEDES the 2026-10-02 band of $2,575 / $2,860 / $3,010, which was DELIVERED price (item plus shipping) over 09-05..10-02, n=216; the basis differs, and the shipping-included median of $3,016 is the like-for-like comparison (+$156). Record: InsiderLLM docs/bench-results/gpu-prices-2026-10-15.md.",
       "tier": "flagship",
       "ebay_search_query": "RTX 4090",
       "benchmarks": {},
@@ -1279,16 +1281,16 @@
         "tdp_watts": 575,
         "psu_recommended_watts": 1000
       },
-      "ai_notes": "32GB flagship with NVFP4 support, 1792 GB/s bandwidth. Ongoing supply constraints since launch - street sits at roughly 2.1x the $1,999 MSRP (used median $4,220, 2026-08-18) and the card is not sustainably available at MSRP from any major retailer.",
+      "ai_notes": "32GB flagship with NVFP4 support, 1792 GB/s bandwidth. Ongoing supply constraints since launch - used sits at roughly 3x the $1,999 MSRP (used median $6,000, 2026-10-15, up from $4,220 on 2026-08-18) and the card is not sustainably available at MSRP from any major retailer.",
       "used_price_usd": {
-        "low": 3900,
-        "mid": 4220,
-        "high": 4400
+        "low": 5899,
+        "mid": 6000,
+        "high": 6355
       },
-      "used_price_updated": "2026-08-18",
-      "used_price_source": "firsthand eBay sold listings",
+      "used_price_updated": "2026-10-15",
+      "used_price_source": "eBay US sold, used, excl. shipping, n=119",
       "used_price_status": "verified",
-      "used_price_note": "Pulled 2026-08-18 from eBay SOLD + completed, Buy It Now, US only, _sacat=27386, window 2026-08-08 to 2026-08-18. n=89 single cards: 61 used/open-box/refurb, 28 new/sealed. Band is the USED subset stated as p25 / median / p75 = $3,900 / $4,220 / $4,400, i.e. the interquartile range rather than the full min-max, because two low outliers are not market prices (a $2,600 SUPRIM LIQUID and a $2,150 ROG Astral, both listed Brand New with best offer accepted, read as mislistings or scams). Full used range was $2,868-4,800. New/sealed ran $4,025 / $4,500 / $4,787 (p25/median/p75, range $2,600-8,495); all 89 single cards median $4,250. THE NEW-OVER-USED PREMIUM IS ONLY ~$280, which points at supply constraint rather than a condition premium - on an unconstrained card new sits far above used. Excluded: multi-card lots, parts-only, eGPU units, and one NO CORE listing. Against the verified $1,999 MSRP this is 1.95x-2.20x used (2.11x at the median) and 2.25x at the new median. Supersedes the 2026-07-31 figures ($3,000/$3,800/$4,700); the median moved up and the band tightened considerably. Cross-check on the same date: retail NEW asks sit ABOVE this used median - Amazon $4,598.90 in stock per videocardprices.com, Newegg median ~$4,700 - so the secondary market was the cheaper route, which is the same supply-constraint signal from the other side.",
+      "used_price_note": "Pulled by Mark 2026-10-15 from eBay US, SOLD + completed, condition used (LH_ItemCondition=3000), US location (LH_PrefLoc=1), category 27386, query \"rtx 5090\", sorted by recently ended. Basis: SOLD PRICE EXCLUDING SHIPPING; shipping-included 14-day quartiles for reference $5,900 / $6,051 / $6,406 (about 70% of sales charged shipping, median $29). Excluded: Ti, Quadro/other cards, parts, box-only, waterblocks, PCs, adapters, eGPU. Band is the 14-day window 2026-10-01..10-15, n=119, quartiles p25 / median / p75 = $5,899 / $6,000 / $6,355. 30-day cross-check 09-17..10-15, n=215: $5,555 / $5,950 / $6,200. Weekly medians from the week of 09-14: $5,400 / $5,725 / $5,929 / $6,000 / $6,399 (last week partial), i.e. still rising. 45 of the 215 sold as best-offer-accepted, where eBay shows the LIST price, not the accepted price; excluding them the 30-day median is $5,899, so the band leans slightly high. Context, reported not measured: Nvidia has not confirmed the reported production halt (Tom's Hardware 2026-10-10), and Micro Center lists the card as 'Not Carried' (Tom's Hardware 2026-10-15). SUPERSEDES the 2026-08-18 band of $3,900 / $4,220 / $4,400 (used subset, 08-08..08-18, n=61 used of 89); the median is up 42% in two months. Record: InsiderLLM docs/bench-results/gpu-prices-2026-10-15.md.",
       "tier": "flagship",
       "ebay_search_query": "RTX 5090",
       "benchmarks": {},
