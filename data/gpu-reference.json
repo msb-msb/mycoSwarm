@@ -1,8 +1,8 @@
 {
   "_meta": {
-    "version": "1.14.0",
+    "version": "1.15.0",
     "description": "Canonical GPU, system RAM, and NVMe storage reference for InsiderLLM pipeline. Verified specs are ground truth — models may add to but never contradict these values.",
-    "last_updated": "2026-11-16",
+    "last_updated": "2026-11-23",
     "maintainer": "mark@insiderllm.com",
     "notes": [
       "used_price_usd: manually updated from eBay sold listings",
@@ -31,7 +31,8 @@
       "2026-10-15: rtx-5090-32gb and rtx-3090-24gb re-priced from Mark's eBay sold pulls (US, sold+completed, used condition, US location, category 27386; band = sold-price quartiles, not rounded). rtx-5090-32gb $3,900/$4,220/$4,400 -> $5,899/$6,000/$6,355 (14d 10-01..10-15, n=119; 30d n=215 $5,555/$5,950/$6,200; 45 of 215 best-offer-accepted at list price, 30d median $5,899 without them). rtx-3090-24gb $1,200/$1,300/$1,400 -> $1,397/$1,499/$1,552 (10-08..10-15, n=161; used only, where 08-19 pooled used+refurbished). Record: InsiderLLM docs/bench-results/gpu-prices-2026-10-15.md. Site mirror re-copied.",
       "2026-10-15 (second pass): basis stated for the 3090 and 5090 entries, SOLD PRICE EXCLUDING SHIPPING (sources now say 'excl. shipping'; shipping-included quartiles in each used_price_note). This differs from the 2026-09-25 and 10-02 entries, which are DELIVERED price. rtx-4090-24gb re-priced: $2,575/$2,860/$3,010 (delivered, 10-02) -> $2,900/$3,000/$3,100 (excl. shipping, 14d 10-02..10-15, n=81; 30d n=200 $2,800/$2,999/$3,099; shipping-included $2,905/$3,016/$3,123). 4090/3090 median ratio 2.0x.",
       "2026-11-06: rtx-3090-24gb re-priced from Mark's eBay sold pull (US, sold+completed, used, Graphics/Video Cards; sold price EXCLUDING shipping; best-offer sales at list price; band = quartiles ROUNDED TO $5): $1,397/$1,499/$1,552 -> $1,500/$1,580/$1,625 (13d 10-25..11-06, n=226 of 240; 7d 10-31..11-06 n=121 $1,500/$1,599/$1,670). Weekly medians $1,522 then $1,599, still rising. rtx-4090-24gb's ai_notes '2.0x a used 3090' is the 10-15 ratio and is left as dated. Record: InsiderLLM docs/bench-results/gpu-prices-2026-11-06-rtx3090.md.",
-      "2026-11-16: cmp-170hx-8gb added as a tracked card (8 GB SK Hynix HBM2e version; the 10 GB Samsung version is a different card and is excluded). Seeded from Mark's eBay US sold pull, medians only: Sep $2,360 (n=14), Oct $2,709 (n=43), Nov 1-8 $3,118 (n=10), Nov 9-16 $4,000 (n=47). Mid-only, so 'unverified' by the store's rule; specs null pending a TechPowerUp cross-check. New fields on this card only: vram_gb_unlocked, excluded_variants, used_price_history, price_watch (morning-brief.py reads price_watch). Record: InsiderLLM docs/bench-results/gpu-prices-2026-11-16-cmp170hx.md."
+      "2026-11-16: cmp-170hx-8gb added as a tracked card (8 GB SK Hynix HBM2e version; the 10 GB Samsung version is a different card and is excluded). Seeded from Mark's eBay US sold pull, medians only: Sep $2,360 (n=14), Oct $2,709 (n=43), Nov 1-8 $3,118 (n=10), Nov 9-16 $4,000 (n=47). Mid-only, so 'unverified' by the store's rule; specs null pending a TechPowerUp cross-check. New fields on this card only: vram_gb_unlocked, excluded_variants, used_price_history, price_watch (morning-brief.py reads price_watch). Record: InsiderLLM docs/bench-results/gpu-prices-2026-11-16-cmp170hx.md.",
+      "2026-11-23: rtx-3090-ti-24gb and tesla-p40-24gb re-priced from Mark's eBay sold pulls saved 2026-11-23 (US, sold+completed, used, Graphics/Video Cards; sold price EXCLUDING shipping; best-offer sales at list price; band = quartiles, statistics.quantiles method='inclusive', ROUNDED TO $5, the 2026-11-06 method). rtx-3090-ti-24gb $1,300/$1,400/$1,499 (2026-09-02) -> $1,675/$1,725/$1,800 (sales 11-16..11-23, n=16; small sample, bootstrap 95% median $1,675-1,800); it now sells ABOVE the vanilla 3090 band ($1,500/$1,580/$1,625, 11-06), +$145 at the median. tesla-p40-24gb $220/$230/$288 (2026-09-02, bare/cooled split) -> $250/$285/$320 (90-day window 08-25..11-22, n=106, plain quartiles); the cooling split is retired because the bare and cooled medians converged ($277 vs $288 over 90 days). P40 is rising: monthly medians $270 / $287 / $330 (Sep / Oct / Nov 1-22). Record: InsiderLLM docs/bench-results/gpu-prices-2026-11-23-rtx3090ti-p40.md."
     ]
   },
   "gpus": {
@@ -1019,20 +1020,20 @@
         "tdp_watts": 450,
         "psu_recommended_watts": 1000
       },
-      "ai_notes": "Slightly faster than 3090 (~10-15%) with same 24GB. NVLink removed vs vanilla 3090 — less attractive for dual-card AI setups. Higher power draw (450W vs 350W). Used/open-box median $1,400 (2026-09-02), a $100 premium over the vanilla 3090's $1,300 measured in the same pull.",
+      "ai_notes": "Slightly faster than 3090 (~10-15%) with same 24GB. NVLink removed vs vanilla 3090 — less attractive for dual-card AI setups. Higher power draw (450W vs 350W). Used median $1,725 (2026-11-23, n=16, rounded to $5), about $145 above the vanilla 3090's $1,580 (2026-11-06); up from $1,400 on 2026-09-02.",
       "used_price_usd": {
-        "low": 1300,
-        "mid": 1400,
-        "high": 1499
+        "low": 1675,
+        "mid": 1725,
+        "high": 1800
       },
-      "used_price_updated": "2026-09-02",
-      "used_price_source": "firsthand eBay sold listings",
+      "used_price_updated": "2026-11-23",
+      "used_price_source": "eBay US sold, used, excl. shipping, n=16",
       "used_price_status": "verified",
       "tier": "flagship",
       "ebay_search_query": "RTX 3090 Ti",
       "benchmarks": {},
       "ebay_sold_url": "https://www.ebay.com/sch/i.html?_nkw=RTX+3090+Ti+-broken+-parts+-repair+-%22parts+only%22+-%22not+working%22+-%22for+parts%22+-damaged+-faulty+-%22box+only%22+-shroud+-mining&LH_Sold=1&LH_Complete=1&_sop=13&_sacat=27386",
-      "used_price_note": "Pulled 2026-09-02 from eBay SOLD + completed, Buy It Now, US only, single cards, window ~2026-08-23 to 09-02 (pages 1-2 of sold listings). n=46: 41 used/open-box, 5 eBay Refurbished. Used subset p25/median/p75 = $1,300 / $1,400 / $1,499 (range $1,100-1,750); refurbished $1,469 / $1,499 / $1,589 (range $1,449-1,599). FILTERED ON \"Ti\" IN THE TITLE, NOT eBay's CHIPSET FIELD, which is seller-entered and is wrong for this card constantly. Some sellers omit \"Ti\" from the title, so this sample UNDER-counts rather than over-counts — the direction of the error is known and is the safe one. BAND FOLLOWS THE 2026-08-19 VANILLA 3090 METHOD: used p25 as the low, and a high that two independent statistics agree on — used p75 and the refurbished median are BOTH $1,499. That agreement is what carries the high, because n=5 refurbished is far too small for its median to bound anything on its own. Mid is the USED median, not a pooled median: the pooled figure was not computed in this pull, and with refurbished at 11% of the sample it would sit between $1,400 and roughly $1,440 — stated as a range rather than written into the field, because an estimate does not belong in a verified entry. MEDIAN IS STABLE ACROSS SAMPLE SIZE: $1,400 on page 1 alone (n=19) and $1,400 again at n=41. The used upper tail ($1,500-1,750) sits ABOVE the band by design, as on the vanilla card — a page quoting $1,500+ should flag and be checked, not auto-accepted. SUPERSEDES the 2026-05-18 bestvaluegpu.com researched figure ($1,150 / $1,199 / $1,400), which was low by $150 at the floor and by $200 at the mid. That entry was a cited third-party figure; this one is firsthand sold data on the same method as the vanilla 3090. PREMIUM OVER THE VANILLA CARD, measured in the same pull: vanilla n=88, p25/median/p75 = $1,200 / $1,300 / $1,400, so the Ti premium is exactly $100 at the median. Excluded: vanilla 3090s, 4090, parts-only, multi-card bundles."
+      "used_price_note": "Pulled by Mark from eBay US, SOLD + completed, condition used, US only, category Graphics/Video Cards, query 'rtx 3090 ti'; page saved 2026-11-23 (file named 11-22). 240 listings of '2,500+ results', but the query returns mostly vanilla 3090s, 4090s and others: only 17 carry '3090 Ti' (or '3090TI') in the TITLE, which is the filter (eBay's seller-entered model field says plain 'RTX 3090' on 13 of the 17, so it is not used). Window: the page's complete-coverage run, 2026-11-15..11-23 (the 11-06 rule); 1 Ti sale dated 11-12 is outside it ($1,999), leaving n=16, sales 11-16..11-23. No lots, parts or non-working Ti listings were present. Kept: a card with a waterblock fitted ($1,599.99), a 'READ DESCRIPTION' card ($1,675), and a 'Triple Fan Heatsink GPU' title at $1,700 (the whole card at that price). Basis: SOLD PRICE EXCLUDING SHIPPING; shipping-included quartiles $1,692 / $1,747 / $1,800. 1 best-offer-accepted sale kept at list ($1,900); without it $1,675 / $1,700 / $1,775. Band = quartiles p25 / median / p75 (inclusive), ROUNDED TO $5 (unrounded $1,675 / $1,725 / $1,799.99; the exclusive rule gives the same). SMALL SAMPLE: bootstrap 95% interval for the median $1,675-1,800. SUPERSEDES the 2026-09-02 band of $1,300 / $1,400 / $1,499 (n=41 used, Buy It Now only, ~08-23..09-02); median up $325 (23%). That pull measured the vanilla 3090 at $1,300 the same day, a +$100 Ti premium; today's Ti median is +$145 over the 3090's 11-06 band. The same 11-23 page's vanilla-3090 sales (11-15..11-23, n=193, title-filtered only, NOT screened to the 11-06 method) have median $1,649, so the 3090 itself has likely moved since 11-06; not applied. Record: InsiderLLM docs/bench-results/gpu-prices-2026-11-23-rtx3090ti-p40.md."
     },
     "rtx-4070-12gb": {
       "name": "NVIDIA RTX 4070",
@@ -1321,20 +1322,20 @@
         "tdp_watts": 250,
         "psu_recommended_watts": 600
       },
-      "ai_notes": "24GB at a measured $230 median bare / $288 with cooling (2026-09-02). The card is PASSIVELY COOLED and gets no airflow in a desktop, so the bare price is not the usable price — budget the cooled figure, ~$58 more at the median. But: Pascal arch lost CUDA support in CUDA 13 (Oct 2025). No tensor cores. Vulkan/llama.cpp only now. Skip for new builds.",
+      "ai_notes": "24GB at a measured $285 median (2026-11-23, n=106, 90 days; November alone $330 and rising). The card is PASSIVELY COOLED and gets no airflow in a desktop, so budget a fan or shroud on top unless the listing includes one; the price gap between bare and cooled listings has closed (90-day medians $277 vs $288). But: Pascal arch lost CUDA support in CUDA 13 (Oct 2025). No tensor cores. Vulkan/llama.cpp only now. Skip for new builds.",
       "used_price_usd": {
-        "low": 220,
-        "mid": 230,
-        "high": 288
+        "low": 250,
+        "mid": 285,
+        "high": 320
       },
-      "used_price_updated": "2026-09-02",
-      "used_price_source": "firsthand eBay sold listings",
+      "used_price_updated": "2026-11-23",
+      "used_price_source": "eBay US sold, used, excl. shipping, n=106",
       "used_price_status": "verified",
       "tier": "flagship",
       "ebay_search_query": "Tesla P40 -M40",
       "benchmarks": {},
       "ebay_sold_url": "https://www.ebay.com/sch/i.html?_nkw=Tesla+P40+-M40+-broken+-parts+-repair+-%22parts+only%22+-%22not+working%22+-%22for+parts%22+-damaged+-faulty+-%22box+only%22+-shroud+-mining&LH_Sold=1&LH_Complete=1&_sop=13&_sacat=27386",
-      "used_price_note": "Pulled 2026-09-02 from eBay SOLD + completed, Buy It Now, US only, single cards, window 2026-06-09 to 09-02 (single page, three months of sales). n=78, and it is BIMODAL ON COOLING rather than on seller grade: bare card n=60 pulled, p25/median/p75 = $220 / $230 / $250 (in-window range $199-360; two Feb 2026 stragglers at $190 and $195 excluded — they predate the Jun 9 window, were the sample minima, and do not cross a quartile in the $225-250 cluster); with fan/shroud/adapter n=18, $250 / $288 / $326 (range $240-349). THE COOLING SPLIT IS A FINDING, NOT NOISE, AND THE TWO FIGURES MUST NOT BE COLLAPSED. The P40 is passively cooled and has no fan of its own, so it gets no airflow in an ordinary desktop; a bare card is not a usable card for our readers. The gap is ~$58 at the median. HOW THE SPLIT IS REPRESENTED HERE: low $220 = bare p25, high $288 = cooled median, so the band SPANS BOTH MODES and a page quoting either a bare or a cooled price is accepted without a false flag. Mid $230 is the BARE median — deliberately not an average of the two modes, which would describe no card that actually exists and would be wrong in both directions at once. Bare is 60 of 78 cards (77%), so it is the honest single figure, and the shortcode renders low-mid-high to readers, which is a second reason not to put a synthetic number in it. Carry BOTH figures wherever this card appears in prose. The cooled upper tail ($289-349) sits above the band by design; so does the bare tail to $360. SUPERSEDES the 2026-05-19 researched figure ($190 / $270 / $350). That mid sat between the two modes — above every bare quartile and below the cooled median — which is exactly the collapse this entry avoids. Excluded: a 5-card lot at $895, a 2-card lot at $325, a $1,299.95 P40/P41 mislisting, a $115 AS-IS non-working card, and a $405 \"Brand New\" outlier."
+      "used_price_note": "Pulled by Mark from eBay US, SOLD + completed, condition used, US only, category Graphics/Video Cards, query 'tesla p40 -m40'; page saved 2026-11-23 (file named 11-22). 111 listings, the complete result set ('111 results'), all P40 by title (no M40/P4/P100 titles; 13 P40 titles carry a seller-entered model of 'Tesla P4' and one 'RTX 2080 Ti', kept, title rules). Window: eBay's 90-day sold history, 2026-08-25..11-22, which the single page covers completely (P40s sell ~1/day); 2 April stragglers excluded. Also excluded: 2 multi-card lots (2 cards at $500; a cooled pair at $649) and 1 Tesla P41 (part 699-1G610, $299; a different board). n=106. Cards sold with a fan, shroud or cable kept (12): they are complete cards, not accessory-only listings, of which there were none. Basis: SOLD PRICE EXCLUDING SHIPPING; shipping-included quartiles $264 / $294 / $330. 21 best-offer-accepted sales kept at list; without them $250 / $280 / $320. Band = plain quartiles p25 / median / p75 (inclusive), ROUNDED TO $5, half up (unrounded $252.25 / $282.50 / $320). TREND: monthly medians $270 (08-25..09-30, n=42), $287 (October, n=35), $330 (11-01..11-22, n=29); last 30 days 10-24..11-22 n=36 $285 / $330 / $350. The 90-day band is the complete-coverage window by the 11-06 rule and matches the 09-02 pull's ~3-month window; it trails the current price, so a page quoting $330-350 for a P40 today is current, not wrong. COOLING SPLIT RETIRED: the 09-02 entry carried low = bare p25, mid = bare median, high = cooled median because bare ($230) and cooled ($288) medians differed by $58. Now bare n=94 $250 / $277 / $320 and cooled n=12 $275 / $288 / $330 (last 30 days $329 vs $330), so one plain band. SUPERSEDES the 2026-09-02 band of $220 / $230 / $288. Record: InsiderLLM docs/bench-results/gpu-prices-2026-11-23-rtx3090ti-p40.md."
     },
     "rtx-2080-ti-22gb": {
       "name": "NVIDIA RTX 2080 Ti 22GB (modded)",
