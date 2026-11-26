@@ -1,6 +1,6 @@
 {
   "_meta": {
-    "version": "1.17.0",
+    "version": "1.17.1",
     "description": "Canonical GPU, system RAM, and NVMe storage reference for InsiderLLM pipeline. Verified specs are ground truth — models may add to but never contradict these values.",
     "last_updated": "2026-11-25",
     "maintainer": "mark@insiderllm.com",
@@ -34,7 +34,8 @@
       "2026-11-16: cmp-170hx-8gb added as a tracked card (8 GB SK Hynix HBM2e version; the 10 GB Samsung version is a different card and is excluded). Seeded from Mark's eBay US sold pull, medians only: Sep $2,360 (n=14), Oct $2,709 (n=43), Nov 1-8 $3,118 (n=10), Nov 9-16 $4,000 (n=47). Mid-only, so 'unverified' by the store's rule; specs null pending a TechPowerUp cross-check. New fields on this card only: vram_gb_unlocked, excluded_variants, used_price_history, price_watch (morning-brief.py reads price_watch). Record: InsiderLLM docs/bench-results/gpu-prices-2026-11-16-cmp170hx.md.",
       "2026-11-23: rtx-3090-ti-24gb and tesla-p40-24gb re-priced from Mark's eBay sold pulls saved 2026-11-23 (US, sold+completed, used, Graphics/Video Cards; sold price EXCLUDING shipping; best-offer sales at list price; band = quartiles, statistics.quantiles method='inclusive', ROUNDED TO $5, the 2026-11-06 method). rtx-3090-ti-24gb $1,300/$1,400/$1,499 (2026-09-02) -> $1,675/$1,725/$1,800 (sales 11-16..11-23, n=16; small sample, bootstrap 95% median $1,675-1,800); it now sells ABOVE the vanilla 3090 band ($1,500/$1,580/$1,625, 11-06), +$145 at the median. tesla-p40-24gb $220/$230/$288 (2026-09-02, bare/cooled split) -> $250/$285/$320 (90-day window 08-25..11-22, n=106, plain quartiles); the cooling split is retired because the bare and cooled medians converged ($277 vs $288 over 90 days). P40 is rising: monthly medians $270 / $287 / $330 (Sep / Oct / Nov 1-22). Record: InsiderLLM docs/bench-results/gpu-prices-2026-11-23-rtx3090ti-p40.md.",
       "2026-11-23 (second pull): rtx-3090-24gb re-priced from Mark's eBay sold pull saved 2026-11-23 (query 'rtx 3090 -ti', US, sold+completed, used, Graphics/Video Cards; sold price EXCLUDING shipping; best-offer sales at list price; quartiles method='inclusive', ROUNDED TO $5, the 2026-11-06 method). $1,500/$1,580/$1,625 (2026-11-06, n=226) -> $1,500/$1,650/$1,725 (sales 11-13..11-23, n=225; bootstrap 95% median $1,600-1,650). Matches the unscreened same-week side check on the 3090 Ti page (193 sales, median $1,649). The 3090 Ti premium at the median is now ~$75 (was ~$145). Record: docs/bench-results/gpu-prices-2026-11-23-rtx3090.md.",
-      "2026-11-25: tesla-v100-16gb added (PCIe only; SXM2 modules and adapter conversions are a separate market and excluded). Seeded from Mark's eBay sold pull saved 2026-11-24 (US, sold+completed, used, Graphics/Video Cards, 16 GB + PCI facets; sold price EXCLUDING shipping; best-offer sales at list price; quartiles method='inclusive', ROUNDED TO $5): $250/$300/$335 (sales 2026-08-26..11-24, n=42, eBay's 90-day history). Rising: last 30 days $310/$340/$375 (n=19). Record: docs/bench-results/gpu-prices-2026-11-24-teslav100.md."
+      "2026-11-25: tesla-v100-16gb added (PCIe only; SXM2 modules and adapter conversions are a separate market and excluded). Seeded from Mark's eBay sold pull saved 2026-11-24 (US, sold+completed, used, Graphics/Video Cards, 16 GB + PCI facets; sold price EXCLUDING shipping; best-offer sales at list price; quartiles method='inclusive', ROUNDED TO $5): $250/$300/$335 (sales 2026-08-26..11-24, n=42, eBay's 90-day history). Rising: last 30 days $310/$340/$375 (n=19). Record: docs/bench-results/gpu-prices-2026-11-24-teslav100.md.",
+      "2026-11-25: rtx-5060-ti specs filled and status 'upcoming' -> 'current' (it launched 2025-04-16; the entry was written pre-launch). GB206 (was GB205), 128-bit, 448 GB/s, 4,608 CUDA / 144 Tensor cores, 180 W, MSRP $429 (16GB). Sources: techpowerup.com/gpu-specs/geforce-rtx-5060-ti-16-gb.c4246, nvidia.com RTX 5060 family page, Tom's Hardware launch report. fp16_tflops and psu_recommended_watts left null (not cross-checked). used_price_usd NOT touched: still the 2026-05-19 researched band; no firsthand sold pull exists, and none is inferred. Pull requested: ebay-rtx5060ti-16gb-sold-2026-11-26.txt. rtx-5060 still says 'upcoming' too (same pre-launch entry); not changed here."
     ]
   },
   "gpus": {
@@ -854,26 +855,26 @@
       "name": "NVIDIA RTX 5060 Ti",
       "vendor": "nvidia",
       "architecture": "Blackwell",
-      "gpu_chip": "GB205",
-      "release_date": null,
-      "status": "upcoming",
-      "msrp_usd": null,
+      "gpu_chip": "GB206",
+      "release_date": "2025-04-16",
+      "status": "current",
+      "msrp_usd": 429,
       "memory": {
         "vram_gb": 16,
         "vram_type": "GDDR7",
-        "bus_width_bit": null,
-        "bandwidth_gbs": null
+        "bus_width_bit": 128,
+        "bandwidth_gbs": 448
       },
       "compute": {
-        "cuda_cores": null,
-        "tensor_cores": null,
+        "cuda_cores": 4608,
+        "tensor_cores": 144,
         "fp16_tflops": null
       },
       "power": {
-        "tdp_watts": null,
+        "tdp_watts": 180,
         "psu_recommended_watts": null
       },
-      "ai_notes": "PRELIMINARY — specs not confirmed. 16GB GDDR7 rumored. If bandwidth improves over 4060 Ti 16GB, could be a solid mid-range AI card.",
+      "ai_notes": "16GB GDDR7 on a 128-bit bus, 448 GB/s: about 1.6x the 4060 Ti 16GB's 288 GB/s at the same capacity. Launched 2025-04-16 at $429 (16GB); the 8GB version ($379) is a different card. Specs from TechPowerUp, NVIDIA and Tom's Hardware, 2026-11-25. used_price_usd is still the May 2026 researched band; no firsthand sold pull exists yet.",
       "used_price_usd": {
         "low": 475,
         "mid": 600,
