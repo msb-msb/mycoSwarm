@@ -1,8 +1,8 @@
 {
   "_meta": {
-    "version": "1.17.1",
+    "version": "1.18.0",
     "description": "Canonical GPU, system RAM, and NVMe storage reference for InsiderLLM pipeline. Verified specs are ground truth — models may add to but never contradict these values.",
-    "last_updated": "2026-11-25",
+    "last_updated": "2026-11-26",
     "maintainer": "mark@insiderllm.com",
     "notes": [
       "used_price_usd: manually updated from eBay sold listings",
@@ -35,7 +35,8 @@
       "2026-11-23: rtx-3090-ti-24gb and tesla-p40-24gb re-priced from Mark's eBay sold pulls saved 2026-11-23 (US, sold+completed, used, Graphics/Video Cards; sold price EXCLUDING shipping; best-offer sales at list price; band = quartiles, statistics.quantiles method='inclusive', ROUNDED TO $5, the 2026-11-06 method). rtx-3090-ti-24gb $1,300/$1,400/$1,499 (2026-09-02) -> $1,675/$1,725/$1,800 (sales 11-16..11-23, n=16; small sample, bootstrap 95% median $1,675-1,800); it now sells ABOVE the vanilla 3090 band ($1,500/$1,580/$1,625, 11-06), +$145 at the median. tesla-p40-24gb $220/$230/$288 (2026-09-02, bare/cooled split) -> $250/$285/$320 (90-day window 08-25..11-22, n=106, plain quartiles); the cooling split is retired because the bare and cooled medians converged ($277 vs $288 over 90 days). P40 is rising: monthly medians $270 / $287 / $330 (Sep / Oct / Nov 1-22). Record: InsiderLLM docs/bench-results/gpu-prices-2026-11-23-rtx3090ti-p40.md.",
       "2026-11-23 (second pull): rtx-3090-24gb re-priced from Mark's eBay sold pull saved 2026-11-23 (query 'rtx 3090 -ti', US, sold+completed, used, Graphics/Video Cards; sold price EXCLUDING shipping; best-offer sales at list price; quartiles method='inclusive', ROUNDED TO $5, the 2026-11-06 method). $1,500/$1,580/$1,625 (2026-11-06, n=226) -> $1,500/$1,650/$1,725 (sales 11-13..11-23, n=225; bootstrap 95% median $1,600-1,650). Matches the unscreened same-week side check on the 3090 Ti page (193 sales, median $1,649). The 3090 Ti premium at the median is now ~$75 (was ~$145). Record: docs/bench-results/gpu-prices-2026-11-23-rtx3090.md.",
       "2026-11-25: tesla-v100-16gb added (PCIe only; SXM2 modules and adapter conversions are a separate market and excluded). Seeded from Mark's eBay sold pull saved 2026-11-24 (US, sold+completed, used, Graphics/Video Cards, 16 GB + PCI facets; sold price EXCLUDING shipping; best-offer sales at list price; quartiles method='inclusive', ROUNDED TO $5): $250/$300/$335 (sales 2026-08-26..11-24, n=42, eBay's 90-day history). Rising: last 30 days $310/$340/$375 (n=19). Record: docs/bench-results/gpu-prices-2026-11-24-teslav100.md.",
-      "2026-11-25: rtx-5060-ti specs filled and status 'upcoming' -> 'current' (it launched 2025-04-16; the entry was written pre-launch). GB206 (was GB205), 128-bit, 448 GB/s, 4,608 CUDA / 144 Tensor cores, 180 W, MSRP $429 (16GB). Sources: techpowerup.com/gpu-specs/geforce-rtx-5060-ti-16-gb.c4246, nvidia.com RTX 5060 family page, Tom's Hardware launch report. fp16_tflops and psu_recommended_watts left null (not cross-checked). used_price_usd NOT touched: still the 2026-05-19 researched band; no firsthand sold pull exists, and none is inferred. Pull requested: ebay-rtx5060ti-16gb-sold-2026-11-26.txt. rtx-5060 still says 'upcoming' too (same pre-launch entry); not changed here."
+      "2026-11-25: rtx-5060-ti specs filled and status 'upcoming' -> 'current' (it launched 2025-04-16; the entry was written pre-launch). GB206 (was GB205), 128-bit, 448 GB/s, 4,608 CUDA / 144 Tensor cores, 180 W, MSRP $429 (16GB). Sources: techpowerup.com/gpu-specs/geforce-rtx-5060-ti-16-gb.c4246, nvidia.com RTX 5060 family page, Tom's Hardware launch report. fp16_tflops and psu_recommended_watts left null (not cross-checked). used_price_usd NOT touched: still the 2026-05-19 researched band; no firsthand sold pull exists, and none is inferred. Pull requested: ebay-rtx5060ti-16gb-sold-2026-11-26.txt. rtx-5060 still says 'upcoming' too (same pre-launch entry); not changed here.",
+      "2026-11-26: radeon-ai-pro-r9700-32gb and tesla-p100-16gb (PCIe) added; rtx-5090-32gb, rtx-3060-12gb, rx-7800-xt-16gb and rtx-5060-ti re-priced, all from Mark's eBay US sold pulls saved 2026-11-26 (sold+completed, US only, Graphics/Video Cards; title filter; sold price EXCLUDING shipping; best-offer sales at the price shown; quartiles method='inclusive', ROUNDED TO $5). Complete pages (R9700, P100) use eBay's 90-day history; capped 240-listing pages use the run of days they cover continuously. R9700 used $1,765/$2,000/$2,135 (n=26; new n=13 $1,750/$2,200/$2,300). P100 $100/$140/$195 (n=52; last 30 days $145/$180/$200, rising fast). 5090 $5,899/$6,000/$6,355 -> $5,660/$6,000/$6,200 (n=111, 11-06..11-25). 3060 $275/$300/$325 -> $310/$330/$350 (n=209, 11-17..11-26). RX 7800 XT $465/$500/$535 -> $485/$525/$560 (n=218, 09-06..11-25; last 30 days $520/$575/$600). 5060 Ti $475/$600/$720 (researched) -> $650/$700/$740 (n=181, 10-05..11-25; verified, no new sales on the page). Record: docs/bench-results/gpu-prices-2026-11-26.md."
     ]
   },
   "gpus": {
@@ -136,14 +137,14 @@
         "tdp_watts": 170,
         "psu_recommended_watts": 550
       },
-      "ai_notes": "The entry-level workhorse. 12GB fits 13B Q4 models. Bandwidth is the bottleneck — half the 3080's speed. Still the cheapest honest 12GB: median $300 delivered as of 2026-09-25, with the middle half of sales $275-325. Sub-$200 cards still turn up (a $150 sale in that pull) but they are the tail, not the market.",
+      "ai_notes": "The entry-level workhorse. 12GB fits 13B Q4 models. Bandwidth is the bottleneck — half the 3080's speed. Still the cheapest honest 12GB: used median $330 on 2026-11-26 (middle half $310-350, n=209), up from $300 on 2026-09-25. Sub-$250 cards are the tail, not the market.",
       "used_price_usd": {
-        "low": 275,
-        "mid": 300,
-        "high": 325
+        "low": 310,
+        "mid": 330,
+        "high": 350
       },
-      "used_price_updated": "2026-09-25",
-      "used_price_source": "firsthand eBay sold listings",
+      "used_price_updated": "2026-11-26",
+      "used_price_source": "eBay US sold, used, excl. shipping, n=209",
       "used_price_status": "verified",
       "benchmarks": {
         "llama3_8b_q4": {
@@ -192,7 +193,7 @@
       "tier": "mid",
       "ebay_search_query": "RTX 3060 12GB -Ti -8GB",
       "ebay_sold_url": "https://www.ebay.com/sch/i.html?_nkw=RTX+3060+12GB+-Ti+-8GB+-broken+-parts+-repair+-%22parts+only%22+-%22not+working%22+-%22for+parts%22+-damaged+-faulty+-%22box+only%22+-shroud+-mining&LH_Sold=1&LH_Complete=1&_sop=13&_sacat=27386",
-      "used_price_note": "Pulled 2026-09-25 from eBay SOLD + completed, US, category 27386, condition Pre-Owned, query \"rtx 3060 12gb\", sorted by recently ended; sales dated 2026-09-21 to 2026-09-25. 120 sold results, 13 excluded (8 GB 3060 variants, RTX 3050s, one 3070 Ti, a two-card lot, and listings with no title), leaving n=107 single 12 GB cards. Band is the INTERQUARTILE RANGE stated as p25 / median / p75 = $275 / $300 / $326, rounded to $275 / $300 / $325 — the same convention as the 5090, 3090, 3090 Ti and P40 entries. Full spread $150-383. SUPERSEDES the 2026-07-25 band of $200 / $300 / $400. The median is unchanged at $300; what moved is the width. The old low sat 27% below p25 and the old high 23% above p75, so a page could quote $200 or $400, pass the drift check, and describe a price almost nobody actually paid — the same over-wide-band failure invariant (o) documents. TWO METHOD DELTAS from the earlier verified pulls, recorded because they are not cosmetic. (1) These are DELIVERED prices, item plus shipping, where the 5090 / 3090 / 3090 Ti / P40 pulls recorded item price alone; on a card this size shipping is typically $0-20, so this band reads slightly high against those and is NOT strictly comparable to them at the dollar. (2) The window is five days rather than the one to three months those pulls used, trading seasonal smoothing for a sharp read of the current market; n=107 inside five days is a denser sample than any earlier pull here. Condition filter was Pre-Owned, so no refurbished or new tier is pooled in, unlike the 3090 entry. The $150 minimum is real and in-window, not excluded — it is the tail, and p25 is the honest floor for prose."
+      "used_price_note": "Pulled by Mark 2026-11-26, query 'RTX 3060 12GB -Ti -laptop -8GB' (2,400+ results; the page holds 240). eBay US, SOLD + completed, US only, Graphics/Video Cards; card filter by title (parts, accessories, boxes, systems/laptops, eGPU boxes, lots and wrong variants excluded); SOLD PRICE EXCLUDING SHIPPING; best-offer-accepted sales at the price shown; band = quartiles p25/median/p75, inclusive, ROUNDED TO $5. Window 2026-11-17..11-26 (10 days, the run the page covers continuously; 5 earlier stragglers excluded). Used = Pre-Owned, n=209: $310/$330/$350 (range $89.79-500). Shipping-included $320/$340/$360. Without the 19 best-offer-accepted sales n=190, same band. Excluded: 17 parts, 8 systems, 1 box only. OEM cards (Dell, HP, Lenovo 'from Legion') kept. SUPERSEDES the 2026-09-25 band $275/$300/$325. Record: InsiderLLM docs/bench-results/gpu-prices-2026-11-26.md (parser gpu-prices-2026-11-26.py, full kept/excluded log gpu-prices-2026-11-26-parse.txt)."
     },
     "rtx-3060-ti-8gb": {
       "name": "NVIDIA RTX 3060 Ti",
@@ -699,16 +700,16 @@
         "tdp_watts": 263,
         "psu_recommended_watts": 700
       },
-      "ai_notes": "16GB VRAM + 624 GB/s bandwidth makes this AMD's best AI value if ROCm works for you. Competes with RTX 3080 12GB in bandwidth territory. Median $500 delivered as of 2026-09-25, middle half $465-535.",
+      "ai_notes": "16GB VRAM + 624 GB/s bandwidth makes this AMD's best AI value if ROCm works for you. Competes with RTX 3080 12GB in bandwidth territory. Used median $525 over 2026-09-06..11-25 (middle half $485-560, n=218) and rising: last 30 days $520-600, median $575.",
       "used_price_usd": {
-        "low": 465,
-        "mid": 500,
-        "high": 535
+        "low": 485,
+        "mid": 525,
+        "high": 560
       },
-      "used_price_updated": "2026-09-25",
-      "used_price_source": "firsthand eBay sold listings",
+      "used_price_updated": "2026-11-26",
+      "used_price_source": "eBay US sold, used, excl. shipping, n=218",
       "used_price_status": "verified",
-      "used_price_note": "Pulled 2026-09-25 from eBay SOLD + completed, US, category 27386, condition used, exact-phrase query \"rx 7800 xt\", 240 per page, sorted by recently ended; window 2026-08-26 to 2026-09-24 (the last 30 days). n=93 after excluding \"as is\" sales, a bundle that included a Ryzen CPU, one duplicate listing, and listings with no price. Band is the INTERQUARTILE RANGE stated as p25 / median / p75 = $463 / $498 / $533, rounded to $465 / $500 / $535 — the same convention as the 3060, 5090, 3090, 3090 Ti and P40 entries. Full spread $400-831. STABILITY CROSS-CHECK: the same query over 60 days gives n=185 and a median of $486, within 2.5% of the 30-day median, so this is a settled price rather than a one-month excursion. First entry in this file to carry a second-window check. SUPERSEDES the 2026-07-25 band of $400 / $465 / $550, which was read off the thickest cluster rather than quartiles. The whole band moved up and the old MID ($465) is now the new LOW, so a page quoting $400-465 was describing the bottom quartile as the middle of the market. METHOD DELTAS, the same two the 3060 entry carries: these are DELIVERED prices (item plus shipping) where the 5090 / 3090 / 3090 Ti / P40 pulls recorded item price alone, so this band is NOT strictly comparable to those at the dollar; and the window is 30 days rather than one to three months. The $831 maximum was left in the sample rather than hand-excluded — it sits well above p75 and does not move it, and removing tail outliers by eye is what the quartile convention exists to avoid. The previous note's claim that new retail runs $600-700 was NOT re-checked in this pull and is carried over unverified.",
+      "used_price_note": "Pulled by Mark 2026-11-26, query 'RX 7800 XT 16GB -7800X3D' (272 results; the page holds 240). eBay US, SOLD + completed, US only, Graphics/Video Cards; card filter by title (parts, accessories, boxes, systems/laptops, eGPU boxes, lots and wrong variants excluded); SOLD PRICE EXCLUDING SHIPPING; best-offer-accepted sales at the price shown; band = quartiles p25/median/p75, inclusive, ROUNDED TO $5. Window 2026-09-06..11-25 (81 days, the run the page covers continuously; 1 earlier straggler excluded). Used = Pre-Owned, n=218: $485/$525/$560 (unrounded $485.00/$525.00/$558.74; range $389.99-799.99). Last 30 days n=82 $520/$575/$600. Shipping-included $495/$530/$575. Without the 32 best-offer-accepted sales n=186, same band. TREND: monthly medians $500 (Sep), $520 (Oct), $585 (Nov): the window band trails today's price. Excluded: 17 parts (one by title, 'ARTIFACTS'), 4 systems. SUPERSEDES the 2026-09-25 band $465/$500/$535. Record: InsiderLLM docs/bench-results/gpu-prices-2026-11-26.md (parser gpu-prices-2026-11-26.py, full kept/excluded log gpu-prices-2026-11-26-parse.txt).",
       "benchmarks": {
         "llama3_8b_q4": {
           "tok_s": 39,
@@ -874,19 +875,20 @@
         "tdp_watts": 180,
         "psu_recommended_watts": null
       },
-      "ai_notes": "16GB GDDR7 on a 128-bit bus, 448 GB/s: about 1.6x the 4060 Ti 16GB's 288 GB/s at the same capacity. Launched 2025-04-16 at $429 (16GB); the 8GB version ($379) is a different card. Specs from TechPowerUp, NVIDIA and Tom's Hardware, 2026-11-25. used_price_usd is still the May 2026 researched band; no firsthand sold pull exists yet.",
+      "ai_notes": "16GB GDDR7 on a 128-bit bus, 448 GB/s: about 1.6x the 4060 Ti 16GB's 288 GB/s at the same capacity. Launched 2025-04-16 at $429 (16GB); the 8GB version ($379) is a different card. Specs from TechPowerUp, NVIDIA and Tom's Hardware, 2026-11-25. Used median $700 (2026-11-26, n=181, 52 days), well above the $429 launch price; the AORUS AI Box eGPU version is a separate product.",
       "used_price_usd": {
-        "low": 475,
-        "mid": 600,
-        "high": 720
+        "low": 650,
+        "mid": 700,
+        "high": 740
       },
-      "used_price_updated": "2026-05-19",
-      "used_price_source": "eBay sold listings May 2026",
-      "used_price_status": "researched",
+      "used_price_updated": "2026-11-26",
+      "used_price_source": "eBay US sold, used, excl. shipping, n=181",
+      "used_price_status": "verified",
       "benchmarks": {},
       "tier": "mid",
       "ebay_search_query": "RTX 5060 Ti -8GB",
-      "ebay_sold_url": "https://www.ebay.com/sch/i.html?_nkw=RTX+5060+Ti+-8GB+-broken+-parts+-repair+-%22parts+only%22+-%22not+working%22+-%22for+parts%22+-damaged+-faulty+-%22box+only%22+-shroud+-mining&LH_Sold=1&LH_Complete=1&_sop=13&_sacat=27386"
+      "ebay_sold_url": "https://www.ebay.com/sch/i.html?_nkw=RTX+5060+Ti+-8GB+-broken+-parts+-repair+-%22parts+only%22+-%22not+working%22+-%22for+parts%22+-damaged+-faulty+-%22box+only%22+-shroud+-mining&LH_Sold=1&LH_Complete=1&_sop=13&_sacat=27386",
+      "used_price_note": "Pulled by Mark 2026-11-26, query 'RTX 5060 Ti 16GB -8GB -laptop' (433 results; the page holds 240). eBay US, SOLD + completed, US only, Graphics/Video Cards; card filter by title (parts, accessories, boxes, systems/laptops, eGPU boxes, lots and wrong variants excluded); SOLD PRICE EXCLUDING SHIPPING; best-offer-accepted sales at the price shown; band = quartiles p25/median/p75, inclusive, ROUNDED TO $5. Window 2026-10-05..11-25 (52 days, the run the page covers continuously; 3 earlier stragglers excluded). Used = Pre-Owned, n=181: $650/$700/$740 (unrounded $650.00/$699.00/$739.00; range $450-850). Last 30 days n=110 $680/$700/$750. Shipping-included $665/$705/$740. Without the 31 best-offer-accepted sales n=150 $650/$695/$730. Monthly medians $677.50 (Oct), $710 (Nov). NO NEW-CONDITION SALE is on the page (1 factory-refurbished, $749.99), so no new band. Excluded: 31 systems, 10 AORUS AI Box eGPUs, 11 parts, 1 lot, 1 box only, 1 PC. First firsthand pull; SUPERSEDES the 2026-05-19 researched band $475/$600/$720. Record: InsiderLLM docs/bench-results/gpu-prices-2026-11-26.md (parser gpu-prices-2026-11-26.py, full kept/excluded log gpu-prices-2026-11-26-parse.txt)."
     },
     "rtx-5070": {
       "name": "NVIDIA RTX 5070",
@@ -999,6 +1001,44 @@
       "tier": "high",
       "ebay_search_query": "RX 9070 XT",
       "ebay_sold_url": "https://www.ebay.com/sch/i.html?_nkw=RX+9070+XT+-broken+-parts+-repair+-%22parts+only%22+-%22not+working%22+-%22for+parts%22+-damaged+-faulty+-%22box+only%22+-shroud+-mining&LH_Sold=1&LH_Complete=1&_sop=13&_sacat=27386"
+    },
+    "radeon-ai-pro-r9700-32gb": {
+      "name": "AMD Radeon AI PRO R9700",
+      "vendor": "amd",
+      "architecture": "RDNA 4",
+      "gpu_chip": "Navi 48",
+      "release_date": "2025-07-23",
+      "status": "current",
+      "msrp_usd": 1299,
+      "memory": {
+        "vram_gb": 32,
+        "vram_type": "GDDR6",
+        "bus_width_bit": 256,
+        "bandwidth_gbs": 640
+      },
+      "compute": {
+        "stream_processors": 4096,
+        "compute_units": 64,
+        "fp16_tflops": null
+      },
+      "power": {
+        "tdp_watts": 300,
+        "psu_recommended_watts": null
+      },
+      "ai_notes": "32GB in one pool on a 256-bit GDDR6 bus (640 GB/s): the cheapest single-card 32GB from a current product line, but no longer at its $1,299 launch price. Used median $2,000 (2026-11-26, n=26, 90 days) and rising (September $1,712.50, November $2,124.50); new sales $1,750-2,300, median $2,200, every new sale since 2026-10-21 at $2,090+. ROCm and Vulkan on Linux; Radiance (C++/HIP) targets it. Blower cooler, 300 W. Specs (bandwidth, TBP, launch date, MSRP) are from AMD's launch material as reported; re-check before quoting.",
+      "used_price_usd": {
+        "low": 1765,
+        "mid": 2000,
+        "high": 2135
+      },
+      "used_price_updated": "2026-11-26",
+      "used_price_source": "eBay US sold, used, excl. shipping, n=26",
+      "used_price_status": "verified",
+      "tier": "flagship",
+      "ebay_search_query": "R9700 32GB -ryzen -9700x",
+      "benchmarks": {},
+      "ebay_sold_url": "https://www.ebay.com/sch/i.html?_nkw=R9700+32GB+-ryzen+-9700x+-broken+-parts+-repair+-%22parts+only%22+-%22not+working%22+-%22for+parts%22+-damaged+-faulty+-%22box+only%22+-shroud+-mining&LH_Sold=1&LH_Complete=1&_sop=13&_sacat=27386",
+      "used_price_note": "Pulled by Mark 2026-11-26, query 'R9700 32GB -ryzen -9700x', Used + New; the page is the complete result set (47 results; 55 sold blocks). eBay US, SOLD + completed, US only, Graphics/Video Cards; card filter by title (parts, accessories, boxes, systems/laptops, eGPU boxes, lots and wrong variants excluded); SOLD PRICE EXCLUDING SHIPPING; best-offer-accepted sales at the price shown; band = quartiles p25/median/p75, inclusive, ROUNDED TO $5. Used = Pre-Owned, n=26, sales 2026-08-31..11-26 (eBay's 90-day history): $1,765/$2,000/$2,135 (unrounded $1,762.50/$1,999.49/$2,136.75; range $1,400-2,381). Last 30 days n=12 $2,000/$2,125/$2,265. Shipping-included $1,770/$2,005/$2,145. Without the 7 best-offer-accepted sales n=19 $1,715/$1,950/$2,175. NEW (Brand New + New (Other)) n=13: $1,750/$2,200/$2,300 ($1,050-2,500); last 30 days n=6 $2,200/$2,250/$2,335. OPEN BOX n=8: $1,800/$1,925/$2,045 (in neither band). Excluded 8 sales located outside the US. No 'R9700S' title appeared. Record: InsiderLLM docs/bench-results/gpu-prices-2026-11-26.md (parser gpu-prices-2026-11-26.py, full kept/excluded log gpu-prices-2026-11-26-parse.txt)."
     },
     "rtx-3090-ti-24gb": {
       "name": "NVIDIA RTX 3090 Ti",
@@ -1287,16 +1327,16 @@
         "tdp_watts": 575,
         "psu_recommended_watts": 1000
       },
-      "ai_notes": "32GB flagship with NVFP4 support, 1792 GB/s bandwidth. Ongoing supply constraints since launch - used sits at roughly 3x the $1,999 MSRP (used median $6,000, 2026-10-15, up from $4,220 on 2026-08-18) and the card is not sustainably available at MSRP from any major retailer.",
+      "ai_notes": "32GB flagship with NVFP4 support, 1792 GB/s bandwidth. Ongoing supply constraints since launch - used sits at roughly 3x the $1,999 MSRP (used median $6,000 on 2026-11-26, unchanged from 2026-10-15, up from $4,220 on 2026-08-18) and the card is not sustainably available at MSRP from any major retailer.",
       "used_price_usd": {
-        "low": 5899,
+        "low": 5660,
         "mid": 6000,
-        "high": 6355
+        "high": 6200
       },
-      "used_price_updated": "2026-10-15",
-      "used_price_source": "eBay US sold, used, excl. shipping, n=119",
+      "used_price_updated": "2026-11-26",
+      "used_price_source": "eBay US sold, used, excl. shipping, n=111",
       "used_price_status": "verified",
-      "used_price_note": "Pulled by Mark 2026-10-15 from eBay US, SOLD + completed, condition used (LH_ItemCondition=3000), US location (LH_PrefLoc=1), category 27386, query \"rtx 5090\", sorted by recently ended. Basis: SOLD PRICE EXCLUDING SHIPPING; shipping-included 14-day quartiles for reference $5,900 / $6,051 / $6,406 (about 70% of sales charged shipping, median $29). Excluded: Ti, Quadro/other cards, parts, box-only, waterblocks, PCs, adapters, eGPU. Band is the 14-day window 2026-10-01..10-15, n=119, quartiles p25 / median / p75 = $5,899 / $6,000 / $6,355. 30-day cross-check 09-17..10-15, n=215: $5,555 / $5,950 / $6,200. Weekly medians from the week of 09-14: $5,400 / $5,725 / $5,929 / $6,000 / $6,399 (last week partial), i.e. still rising. 45 of the 215 sold as best-offer-accepted, where eBay shows the LIST price, not the accepted price; excluding them the 30-day median is $5,899, so the band leans slightly high. Context, reported not measured: Nvidia has not confirmed the reported production halt (Tom's Hardware 2026-10-10), and Micro Center lists the card as 'Not Carried' (Tom's Hardware 2026-10-15). SUPERSEDES the 2026-08-18 band of $3,900 / $4,220 / $4,400 (used subset, 08-08..08-18, n=61 used of 89); the median is up 42% in two months. Record: InsiderLLM docs/bench-results/gpu-prices-2026-10-15.md.",
+      "used_price_note": "Pulled by Mark 2026-11-26, query 'RTX 5090 -laptop -5090D -box -waterblock' (1,100+ results; the page holds 240). eBay US, SOLD + completed, US only, Graphics/Video Cards; card filter by title (parts, accessories, boxes, systems/laptops, eGPU boxes, lots and wrong variants excluded); SOLD PRICE EXCLUDING SHIPPING; best-offer-accepted sales at the price shown; band = quartiles p25/median/p75, inclusive, ROUNDED TO $5. Window 2026-11-06..11-25 (20 days, the run the page covers continuously; 3 earlier stragglers excluded). Used = Pre-Owned desktop cards, n=111: $5,660/$6,000/$6,200 (unrounded $5,660.00/$6,000.00/$6,199.99). Shipping-included $5,695/$6,020/$6,205. Without the 27 best-offer-accepted sales n=84 $5,275/$6,000/$6,115. The page is mostly not desktop cards: 73 parts, 43 laptops/systems (a laptop 'RTX 5090' is a 24 GB mobile chip), 5 accessories, 2 XG Mobile boxes, 1 lot of 5. OEM desktop cards (HP OMEN V530, Dell) kept. One $699.54 'Excellent' MSI Vanguard sale kept (no fault word; can't move the quartiles). SUPERSEDES the 2026-10-15 band $5,899/$6,000/$6,355 (n=119): median unchanged, the low end wider. Record: InsiderLLM docs/bench-results/gpu-prices-2026-11-26.md (parser gpu-prices-2026-11-26.py, full kept/excluded log gpu-prices-2026-11-26-parse.txt).",
       "tier": "flagship",
       "ebay_search_query": "RTX 5090",
       "benchmarks": {},
@@ -1339,6 +1379,44 @@
       "benchmarks": {},
       "ebay_sold_url": "https://www.ebay.com/sch/i.html?_nkw=Tesla+P40+-M40+-broken+-parts+-repair+-%22parts+only%22+-%22not+working%22+-%22for+parts%22+-damaged+-faulty+-%22box+only%22+-shroud+-mining&LH_Sold=1&LH_Complete=1&_sop=13&_sacat=27386",
       "used_price_note": "Pulled by Mark from eBay US, SOLD + completed, condition used, US only, category Graphics/Video Cards, query 'tesla p40 -m40'; page saved 2026-11-23 (file named 11-22). 111 listings, the complete result set ('111 results'), all P40 by title (no M40/P4/P100 titles; 13 P40 titles carry a seller-entered model of 'Tesla P4' and one 'RTX 2080 Ti', kept, title rules). Window: eBay's 90-day sold history, 2026-08-25..11-22, which the single page covers completely (P40s sell ~1/day); 2 April stragglers excluded. Also excluded: 2 multi-card lots (2 cards at $500; a cooled pair at $649) and 1 Tesla P41 (part 699-1G610, $299; a different board). n=106. Cards sold with a fan, shroud or cable kept (12): they are complete cards, not accessory-only listings, of which there were none. Basis: SOLD PRICE EXCLUDING SHIPPING; shipping-included quartiles $264 / $294 / $330. 21 best-offer-accepted sales kept at list; without them $250 / $280 / $320. Band = plain quartiles p25 / median / p75 (inclusive), ROUNDED TO $5, half up (unrounded $252.25 / $282.50 / $320). TREND: monthly medians $270 (08-25..09-30, n=42), $287 (October, n=35), $330 (11-01..11-22, n=29); last 30 days 10-24..11-22 n=36 $285 / $330 / $350. The 90-day band is the complete-coverage window by the 11-06 rule and matches the 09-02 pull's ~3-month window; it trails the current price, so a page quoting $330-350 for a P40 today is current, not wrong. COOLING SPLIT RETIRED: the 09-02 entry carried low = bare p25, mid = bare median, high = cooled median because bare ($230) and cooled ($288) medians differed by $58. Now bare n=94 $250 / $277 / $320 and cooled n=12 $275 / $288 / $330 (last 30 days $329 vs $330), so one plain band. SUPERSEDES the 2026-09-02 band of $220 / $230 / $288. Record: InsiderLLM docs/bench-results/gpu-prices-2026-11-23-rtx3090ti-p40.md."
+    },
+    "tesla-p100-16gb": {
+      "name": "NVIDIA Tesla P100 16GB (PCIe)",
+      "vendor": "nvidia",
+      "architecture": "Pascal",
+      "gpu_chip": "GP100",
+      "release_date": "2016-06-20",
+      "status": "discontinued",
+      "msrp_usd": null,
+      "memory": {
+        "vram_gb": 16,
+        "vram_type": "HBM2",
+        "bus_width_bit": 4096,
+        "bandwidth_gbs": 732
+      },
+      "compute": {
+        "cuda_cores": 3584,
+        "tensor_cores": 0,
+        "fp16_tflops": 18.7
+      },
+      "power": {
+        "tdp_watts": 250,
+        "psu_recommended_watts": 600
+      },
+      "ai_notes": "16GB HBM2 at 732 GB/s with real FP16 (unlike the P40), at a measured $140 median (2026-11-26, n=52, 90 days) and climbing fast: monthly medians $80 (Sep), $135 (Oct), $193 (Nov); last 30 days $145/$180/$200. PASSIVELY COOLED, no display outputs: budget a fan or shroud. Pascal lost CUDA support in CUDA 13, so it's pinned to 12.x. Two of them make 32GB split across cards. PCIe 16GB only here; the 12GB PCIe and SXM2 versions are different cards.",
+      "used_price_usd": {
+        "low": 100,
+        "mid": 140,
+        "high": 195
+      },
+      "used_price_updated": "2026-11-26",
+      "used_price_source": "eBay US sold, used, excl. shipping, n=52",
+      "used_price_status": "verified",
+      "tier": "flagship",
+      "ebay_search_query": "Tesla P100 16GB PCIe -SXM2 -12GB",
+      "benchmarks": {},
+      "ebay_sold_url": "https://www.ebay.com/sch/i.html?_nkw=Tesla+P100+16GB+PCIe+-SXM2+-12GB+-broken+-parts+-repair+-%22parts+only%22+-%22not+working%22+-%22for+parts%22+-damaged+-faulty+-%22box+only%22+-shroud+-mining&LH_Sold=1&LH_Complete=1&_sop=13&_sacat=27386",
+      "used_price_note": "Pulled by Mark 2026-11-26, query 'Tesla P100 16GB PCIe -SXM2 -12GB'; the page is the complete result set (62 results). eBay US, SOLD + completed, US only, Graphics/Video Cards; card filter by title (parts, accessories, boxes, systems/laptops, eGPU boxes, lots and wrong variants excluded); SOLD PRICE EXCLUDING SHIPPING; best-offer-accepted sales at the price shown; band = quartiles p25/median/p75, inclusive, ROUNDED TO $5. Used = Pre-Owned, n=52, sales 2026-09-02..11-25 (eBay's 90-day history): $100/$140/$195 (unrounded $99.00/$140.00/$196.75; range $77.99-279). Last 30 days n=29 $145/$180/$200. Shipping-included $105/$145/$200. Without the 9 best-offer-accepted sales n=43 $100/$145/$200. TREND: monthly medians $80 (Sep), $135 (Oct), $193 (Nov): the 90-day band trails today's price. Excluded: 5 multi-card lots (three lots of 4, two pairs, $259-350) and 1 parts-only. Kept by hand: line 526 '$93 … Heatsink Only' (the card with its passive heatsink). Not in the band: 1 new ($449) and 3 refurbished ($125-170). No SXM2 or 12GB title was on the page. Record: InsiderLLM docs/bench-results/gpu-prices-2026-11-26.md (parser gpu-prices-2026-11-26.py, full kept/excluded log gpu-prices-2026-11-26-parse.txt)."
     },
     "tesla-v100-16gb": {
       "name": "NVIDIA Tesla V100 16GB (PCIe)",
