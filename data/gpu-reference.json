@@ -1,8 +1,8 @@
 {
   "_meta": {
-    "version": "1.18.1",
+    "version": "1.18.2",
     "description": "Canonical GPU, system RAM, and NVMe storage reference for InsiderLLM pipeline. Verified specs are ground truth — models may add to but never contradict these values.",
-    "last_updated": "2026-11-26",
+    "last_updated": "2026-11-27",
     "maintainer": "mark@insiderllm.com",
     "notes": [
       "used_price_usd: manually updated from eBay sold listings",
@@ -37,7 +37,8 @@
       "2026-11-25: tesla-v100-16gb added (PCIe only; SXM2 modules and adapter conversions are a separate market and excluded). Seeded from Mark's eBay sold pull saved 2026-11-24 (US, sold+completed, used, Graphics/Video Cards, 16 GB + PCI facets; sold price EXCLUDING shipping; best-offer sales at list price; quartiles method='inclusive', ROUNDED TO $5): $250/$300/$335 (sales 2026-08-26..11-24, n=42, eBay's 90-day history). Rising: last 30 days $310/$340/$375 (n=19). Record: docs/bench-results/gpu-prices-2026-11-24-teslav100.md.",
       "2026-11-25: rtx-5060-ti specs filled and status 'upcoming' -> 'current' (it launched 2025-04-16; the entry was written pre-launch). GB206 (was GB205), 128-bit, 448 GB/s, 4,608 CUDA / 144 Tensor cores, 180 W, MSRP $429 (16GB). Sources: techpowerup.com/gpu-specs/geforce-rtx-5060-ti-16-gb.c4246, nvidia.com RTX 5060 family page, Tom's Hardware launch report. fp16_tflops and psu_recommended_watts left null (not cross-checked). used_price_usd NOT touched: still the 2026-05-19 researched band; no firsthand sold pull exists, and none is inferred. Pull requested: ebay-rtx5060ti-16gb-sold-2026-11-26.txt. rtx-5060 still says 'upcoming' too (same pre-launch entry); not changed here.",
       "2026-11-26: radeon-ai-pro-r9700-32gb and tesla-p100-16gb (PCIe) added; rtx-5090-32gb, rtx-3060-12gb, rx-7800-xt-16gb and rtx-5060-ti re-priced, all from Mark's eBay US sold pulls saved 2026-11-26 (sold+completed, US only, Graphics/Video Cards; title filter; sold price EXCLUDING shipping; best-offer sales at the price shown; quartiles method='inclusive', ROUNDED TO $5). Complete pages (R9700, P100) use eBay's 90-day history; capped 240-listing pages use the run of days they cover continuously. R9700 used $1,765/$2,000/$2,135 (n=26; new n=13 $1,750/$2,200/$2,300). P100 $100/$140/$195 (n=52; last 30 days $145/$180/$200, rising fast). 5090 $5,899/$6,000/$6,355 -> $5,660/$6,000/$6,200 (n=111, 11-06..11-25). 3060 $275/$300/$325 -> $310/$330/$350 (n=209, 11-17..11-26). RX 7800 XT $465/$500/$535 -> $485/$525/$560 (n=218, 09-06..11-25; last 30 days $520/$575/$600). 5060 Ti $475/$600/$720 (researched) -> $650/$700/$740 (n=181, 10-05..11-25; verified, no new sales on the page). Record: docs/bench-results/gpu-prices-2026-11-26.md.",
-      "2026-11-26 (1.18.1): radeon-ai-pro-r9700-32gb specs verified against AMD's product page, Radeon AI PRO page footnote RPW-506 (MSRP) and AMD blog (2025-07-23 workstation availability); psu_recommended_watts 750 added; 're-check' note dropped. R9700S identified as the passive variant, same memory/bandwidth/TBP."
+      "2026-11-26 (1.18.1): radeon-ai-pro-r9700-32gb specs verified against AMD's product page, Radeon AI PRO page footnote RPW-506 (MSRP) and AMD blog (2025-07-23 workstation availability); psu_recommended_watts 750 added; 're-check' note dropped. R9700S identified as the passive variant, same memory/bandwidth/TBP.",
+      "2026-11-27 (1.18.2): rtx-5060-ti gains a NEW RETAIL band listed_price_usd $840-850, listed_price_basis 'retail_new_in_stock' (new value: in-stock new-condition retail prices from the retailer itself, buyable today; not a sale record and not an eBay ask), listed_price_coverage 'Amazon only, 2 listings' (Newegg and B&H not pulled: they block automated fetches). morning-brief's drift checker compares figures labelled new/MSRP/street/retail against this band, and only for basis 'retail_new_in_stock'; the Arc Pro 'active_listings_not_sold' bands are unaffected."
     ]
   },
   "gpus": {
@@ -876,7 +877,7 @@
         "tdp_watts": 180,
         "psu_recommended_watts": null
       },
-      "ai_notes": "16GB GDDR7 on a 128-bit bus, 448 GB/s: about 1.6x the 4060 Ti 16GB's 288 GB/s at the same capacity. Launched 2025-04-16 at $429 (16GB); the 8GB version ($379) is a different card. Specs from TechPowerUp, NVIDIA and Tom's Hardware, 2026-11-25. Used median $700 (2026-11-26, n=181, 52 days), well above the $429 launch price; the AORUS AI Box eGPU version is a separate product.",
+      "ai_notes": "16GB GDDR7 on a 128-bit bus, 448 GB/s: about 1.6x the 4060 Ti 16GB's 288 GB/s at the same capacity. Launched 2025-04-16 at $429 (16GB); the 8GB version ($379) is a different card. Specs from TechPowerUp, NVIDIA and Tom's Hardware, 2026-11-25. Used median $700 (2026-11-26, n=181, 52 days), well above the $429 launch price; the AORUS AI Box eGPU version is a separate product. New at Amazon $840-850 (2026-11-27, Amazon only, 2 listings), 1.96-1.98x the $429 MSRP.",
       "used_price_usd": {
         "low": 650,
         "mid": 700,
@@ -889,7 +890,17 @@
       "tier": "mid",
       "ebay_search_query": "RTX 5060 Ti -8GB",
       "ebay_sold_url": "https://www.ebay.com/sch/i.html?_nkw=RTX+5060+Ti+-8GB+-broken+-parts+-repair+-%22parts+only%22+-%22not+working%22+-%22for+parts%22+-damaged+-faulty+-%22box+only%22+-shroud+-mining&LH_Sold=1&LH_Complete=1&_sop=13&_sacat=27386",
-      "used_price_note": "Pulled by Mark 2026-11-26, query 'RTX 5060 Ti 16GB -8GB -laptop' (433 results; the page holds 240). eBay US, SOLD + completed, US only, Graphics/Video Cards; card filter by title (parts, accessories, boxes, systems/laptops, eGPU boxes, lots and wrong variants excluded); SOLD PRICE EXCLUDING SHIPPING; best-offer-accepted sales at the price shown; band = quartiles p25/median/p75, inclusive, ROUNDED TO $5. Window 2026-10-05..11-25 (52 days, the run the page covers continuously; 3 earlier stragglers excluded). Used = Pre-Owned, n=181: $650/$700/$740 (unrounded $650.00/$699.00/$739.00; range $450-850). Last 30 days n=110 $680/$700/$750. Shipping-included $665/$705/$740. Without the 31 best-offer-accepted sales n=150 $650/$695/$730. Monthly medians $677.50 (Oct), $710 (Nov). NO NEW-CONDITION SALE is on the page (1 factory-refurbished, $749.99), so no new band. Excluded: 31 systems, 10 AORUS AI Box eGPUs, 11 parts, 1 lot, 1 box only, 1 PC. First firsthand pull; SUPERSEDES the 2026-05-19 researched band $475/$600/$720. Record: InsiderLLM docs/bench-results/gpu-prices-2026-11-26.md (parser gpu-prices-2026-11-26.py, full kept/excluded log gpu-prices-2026-11-26-parse.txt)."
+      "used_price_note": "Pulled by Mark 2026-11-26, query 'RTX 5060 Ti 16GB -8GB -laptop' (433 results; the page holds 240). eBay US, SOLD + completed, US only, Graphics/Video Cards; card filter by title (parts, accessories, boxes, systems/laptops, eGPU boxes, lots and wrong variants excluded); SOLD PRICE EXCLUDING SHIPPING; best-offer-accepted sales at the price shown; band = quartiles p25/median/p75, inclusive, ROUNDED TO $5. Window 2026-10-05..11-25 (52 days, the run the page covers continuously; 3 earlier stragglers excluded). Used = Pre-Owned, n=181: $650/$700/$740 (unrounded $650.00/$699.00/$739.00; range $450-850). Last 30 days n=110 $680/$700/$750. Shipping-included $665/$705/$740. Without the 31 best-offer-accepted sales n=150 $650/$695/$730. Monthly medians $677.50 (Oct), $710 (Nov). NO NEW-CONDITION SALE is on the page (1 factory-refurbished, $749.99), so no new band. Excluded: 31 systems, 10 AORUS AI Box eGPUs, 11 parts, 1 lot, 1 box only, 1 PC. First firsthand pull; SUPERSEDES the 2026-05-19 researched band $475/$600/$720. Record: InsiderLLM docs/bench-results/gpu-prices-2026-11-26.md (parser gpu-prices-2026-11-26.py, full kept/excluded log gpu-prices-2026-11-26-parse.txt).",
+      "listed_price_usd": {
+        "low": 840,
+        "high": 850
+      },
+      "listed_price_basis": "retail_new_in_stock",
+      "listed_price_coverage": "Amazon only, 2 listings",
+      "listed_price_source": "Amazon.com US product pages, new condition, shipped and sold by Amazon.com, fetched 2026-11-27 (Amazon only, 2 listings; Newegg and B&H block automated fetches and were not pulled)",
+      "listed_price_updated": "2026-11-27",
+      "listed_price_note": "US NEW RETAIL band, Amazon only, 2 listings, the cheapest new 16GB models buyable from Amazon.com on 2026-11-27. (1) GIGABYTE GeForce RTX 5060 Ti Eagle OC ICE 16G, ASIN B0F5B74L9N, $839.99, Ships from: Amazon.com, Sold by: Amazon.com (delivery quoted Jan 19, so stock is thin). (2) PNY RTX 5060 Ti 16GB EPIC-X RGB OC, ASIN B0F68R489D, $849.99, shipped and sold by Amazon.com, 'Usually ships within 3 days'. Band = $839.99-849.99 rounded to $5. Excluded: B0F4NFDQ3B ($824 / $799.99 'Used - Like New', UltraParts Renewed), all Renewed listings and bundles, the AORUS AI Box eGPU (B0GKFHSPN8, $899.99, a separate product), third-party sellers above the band (Eagle MAX OC B0FFQDD274 $910.07 Assiduus Global; AERO OC B0F5BCCKY6 ~$998), and six MSI 16G listings with no buy price (unavailable). Retail prices are what a buyer can pay today, a stronger class than eBay asks (active_listings_not_sold) but not a sale record; never interchangeable with used_price_usd. Raw pages: InsiderLLM session scratch, not archived.",
+      "msrp_vs_street_note": "$429 MSRP against an $840-850 Amazon new band: 1.96x to 1.98x MSRP. New now costs about $140-150 more than the used median ($700, eBay sold 2026-11-26). See rules.msrp_vs_street."
     },
     "rtx-5070": {
       "name": "NVIDIA RTX 5070",
