@@ -1,6 +1,6 @@
 {
   "_meta": {
-    "version": "1.18.2",
+    "version": "1.18.3",
     "description": "Canonical GPU, system RAM, and NVMe storage reference for InsiderLLM pipeline. Verified specs are ground truth — models may add to but never contradict these values.",
     "last_updated": "2026-11-27",
     "maintainer": "mark@insiderllm.com",
@@ -38,7 +38,8 @@
       "2026-11-25: rtx-5060-ti specs filled and status 'upcoming' -> 'current' (it launched 2025-04-16; the entry was written pre-launch). GB206 (was GB205), 128-bit, 448 GB/s, 4,608 CUDA / 144 Tensor cores, 180 W, MSRP $429 (16GB). Sources: techpowerup.com/gpu-specs/geforce-rtx-5060-ti-16-gb.c4246, nvidia.com RTX 5060 family page, Tom's Hardware launch report. fp16_tflops and psu_recommended_watts left null (not cross-checked). used_price_usd NOT touched: still the 2026-05-19 researched band; no firsthand sold pull exists, and none is inferred. Pull requested: ebay-rtx5060ti-16gb-sold-2026-11-26.txt. rtx-5060 still says 'upcoming' too (same pre-launch entry); not changed here.",
       "2026-11-26: radeon-ai-pro-r9700-32gb and tesla-p100-16gb (PCIe) added; rtx-5090-32gb, rtx-3060-12gb, rx-7800-xt-16gb and rtx-5060-ti re-priced, all from Mark's eBay US sold pulls saved 2026-11-26 (sold+completed, US only, Graphics/Video Cards; title filter; sold price EXCLUDING shipping; best-offer sales at the price shown; quartiles method='inclusive', ROUNDED TO $5). Complete pages (R9700, P100) use eBay's 90-day history; capped 240-listing pages use the run of days they cover continuously. R9700 used $1,765/$2,000/$2,135 (n=26; new n=13 $1,750/$2,200/$2,300). P100 $100/$140/$195 (n=52; last 30 days $145/$180/$200, rising fast). 5090 $5,899/$6,000/$6,355 -> $5,660/$6,000/$6,200 (n=111, 11-06..11-25). 3060 $275/$300/$325 -> $310/$330/$350 (n=209, 11-17..11-26). RX 7800 XT $465/$500/$535 -> $485/$525/$560 (n=218, 09-06..11-25; last 30 days $520/$575/$600). 5060 Ti $475/$600/$720 (researched) -> $650/$700/$740 (n=181, 10-05..11-25; verified, no new sales on the page). Record: docs/bench-results/gpu-prices-2026-11-26.md.",
       "2026-11-26 (1.18.1): radeon-ai-pro-r9700-32gb specs verified against AMD's product page, Radeon AI PRO page footnote RPW-506 (MSRP) and AMD blog (2025-07-23 workstation availability); psu_recommended_watts 750 added; 're-check' note dropped. R9700S identified as the passive variant, same memory/bandwidth/TBP.",
-      "2026-11-27 (1.18.2): rtx-5060-ti gains a NEW RETAIL band listed_price_usd $840-850, listed_price_basis 'retail_new_in_stock' (new value: in-stock new-condition retail prices from the retailer itself, buyable today; not a sale record and not an eBay ask), listed_price_coverage 'Amazon only, 2 listings' (Newegg and B&H not pulled: they block automated fetches). morning-brief's drift checker compares figures labelled new/MSRP/street/retail against this band, and only for basis 'retail_new_in_stock'; the Arc Pro 'active_listings_not_sold' bands are unaffected."
+      "2026-11-27 (1.18.2): rtx-5060-ti gains a NEW RETAIL band listed_price_usd $840-850, listed_price_basis 'retail_new_in_stock' (new value: in-stock new-condition retail prices from the retailer itself, buyable today; not a sale record and not an eBay ask), listed_price_coverage 'Amazon only, 2 listings' (Newegg and B&H not pulled: they block automated fetches). morning-brief's drift checker compares figures labelled new/MSRP/street/retail against this band, and only for basis 'retail_new_in_stock'; the Arc Pro 'active_listings_not_sold' bands are unaffected.",
+      "2026-11-27 (1.18.3): intel-arc-b580-12gb added. Specs from Intel's product specifications page (SKU 241598). New retail band listed_price_usd $600-800, basis 'retail_new_in_stock', coverage 'Newegg only, 2 listings' (ASRock Challenger $599.99, Intel Limited Edition $799.00; seller not shown on the saved page). Amazon.com and B&H had no in-stock B580 that day. No used band (unverified)."
     ]
   },
   "gpus": {
@@ -1692,6 +1693,54 @@
       "tier": "mid",
       "ebay_search_query": "Intel Arc Pro B50",
       "ebay_sold_url": "https://www.ebay.com/sch/i.html?_nkw=Intel+Arc+Pro+B50+-broken+-parts+-repair+-%22parts+only%22+-%22not+working%22+-%22for+parts%22+-damaged+-faulty+-%22box+only%22+-shroud+-mining&LH_Sold=1&LH_Complete=1&_sop=13&_sacat=27386"
+    },
+    "intel-arc-b580-12gb": {
+      "name": "Intel Arc B580",
+      "vendor": "intel",
+      "architecture": "Xe2 (Battlemage)",
+      "gpu_chip": "BMG-G21",
+      "release_date": null,
+      "status": "current",
+      "msrp_usd": 249,
+      "memory": {
+        "vram_gb": 12,
+        "vram_type": "GDDR6",
+        "bus_width_bit": 192,
+        "bandwidth_gbs": 456
+      },
+      "compute": {
+        "xe_cores": 20,
+        "xmx_engines": 160,
+        "fp16_tflops": null
+      },
+      "power": {
+        "tdp_watts": 190,
+        "psu_recommended_watts": 600
+      },
+      "ai_notes": "12GB GDDR6, 192-bit at 19 Gbps, 456 GB/s, 190W TBP, 1x 8-pin, PCIe 4.0 x8; launched Q4 2024 at $249 (Intel recommended customer price). Specs from Intel's product specifications page (SKU 241598), checked 2026-11-27; release_date left null because Intel gives only Q4'24. New at Newegg $600-800 (2026-11-27, Newegg only, 2 listings), 2.4-3.2x the $249 MSRP; no Amazon.com or B&H stock that day. Above a used RTX 3060 12GB ($310-350, 2026-11-26).",
+      "used_price_usd": {
+        "low": null,
+        "mid": null,
+        "high": null
+      },
+      "used_price_updated": null,
+      "used_price_source": null,
+      "used_price_status": "unverified",
+      "used_price_note": "No firsthand SOLD-listing data exists for this card. Left null deliberately rather than derived from retail prices. See listed_price_* for the new retail band.",
+      "listed_price_usd": {
+        "low": 600,
+        "high": 800
+      },
+      "listed_price_basis": "retail_new_in_stock",
+      "listed_price_coverage": "Newegg only, 2 listings",
+      "listed_price_source": "Newegg US search 'arc b580', New condition filter, lowest price first, page saved by Mark 2026-11-27 (InsiderLLM docs/bench-results/raw/newegg-arc-b580-2026-11-27.txt). Amazon.com and B&H checked the same day: no in-stock listing from Amazon.com or B&H.",
+      "listed_price_updated": "2026-11-27",
+      "listed_price_note": "US NEW RETAIL band, Newegg only, 2 listings, 2026-11-27: (1) ASRock Challenger Arc B580 12GB GDDR6 (model B580 CL 12GO), $599.99, free delivery Dec 04-08; (2) Intel Arc B580 Limited Edition 12GB, $799.00, free delivery Dec 04-08. The saved search page shows no seller name or Newegg item number, so whether Newegg itself or a marketplace seller ships them is NOT recorded. Band = $599.99-799.00 rounded to $5. Amazon (fetched 2026-11-27): Intel Arc B580 Limited Edition B0DPM9923G 'Currently unavailable'; third-party only: SPARKLE B580 Guardian B0DW9GXBGD $723.24 (MemoryC), Intel Arc B580 Limited Edition B0GMQ7HHR5 $851.16 (third-party seller); the rest were 'Graphics Card Fit for ...' lookalike listings ($900-2,440) and prebuilt PCs, excluded. B&H (saved 2026-11-27, In Stock filter): no B580 among the 4 results. Retail prices are what a buyer can pay today; not a sale record and never interchangeable with used_price_usd.",
+      "msrp_vs_street_note": "$249 MSRP against a $600-800 Newegg new band: 2.41x to 3.21x MSRP, on 2 listings from one retailer. See rules.msrp_vs_street.",
+      "benchmarks": {},
+      "tier": "entry",
+      "ebay_search_query": "Intel Arc B580",
+      "ebay_sold_url": "https://www.ebay.com/sch/i.html?_nkw=Intel+Arc+B580+-broken+-parts+-repair+-%22parts+only%22+-%22not+working%22+-%22for+parts%22+-damaged+-faulty+-%22box+only%22+-shroud+-mining&LH_Sold=1&LH_Complete=1&_sop=13&_sacat=27386"
     },
     "cmp-170hx-8gb": {
       "name": "NVIDIA CMP 170HX (8 GB HBM2e, Hynix)",
